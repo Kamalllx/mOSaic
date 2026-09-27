@@ -56,6 +56,7 @@ class PgStore:
         self.database_url = _to_psycopg_dsn(database_url)
         self._idle: list[psycopg.AsyncConnection] = []
         self._slots: asyncio.Semaphore | None = None
+        self._vector_ready = False
         self.dim: int | None = None
 
     async def _connect(self) -> psycopg.AsyncConnection:
@@ -66,6 +67,11 @@ class PgStore:
                 "mosaic_knowledge.compat.ensure_selector_loop_on_windows() before the event loop starts",
             )
         conn = await psycopg.AsyncConnection.connect(self.database_url, row_factory=dict_row, connect_timeout=5)
+        if not self._vector_ready:
+            # register_vector_async needs the extension; on a brand-new database migrate() hasn't created it yet.
+            await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
+            await conn.commit()
+            self._vector_ready = True
         await register_vector_async(conn)
         return conn
 
