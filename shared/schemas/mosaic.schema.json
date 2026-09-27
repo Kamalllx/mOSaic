@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "mOSaic",
-  "description": "mOSaic contracts v0.2.0",
+  "description": "mOSaic contracts v0.2.1",
   "type": "object",
   "$defs": {
     "PrincipalKind": {
@@ -1652,6 +1652,10 @@
         "url": {
           "type": "string"
         },
+        "title": {
+          "default": "",
+          "type": "string"
+        },
         "text": {
           "default": "",
           "description": "Visible text, truncated to ~20k chars",
@@ -1676,6 +1680,9 @@
       "properties": {
         "type": {
           "description": "project | person | team | system | policy | decision | playbook | finance | note | index",
+          "type": "string"
+        },
+        "title": {
           "type": "string"
         },
         "description": {
@@ -1867,6 +1874,9 @@
           "pattern": "^/org(/[A-Za-z0-9._\\-]+)*/?$",
           "type": "string"
         },
+        "title": {
+          "type": "string"
+        },
         "type": {
           "type": "string"
         },
@@ -1975,6 +1985,9 @@
       "properties": {
         "path": {
           "pattern": "^/org(/[A-Za-z0-9._\\-]+)*/?$",
+          "type": "string"
+        },
+        "title": {
           "type": "string"
         },
         "type": {

@@ -39,12 +39,13 @@ def export_schemas() -> int:
         if set(schema) != {"$ref"}:  # recursive models are emitted as {"$ref": ...} + $defs
             bundle["$defs"][model.__name__] = schema
     # field-level "title"s make json2ts emit one alias per field (TaskId14...). Keep titles on models only.
-    def strip_titles(node: object, keep: bool) -> None:
+    # A "properties" mapping is keyed by field name, so a field called "title" must survive there.
+    def strip_titles(node: object, keep: bool, field_map: bool = False) -> None:
         if isinstance(node, dict):
-            if not keep:
+            if not keep and not field_map:
                 node.pop("title", None)
-            for v in node.values():
-                strip_titles(v, keep=False)
+            for k, v in node.items():
+                strip_titles(v, keep=False, field_map=(k == "properties" and not field_map))
         elif isinstance(node, list):
             for v in node:
                 strip_titles(v, keep=False)
