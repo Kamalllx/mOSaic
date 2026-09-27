@@ -3,6 +3,7 @@
 from mosaic_contracts.interfaces import ContextFirewall, KnowledgeService, MemoryService
 from mosaic_contracts.wiring import ServiceBundle, Settings
 
+from .coherence import Coherence
 from .firewall import ContextFirewall as ContextFirewallImpl
 from .indexing import PgStore
 from .kfs import KnowledgeFS
@@ -20,5 +21,10 @@ def build_knowledge_service(settings: Settings, services: ServiceBundle) -> Know
 
 
 def build_memory_service(settings: Settings, services: ServiceBundle) -> MemoryService:
+    """Also starts coherence (knowledge.changed → invalidate + reindex) when an event bus is present;
+    memory is built after knowledge, so services.knowledge is available here."""
     store = PgStore(settings.database_url)
-    return MemoryManager(store, services.models, services.event_bus)
+    memory = MemoryManager(store, services.models, services.event_bus)
+    if services.event_bus is not None:
+        Coherence(services.event_bus, services.knowledge, memory).start()
+    return memory
