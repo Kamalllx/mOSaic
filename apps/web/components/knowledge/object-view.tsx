@@ -126,7 +126,7 @@ export function ObjectView({ path, onSelect }: { path: string; onSelect: (p: str
   return (
     <article className="space-y-5">
       <header className="space-y-2">
-        <p className="font-mono text-sm text-muted-foreground">{o.path} <span className="opacity-60">({o.okf_file} · v{o.version ?? 1} · {o.content_hash})</span></p>
+        <p className="font-mono text-sm text-muted-foreground">{o.path} <span className="opacity-60">({o.okf_file} · {o.content_hash})</span></p>
         <h1 className="text-2xl font-semibold">{fm.title}</h1>
         {fm.description && <p className="text-muted-foreground">{fm.description}</p>}
         <div className="flex flex-wrap gap-1.5">

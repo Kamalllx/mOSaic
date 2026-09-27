@@ -26,7 +26,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
         <TooltipProvider delayDuration={200}>
           {children}
           <KnowledgeEvents />
-          <Toaster theme="dark" position="bottom-right" richColors closeButton />
+          <Toaster theme="dark" position="bottom-right" richColors closeButton expand visibleToasts={4} />
         </TooltipProvider>
       </QueryClientProvider>
     </ClientContext.Provider>
