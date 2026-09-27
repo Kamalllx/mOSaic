@@ -2,6 +2,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createContext, useContext, useState } from "react";
+import { KnowledgeEvents } from "@/components/knowledge-events";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { createMosaicClient, type MosaicClient } from "@/lib/mosaic-client";
@@ -24,6 +25,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <QueryClientProvider client={queryClient}>
         <TooltipProvider delayDuration={200}>
           {children}
+          <KnowledgeEvents />
           <Toaster theme="dark" position="bottom-right" richColors closeButton />
         </TooltipProvider>
       </QueryClientProvider>
