@@ -6,6 +6,7 @@ import Link from "next/link";
 import { use } from "react";
 import { toast } from "sonner";
 import { useClient } from "@/app/providers";
+import { ApprovalDrawer } from "@/components/approval-drawer";
 import { KnowledgePanel } from "@/components/knowledge-panel";
 import { ProcessTree } from "@/components/process-tree";
 import { TaskStatusBadge } from "@/components/status";
@@ -40,7 +41,7 @@ export default function TaskPage({ params }: { params: Promise<{ id: string }> }
       <div className="flex items-start gap-4">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-3">
-            <TaskStatusBadge status={view.status} className="text-sm" />
+            <TaskStatusBadge status={view.status} className="text-sm" data-testid="task-status" />
             <span className="font-mono text-sm text-muted-foreground">{id}</span>
             <span className="flex items-center gap-1.5 text-xs text-muted-foreground" title="Event stream">
               <span className={cn("size-2 rounded-full", streamDot)} /> {streamLabel}
@@ -48,7 +49,8 @@ export default function TaskPage({ params }: { params: Promise<{ id: string }> }
           </div>
           <h1 className="mt-1 line-clamp-2 text-lg font-semibold leading-snug">{String(goal ?? "…")}</h1>
         </div>
-        <div className="flex shrink-0 gap-2">
+        <div className="flex shrink-0 items-center gap-2">
+          <ApprovalDrawer view={view} />
           <Button variant="outline" size="sm" asChild>
             <Link href={`/audit/${id}`}>
               <ScrollText className="size-4" /> Audit journal

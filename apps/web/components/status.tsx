@@ -1,9 +1,10 @@
 import { cn } from "@/lib/utils";
 import { agentTone, taskTone, type Tone } from "@/lib/tones";
 
-function Pill({ tone, label, className }: { tone: Tone; label: string; className?: string }) {
+function Pill({ tone, label, className, ...rest }: { tone: Tone; label: string; className?: string; "data-testid"?: string }) {
   return (
     <span
+      {...rest}
       className={cn(
         "inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border px-2 py-0.5 font-mono text-xs font-semibold tracking-wide",
         tone.bg,
@@ -22,8 +23,8 @@ export const AgentStateBadge = ({ state, className }: { state?: string | null; c
   <Pill tone={agentTone(state)} label={state ?? "UNKNOWN"} className={className} />
 );
 
-export const TaskStatusBadge = ({ status, className }: { status?: string | null; className?: string }) => (
-  <Pill tone={taskTone(status)} label={(status ?? "unknown").replaceAll("_", " ")} className={className} />
+export const TaskStatusBadge = ({ status, className, ...rest }: { status?: string | null; className?: string; "data-testid"?: string }) => (
+  <Pill tone={taskTone(status)} label={(status ?? "unknown").replaceAll("_", " ")} className={className} {...rest} />
 );
 
 export const PidChip = ({ pid, className }: { pid?: number | null; className?: string }) =>
