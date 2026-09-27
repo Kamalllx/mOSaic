@@ -5,7 +5,7 @@ function Pill({ tone, label, className }: { tone: Tone; label: string; className
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 font-mono text-xs font-semibold tracking-wide",
+        "inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border px-2 py-0.5 font-mono text-xs font-semibold tracking-wide",
         tone.bg,
         tone.border,
         tone.text,
