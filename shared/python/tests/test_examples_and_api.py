@@ -75,3 +75,18 @@ def test_mock_gateway_flow():
         assert "approval.resolved" in seen
         assert client.get(f"/tasks/{task['task_id']}").json()["status"] == "completed"
         assert client.get("/tasks/T-nope").status_code == 404
+
+
+
+def test_exported_schema_keeps_fields_named_title():
+    """export strips JSON-schema "title" annotations; it must not drop real fields called `title` (regenerate with
+    `uv run mosaic-export-contracts` if this fails)."""
+    import json
+
+    from mosaic_contracts.export import SHARED
+
+    defs = json.loads((SHARED / "schemas" / "mosaic.schema.json").read_text(encoding="utf-8"))["$defs"]
+    for model in ("KnowledgeEntry", "SearchHit", "OKFFrontmatter"):
+        assert "title" in defs[model]["properties"], model
+        assert "title" in defs[model].get("required", []), model
+    assert "title" not in defs["SearchHit"]["properties"]["path"], "field-level annotations are still stripped"

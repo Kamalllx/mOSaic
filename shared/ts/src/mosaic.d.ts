@@ -234,7 +234,7 @@ export type TrustLevel4 = "verified" | "trusted" | "unverified" | "untrusted";
 export type VerificationStatus2 = "unverified" | "verified" | "disputed" | "stale";
 
 /**
- * mOSaic contracts v0.2.0
+ * mOSaic contracts v0.2.1
  */
 export interface MOSaic {
   A2AMessage?: A2AMessage;
@@ -705,6 +705,7 @@ export interface AuditEntry {
  */
 export interface BrowserPage {
   url: string;
+  title?: string;
   /**
    * Visible text, truncated to ~20k chars
    */
@@ -837,6 +838,7 @@ export interface SearchQuery {
  */
 export interface SearchHit {
   path: string;
+  title: string;
   type: string;
   snippet: string;
   chunk_id?: string | null;
@@ -947,6 +949,7 @@ export interface GraphResult {
  */
 export interface KnowledgeEntry {
   path: string;
+  title: string;
   type: string;
   is_dir?: boolean;
   privacy?: PrivacyLevel;
@@ -1045,6 +1048,7 @@ export interface OKFFrontmatter {
    * project | person | team | system | policy | decision | playbook | finance | note | index
    */
   type: string;
+  title: string;
   description?: string | null;
   tags?: string[];
   status?: string | null;
