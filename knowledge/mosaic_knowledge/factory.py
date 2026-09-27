@@ -17,7 +17,11 @@ def build_context_firewall(settings: Settings, services: ServiceBundle) -> Conte
 def build_knowledge_service(settings: Settings, services: ServiceBundle) -> KnowledgeService:
     """Uses services.models (embeddings), services.firewall, services.event_bus."""
     store = PgStore(settings.database_url)
-    return KnowledgeFS(settings.okf_dir, store, services.models, services.firewall, services.event_bus, services.converters)
+    # getattr: Settings.knowledge_watch arrives with contract 0.3.0; this works before and after it lands.
+    watch = bool(getattr(settings, "knowledge_watch", False))
+    return KnowledgeFS(
+        settings.okf_dir, store, services.models, services.firewall, services.event_bus, services.converters, watch=watch
+    )
 
 
 def build_memory_service(settings: Settings, services: ServiceBundle) -> MemoryService:

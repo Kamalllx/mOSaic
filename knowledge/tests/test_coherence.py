@@ -86,3 +86,41 @@ def test_manual_edit_invalidates_dependent_memories_and_reindexes(services):
     assert set(invalidated.payload["invalidated"]) == {summary.memory_id, derived.memory_id}
     assert invalidated.payload["affected_agents"] == ["compliance-agent", "finance-agent"]
     assert hits.hits and hits.hits[0].path == "/org/policies/security", "the edit is searchable after coherence reindexed it"
+
+
+def test_knowledge_watch_setting_starts_the_watcher(tmp_path):
+    base = Settings.from_env(dotenv=None)
+    if not _postgres_reachable(base.database_url):
+        pytest.skip(f"Postgres unreachable at {base.database_url}")
+
+    class WatchSettings(Settings):  # stands in for Settings once the knowledge_watch contract lands
+        knowledge_watch: bool = True
+
+    s = WatchSettings(database_url=base.database_url, okf_dir=tmp_path / "okf")
+    shutil.copytree(FIXTURE_OKF_DIR, s.okf_dir)
+    b = ServiceBundle(settings=s, models=FakeModelRouter(), event_bus=InMemoryEventBus())
+    b.firewall = factory.build_context_firewall(s, b)
+    knowledge = factory.build_knowledge_service(s, b)
+
+    async def go():
+        seen: list = []
+
+        async def h(e):
+            seen.append(e)
+
+        b.event_bus.subscribe("knowledge.changed", h)
+        await knowledge.read("/org/projects/zeus", user_principal())  # first call starts the watcher
+        await asyncio.sleep(0.8)
+        (s.okf_dir / "projects" / "zeus.md").write_text("---\ntype: project\ntitle: Zeus\n---\nPaused.\n", encoding="utf-8")
+        try:
+            return await _wait_for(seen, lambda e: e.payload["path"] == "/org/projects/zeus")
+        finally:
+            await knowledge.aclose()
+
+    assert asyncio.run(go()).payload["change"] == "updated"
+
+
+def test_watcher_is_off_by_default(services):
+    s, b = services
+    assert getattr(s, "knowledge_watch", False) is False
+    assert b.knowledge.watch is False

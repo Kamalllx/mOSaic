@@ -35,6 +35,7 @@ from mosaic_contracts.schema import (
 )
 from mosaic_contracts.util import path_allowed, privacy_allows
 
+from ..coherence import watch_bundle
 from ..graph import GraphStore
 from ..indexing import Indexer, PgStore
 from ..okf import OKFBundle
@@ -53,6 +54,7 @@ class KnowledgeFS:
         firewall: Any,
         event_bus: Any = None,
         converters: list[Any] | None = None,
+        watch: bool = False,
     ) -> None:
         self.bundle = OKFBundle(okf_dir)
         self.store = store
@@ -65,6 +67,9 @@ class KnowledgeFS:
         self.objects: dict[str, KnowledgeObject] = {}
         self._lock = asyncio.Lock()
         self._ready = False
+        self.watch = watch
+        self._watch_stop: asyncio.Event | None = None
+        self._watch_task: asyncio.Task | None = None
 
     async def _ensure_ready(self) -> None:
         if self._ready:
@@ -82,6 +87,18 @@ class KnowledgeFS:
             await self.store.migrate(dim, model_name)
             await self._sync_index(None)
             self._ready = True
+            if self.watch and self.bus is not None:
+                # Started here, not in the factory: factories are sync and run before any event loop exists.
+                self._watch_stop = asyncio.Event()
+                self._watch_task = asyncio.create_task(watch_bundle(self.bundle.root, self.bus, self._watch_stop))
+
+    async def aclose(self) -> None:
+        """Stop the watcher (if any) and close the connection pool."""
+        if self._watch_task is not None and self._watch_stop is not None:
+            self._watch_stop.set()
+            await self._watch_task
+            self._watch_task = None
+        await self.store.close()
 
     # --- access control (mirrors mosaic_contracts.testing.fakes.FakeKnowledgeService)
 
