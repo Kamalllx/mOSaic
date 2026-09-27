@@ -19,6 +19,8 @@ Full brief: [docs/team/P2-knowledge-console.md](../../docs/team/P2-knowledge-con
 - `ingest()` reports converter/validation problems in `IngestResult.errors` (it doesn't raise). Re-ingesting identical content lands in `skipped` and publishes no event.
 - `build_memory_service` starts coherence: every `knowledge.changed` → `memory.invalidate(path)` → `knowledge.reindex([path])` → `memory.invalidated` + `knowledge.reindexed`. The file watcher (`coherence.watch_bundle`) is opt-in and not started by the factories yet.
 - CLI: `uv run mosaic-okf validate | search "<text>" | reindex | ingest <path> --target /org/...`.
+- **Windows:** psycopg's async mode can't run on the default `ProactorEventLoop`. `mosaic_knowledge` no longer changes the loop policy on import; each process entry point must call `mosaic_knowledge.compat.ensure_selector_loop_on_windows()` (or set `WindowsSelectorEventLoopPolicy`) before its loop starts. `mosaic-okf` and `knowledge/tests` already do; **`mosaicd` must too**. Without it, the first knowledge/memory call raises `MosaicError("INTERNAL")` naming the fix.
+- **Memory recall:** a memory with no word in common with the query is only recalled when its embedding cosine is ≥ `RECALL_KEYWORD_GATE_COSINE` (0.5, tuned on the hashed fake embeddings). It gets retuned for the real embedding model at T9.
 
 ## How it is tested
 | Suite | What it proves | Needs |
