@@ -16,10 +16,7 @@ from .test_contract import _postgres_reachable
 SCRIPT = textwrap.dedent(
     """
     import asyncio, sys
-    from mosaic_knowledge.compat import ensure_selector_loop_on_windows
     from mosaic_knowledge.indexing.store import PgStore
-
-    ensure_selector_loop_on_windows()
 
     async def main():
         stores = [PgStore(sys.argv[1]) for _ in range(3)]

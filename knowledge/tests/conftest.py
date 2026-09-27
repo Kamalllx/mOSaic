@@ -1,3 +1,0 @@
-from mosaic_knowledge.compat import ensure_selector_loop_on_windows
-
-ensure_selector_loop_on_windows()

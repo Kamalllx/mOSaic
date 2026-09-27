@@ -14,12 +14,9 @@ from pathlib import Path
 from typing import Any
 
 import psycopg
-from mosaic_contracts.errors import MosaicError
 from pgvector import Vector
-from pgvector.psycopg import register_vector_async
+from pgvector.psycopg import register_vector
 from psycopg.rows import dict_row
-
-from ..compat import running_on_proactor_loop
 
 logger = logging.getLogger("mosaic.knowledge.store")
 
@@ -43,40 +40,64 @@ class ChunkRow:
 _MAX_CONNECTIONS = 10
 
 
+class _Cursor:
+    """Async view of a sync psycopg cursor; fetches run on a worker thread."""
+
+    def __init__(self, cur: psycopg.Cursor) -> None:
+        self._cur = cur
+
+    async def fetchall(self) -> list[dict[str, Any]]:
+        return await asyncio.to_thread(self._cur.fetchall)
+
+    async def fetchone(self) -> dict[str, Any] | None:
+        return await asyncio.to_thread(self._cur.fetchone)
+
+
+class _Connection:
+    """Async view of a sync psycopg connection: every call runs on a worker thread (AGENTS.md rule 9), so the
+    store works on any event loop. psycopg's own async mode can't run on Windows' ProactorEventLoop, which is
+    uvicorn's default there and which Playwright and asyncio subprocesses need."""
+
+    def __init__(self, conn: psycopg.Connection) -> None:
+        self.raw = conn
+
+    async def execute(self, query: str, params: Any = None) -> _Cursor:
+        return _Cursor(await asyncio.to_thread(self.raw.execute, query, params))
+
+    async def commit(self) -> None:
+        await asyncio.to_thread(self.raw.commit)
+
+    async def rollback(self) -> None:
+        await asyncio.to_thread(self.raw.rollback)
+
+
 class PgStore:
     """Thin async wrapper over the mosaic Postgres schema (§6.3 of the P2 brief).
 
     Connections come from a minimal pool with no background tasks: idle connections behind a semaphore. Services
-    get no close() call from the kernel, and psycopg_pool's maintenance workers swallow CancelledError, so an
-    unclosed psycopg_pool kept asyncio.run() (ai-demo, uvicorn shutdown) from ever returning. Nothing here
-    outlives the event loop; close() is still the tidy way to release connections.
+    get no close() call from the kernel, so nothing here may outlive the event loop (psycopg_pool's maintenance
+    workers did, and kept asyncio.run() from returning). close() is still the tidy way to release connections.
     """
 
     def __init__(self, database_url: str) -> None:
         self.database_url = _to_psycopg_dsn(database_url)
-        self._idle: list[psycopg.AsyncConnection] = []
+        self._idle: list[_Connection] = []
         self._slots: asyncio.Semaphore | None = None
         self._vector_ready = False
         self.dim: int | None = None
 
-    async def _connect(self) -> psycopg.AsyncConnection:
-        if running_on_proactor_loop():
-            raise MosaicError(
-                "INTERNAL",
-                "psycopg async needs a selector event loop on Windows: call "
-                "mosaic_knowledge.compat.ensure_selector_loop_on_windows() before the event loop starts",
-            )
-        conn = await psycopg.AsyncConnection.connect(self.database_url, row_factory=dict_row, connect_timeout=5)
+    def _connect_sync(self) -> psycopg.Connection:
+        conn = psycopg.connect(self.database_url, row_factory=dict_row, connect_timeout=5)
         if not self._vector_ready:
-            # register_vector_async needs the extension; on a brand-new database migrate() hasn't created it yet.
-            await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
-            await conn.commit()
+            # register_vector needs the extension; on a brand-new database migrate() hasn't created it yet.
+            conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
+            conn.commit()
             self._vector_ready = True
-        await register_vector_async(conn)
+        register_vector(conn)
         return conn
 
     @asynccontextmanager
-    async def connection(self) -> AsyncIterator[psycopg.AsyncConnection]:
+    async def connection(self) -> AsyncIterator[_Connection]:
         """One connection for a unit of work. Anything left uncommitted is rolled back when it's returned."""
         if self._slots is None:
             self._slots = asyncio.Semaphore(_MAX_CONNECTIONS)
@@ -84,22 +105,22 @@ class PgStore:
             conn = None
             while self._idle and conn is None:
                 candidate = self._idle.pop()
-                conn = None if candidate.closed else candidate
+                conn = None if candidate.raw.closed else candidate
             if conn is None:
-                conn = await self._connect()
+                conn = _Connection(await asyncio.to_thread(self._connect_sync))
             try:
                 yield conn
             finally:
-                await self._release(conn)
+                await asyncio.to_thread(self._release_sync, conn)
 
-    async def _release(self, conn: psycopg.AsyncConnection) -> None:
-        if conn.closed:
+    def _release_sync(self, conn: _Connection) -> None:
+        if conn.raw.closed:
             return
         try:
-            if conn.info.transaction_status != psycopg.pq.TransactionStatus.IDLE:
-                await conn.rollback()
+            if conn.raw.info.transaction_status != psycopg.pq.TransactionStatus.IDLE:
+                conn.raw.rollback()
         except psycopg.Error:
-            await conn.close()
+            conn.raw.close()
             return
         self._idle.append(conn)
 
@@ -114,7 +135,7 @@ class PgStore:
     async def close(self) -> None:
         idle, self._idle = self._idle, []
         for conn in idle:
-            await conn.close()
+            await asyncio.to_thread(conn.raw.close)
 
     # --------------------------------------------------------------------- migration
 
