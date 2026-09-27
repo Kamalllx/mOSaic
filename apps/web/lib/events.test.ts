@@ -60,6 +60,17 @@ describe("ordering and de-duplication", () => {
   });
 });
 
+describe("late process.spawned", () => {
+  it("fills in ppid and agent for a process first seen through a state change", () => {
+    const at = (s: number) => `2026-09-27T10:00:0${s}Z`;
+    const v = buildTaskView({}, [
+      { type: "process.state_changed", source: "k", pid: 102, ts: at(1), payload: { old: "CREATED", new: "RUNNING" } },
+      { type: "process.spawned", source: "k", pid: 102, ts: at(1), payload: { agent: "finance-agent", ppid: 101 } },
+    ]);
+    expect(v.processes[102]).toMatchObject({ ppid: 101, agent: "finance-agent", state: "RUNNING" });
+  });
+});
+
 describe("snapshot seeding", () => {
   it("doesn't let an older event overwrite a newer snapshot", () => {
     const snap: AgentProcess = {

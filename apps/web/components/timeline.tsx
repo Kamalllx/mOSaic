@@ -11,6 +11,12 @@ import { PidChip, formatTime } from "./status";
 
 // Chatty events that add little on a projector; one click shows them.
 const NOISE = new Set(["process.usage", "audit.appended", "tool.started", "syscall.completed", "system.health"]);
+// Every real process walks CREATED → INITIALIZING → READY → RUNNING in its first milliseconds (P1's demo hides these too).
+const BOOT = new Set(["INITIALIZING", "READY"]);
+const isNoise = (e: Event) =>
+  NOISE.has(e.type) ||
+  (e.type === "process.state_changed" &&
+    (BOOT.has(String(e.payload?.new)) || (e.payload?.old === "READY" && e.payload?.new === "RUNNING")));
 
 export function FlagBadge() {
   return (
@@ -98,7 +104,7 @@ export function Timeline({ events, retrieved }: { events: Event[]; retrieved: Re
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
   const byEvent = new Map(retrieved.map((r) => [r.event, r]));
-  const shown = showNoise ? events : events.filter((e) => !NOISE.has(e.type));
+  const shown = showNoise ? events : events.filter((e) => !isNoise(e));
 
   useEffect(() => {
     if (pinned.current) bottom.current?.scrollIntoView({ block: "end" });
@@ -113,7 +119,7 @@ export function Timeline({ events, retrieved }: { events: Event[]; retrieved: Re
           onClick={() => setShowNoise((s) => !s)}
           className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
         >
-          {showNoise ? "hide" : "show"} usage/audit ({events.length - events.filter((e) => !NOISE.has(e.type)).length})
+          {showNoise ? "hide" : "show"} low-level ({events.length - events.filter((e) => !isNoise(e)).length})
         </button>
       </div>
       <div

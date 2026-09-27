@@ -3,10 +3,20 @@
 import type { AgentProcess } from "@mosaic/contracts";
 import { ALLOWED_TRANSITIONS } from "@mosaic/contracts";
 import { useMutation } from "@tanstack/react-query";
-import { Background, Handle, type Node, type NodeProps, Position, ReactFlow, type Edge } from "@xyflow/react";
+import {
+  Background,
+  type Edge,
+  Handle,
+  type Node,
+  type NodeProps,
+  Position,
+  ReactFlow,
+  ReactFlowProvider,
+  useReactFlow,
+} from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { Hourglass, Pause, Play, Skull } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useClient } from "@/app/providers";
 import {
@@ -93,6 +103,18 @@ function NodeButton({ label, onClick, icon, danger }: { label: string; onClick: 
 
 const nodeTypes = { proc: ProcessNode };
 
+/** Re-fit whenever the set of processes or their parents change: fitView on its own only runs for the first render, and new
+ *  nodes need a moment to be measured, so fit once right away and once after they've rendered. */
+function FitOnGrowth({ pids }: { pids: string }) {
+  const { fitView } = useReactFlow();
+  useEffect(() => {
+    const fit = () => void fitView({ padding: 0.08, maxZoom: 1.25, duration: 250 });
+    const timers = [setTimeout(fit, 60), setTimeout(fit, 450)];
+    return () => timers.forEach(clearTimeout);
+  }, [pids, fitView]);
+  return null;
+}
+
 /** Tidy top-down layout: leaves take one slot each, parents sit centred over their children. */
 export function layout(procs: AgentProcess[]): { positions: Record<number, { x: number; y: number }>; edges: [number, number][] } {
   const byPid = new Map(procs.map((p) => [p.pid, p]));
@@ -164,8 +186,8 @@ export function ProcessTree({ processes }: { processes: Record<number, AgentProc
       {procs.length === 0 ? (
         <p className="p-4 text-sm text-muted-foreground">No processes yet.</p>
       ) : (
+        <ReactFlowProvider>
         <ReactFlow
-          key={procs.length}
           nodes={nodes}
           edges={edges}
           nodeTypes={nodeTypes}
@@ -178,7 +200,9 @@ export function ProcessTree({ processes }: { processes: Record<number, AgentProc
           style={{ background: "transparent" }}
         >
           <Background gap={24} size={1} color="#1c2733" />
+          <FitOnGrowth pids={procs.map((p) => `${p.pid}<${p.ppid ?? ""}`).sort().join(",")} />
         </ReactFlow>
+        </ReactFlowProvider>
       )}
       <AlertDialog open={!!confirm} onOpenChange={(o) => !o && setConfirm(null)}>
         <AlertDialogContent>

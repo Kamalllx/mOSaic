@@ -123,16 +123,15 @@ export function buildTaskView(seed: TaskSeed, events: Event[]): TaskView {
     const stale = pid !== null && seededAt[pid] !== undefined && tsOf(e) < seededAt[pid];
     switch (e.type) {
       case "process.spawned": {
-        if (pid !== null && !view.processes[pid]) {
-          const ppid = num(e, "ppid");
-          view.processes[pid] = {
-            pid,
-            ppid: ppid ?? null,
-            agent: str(e, "agent") ?? `pid ${pid}`,
-            task_id: e.task_id ?? task?.task_id ?? "",
-            owner: task?.user_id ?? "",
-            state: "CREATED",
-          };
+        if (pid === null) break;
+        const ppid = num(e, "ppid") ?? null;
+        const agent = str(e, "agent") ?? `pid ${pid}`;
+        const known = view.processes[pid];
+        if (!known) {
+          view.processes[pid] = { pid, ppid, agent, task_id: e.task_id ?? task?.task_id ?? "", owner: task?.user_id ?? "", state: "CREATED" };
+        } else {
+          // Seen first through another event (same ts, different order): keep its state, fill in the identity.
+          view.processes[pid] = { ...known, ppid: known.ppid ?? ppid, agent: known.agent.startsWith("pid ") ? agent : known.agent };
         }
         break;
       }
