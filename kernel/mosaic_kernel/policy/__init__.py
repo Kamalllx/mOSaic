@@ -3,8 +3,8 @@
 Owner: P1 — Kernel & Execution
 
 TODO:
-  - [ ] deny by default; tools allow/deny globs via mosaic_contracts.util.capability_matches
-  - [ ] approval map: required / auto / never; risk >= high always requires approval
-  - [ ] network constraints -> PolicyDecision.constraints['network_allow']
-  - [ ] reload() on file change -> policy.updated
+  - [x] deny by default; tools allow/deny globs via mosaic_contracts.util.capability_matches
+  - [x] approval map: required / auto / never; risk >= high always requires approval
+  - [x] network constraints -> PolicyDecision.constraints['network_allow']
+  - [ ] watch policies/ and call reload() on change (reload() itself publishes policy.updated)
 """

@@ -3,5 +3,5 @@
 Owner: P1 — Kernel & Execution
 
 TODO:
-  - [ ] fs.read_file / fs.write_file / fs.list with rollback tokens
+  - [x] fs.read_file / fs.write_file / fs.list with rollback tokens
 """
