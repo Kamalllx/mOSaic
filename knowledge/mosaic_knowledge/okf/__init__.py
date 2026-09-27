@@ -13,7 +13,6 @@ from __future__ import annotations
 import hashlib
 import posixpath
 import re
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -48,8 +47,8 @@ def _default_title(rel: str, body: str) -> str:
 
 
 def _serialize_frontmatter(fm: OKFFrontmatter) -> str:
-    data = fm.model_dump(mode="json", exclude_none=True, exclude_defaults=False)
-    return yaml.safe_dump(data, sort_keys=False, default_flow_style=False, allow_unicode=True)
+    data = {k: v for k, v in fm.model_dump(mode="json", exclude_none=True).items() if v not in ([], {}, "")}
+    return yaml.safe_dump(data, sort_keys=False, default_flow_style=False, allow_unicode=True, width=1000)
 
 
 class OKFBundle:
@@ -117,12 +116,11 @@ class OKFBundle:
         return p.read_text(encoding="utf-8") if p.exists() else None
 
     def write_draft(self, draft: OKFDraft) -> KnowledgeChange:
-        """Create or update one OKF file. An unchanged draft (timestamps aside) is not rewritten and comes back
-        with old_hash == new_hash, which callers treat as "skipped"."""
+        """Create or update one OKF file with exactly the draft's frontmatter: its timestamps are the source's
+        (provenance), so nothing is stamped here. An unchanged draft is not rewritten and comes back with
+        old_hash == new_hash, which callers treat as "skipped"."""
         path = self.root / draft.okf_file
         org_path = okf_file_to_org_path(draft.okf_file)
-        stamps = {"created_at", "updated_at"}
-        created_at = draft.frontmatter.created_at
         old_hash = None
         if path.exists():
             old_text = path.read_text(encoding="utf-8")
@@ -132,16 +130,11 @@ class OKFBundle:
                 old_fm = OKFFrontmatter.model_validate({"type": "note", "title": "", **old_fm_raw})
             except ValueError:
                 old_fm = None
-            if old_fm is not None:
-                same_fm = old_fm.model_dump(exclude=stamps) == draft.frontmatter.model_dump(exclude=stamps)
-                if same_fm and old_body.strip() == draft.body.strip():
-                    return KnowledgeChange(path=org_path, change=ChangeKind.UPDATED, old_hash=old_hash, new_hash=old_hash)
-                created_at = created_at or old_fm.created_at
-        now = datetime.now().astimezone()
-        fm = draft.frontmatter.model_copy(update={"updated_at": now, "created_at": created_at or now})
-        text = f"---\n{_serialize_frontmatter(fm)}---\n\n{draft.body.strip()}\n"
+            if old_fm is not None and old_fm == draft.frontmatter and old_body.strip() == draft.body.strip():
+                return KnowledgeChange(path=org_path, change=ChangeKind.UPDATED, old_hash=old_hash, new_hash=old_hash)
+        text = f"---\n{_serialize_frontmatter(draft.frontmatter)}---\n\n{draft.body.strip()}\n"
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, encoding="utf-8")
+        path.write_text(text, encoding="utf-8", newline="\n")  # LF on every OS, so content hashes match
         return KnowledgeChange(
             path=org_path,
             change=ChangeKind.UPDATED if old_hash else ChangeKind.CREATED,
