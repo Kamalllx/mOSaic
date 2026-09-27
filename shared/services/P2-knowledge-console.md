@@ -32,6 +32,13 @@ Full brief: [docs/team/P2-knowledge-console.md](../../docs/team/P2-knowledge-con
 | `test_coherence.py` | editing an OKF file → `knowledge.changed` → `memory.invalidated` (right `affected_agents`) → reindexed and searchable | Postgres |
 | `test_chunker.py`, `test_validation.py` | chunking, linter rules; the fixtures validate with zero errors | nothing |
 
+## Live invalidation demo (S2)
+1. Run `mosaicd` with `MOSAIC_KNOWLEDGE_WATCH=true` (contract 0.3.0) and the bundle in `MOSAIC_OKF_DIR`; keep the console's `/knowledge?path=/org/policies/security` open.
+2. Memories derived from the policy must exist: agents that `ctx.remember(...)` a record with `derived_from=["/org/policies/security"]` (the scripted demo agents don't yet; seed one with `MemoryManager.store` for rehearsals).
+3. `cp data/demo-assets/security-policy-v2.md data/okf/policies/security.md`.
+4. Within ~1 s: `knowledge.changed` → `memory.invalidated` (count + affected agents; derived-of-derived memories too) → `knowledge.reindexed`. The console toasts the invalidation on every page and the explorer switches to v2 without a reload. Verified on the full real stack (P1 kernel + P4 bundle) on 2026-09-28.
+5. Reset afterwards with `git checkout data/okf/policies/security.md` (the watcher reindexes v1).
+
 ## Status (owner keeps this current)
 | Item | Status |
 |---|---|
@@ -40,8 +47,10 @@ Full brief: [docs/team/P2-knowledge-console.md](../../docs/team/P2-knowledge-con
 | Hybrid retrieval + graph + scope filter | ✅ |
 | Context firewall | ✅ regex; optional LLM classifier built, off by default |
 | Memory manager + coherence | ✅ (re-consolidation queue not done) |
-| Ingest pipeline (uses P4 converters) | ✅ with `FakeMarkdownConverter`; waiting on P4's real converters |
-| Real embeddings (P3 router) + run under P1's real kernel (T9, M2) | ☐ waiting on P1 merge to `main` and P3's router |
-| UI: composer · timeline · tree · approvals | ☐ |
-| UI: audit · explorer · monitor · result | ☐ |
-| Retrieval QA ≥ 9/10 on data/okf | ☐ |
+| Ingest pipeline (uses P4 converters) | ✅ all five of P4's converters through the pipeline; output byte-identical to P4's committed data/okf |
+| Run under P1's real kernel (T9 part 1) | ✅ locally (P1 not on `main` yet) |
+| Real embeddings (T9 part 2) | ☐ waiting on P3's router; retune `RECALL_KEYWORD_GATE_COSINE` and `MODE_WEIGHTS` then |
+| UI: composer · timeline · tree · approvals | ✅ on `p2/console` (mock + real gateway) |
+| UI: audit · explorer · monitor · result | ✅ on `p2/console`; artifact bytes/screenshots wait on a gateway route |
+| Retrieval QA ≥ 9/10 on data/okf | ✅ 9/10 with fake embeddings (`test_retrieval_qa.py`) |
+| Live invalidation demo (S2) | ✅ |
