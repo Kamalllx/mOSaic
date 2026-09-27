@@ -7,6 +7,7 @@ import { use } from "react";
 import { toast } from "sonner";
 import { useClient } from "@/app/providers";
 import { KnowledgePanel } from "@/components/knowledge-panel";
+import { ProcessTree } from "@/components/process-tree";
 import { TaskStatusBadge } from "@/components/status";
 import { Timeline } from "@/components/timeline";
 import { Button } from "@/components/ui/button";
@@ -74,13 +75,9 @@ export default function TaskPage({ params }: { params: Promise<{ id: string }> }
           <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
             Processes <span className="font-mono normal-case">({Object.keys(view.processes).length})</span>
           </h2>
-          <ul className="mt-2 space-y-1 font-mono text-sm">
-            {Object.values(view.processes).map((p) => (
-              <li key={p.pid}>
-                {p.pid} {p.agent} {p.state}
-              </li>
-            ))}
-          </ul>
+          <div className="min-h-0 flex-1">
+            <ProcessTree processes={view.processes} />
+          </div>
         </section>
         <section className="min-h-0 space-y-4 overflow-y-auto">
           <KnowledgePanel view={view} />
