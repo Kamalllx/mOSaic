@@ -6,6 +6,7 @@ from mosaic_contracts.wiring import ServiceBundle, Settings
 from .firewall import ContextFirewall as ContextFirewallImpl
 from .indexing import PgStore
 from .kfs import KnowledgeFS
+from .memory import MemoryManager
 
 
 def build_context_firewall(settings: Settings, services: ServiceBundle) -> ContextFirewall:
@@ -19,4 +20,5 @@ def build_knowledge_service(settings: Settings, services: ServiceBundle) -> Know
 
 
 def build_memory_service(settings: Settings, services: ServiceBundle) -> MemoryService:
-    raise NotImplementedError("P2: memory.MemoryManager(settings.database_url, services.models, services.event_bus)")
+    store = PgStore(settings.database_url)
+    return MemoryManager(store, services.models, services.event_bus)
