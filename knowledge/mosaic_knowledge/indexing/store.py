@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
+import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -38,6 +40,8 @@ class ChunkRow:
 
 
 _MAX_CONNECTIONS = 10
+_LEXEME = re.compile(r"[a-z0-9]+")
+_TITLE_BONUS = 0.5
 
 
 class _Cursor:
@@ -84,6 +88,7 @@ class PgStore:
         self._idle: list[_Connection] = []
         self._slots: asyncio.Semaphore | None = None
         self._vector_ready = False
+        self._idf_cache: tuple[dict[str, float], float] | None = None
         self.dim: int | None = None
 
     def _connect_sync(self) -> psycopg.Connection:
@@ -247,6 +252,7 @@ class PgStore:
 
     async def replace_chunks(self, path: str, chunks: list[tuple[str, int, str | None, str, list[float]]]) -> None:
         """chunks: (chunk_id, ord, heading, text, embedding)."""
+        self._idf_cache = None
         async with self.connection() as conn:
             await conn.execute("DELETE FROM chunks WHERE path = %s", (path,))
             for chunk_id, ord_, heading, text, embedding in chunks:
@@ -256,20 +262,48 @@ class PgStore:
                 )
             await conn.commit()
 
+    async def _idf(self, conn: _Connection) -> tuple[dict[str, float], float]:
+        """BM25-style IDF per lexeme over all chunks (ts_stat), cached until chunks change."""
+        if self._idf_cache is None:
+            n = (await (await conn.execute("SELECT count(*) AS n FROM chunks")).fetchone())["n"]
+            rows = await (await conn.execute("SELECT word, ndoc FROM ts_stat('SELECT tsv FROM chunks')")).fetchall()
+            idf = {r["word"]: math.log((n - r["ndoc"] + 0.5) / (r["ndoc"] + 0.5) + 1) for r in rows}
+            self._idf_cache = (idf, math.log(n + 1.5))
+        return self._idf_cache
+
     async def lexical_search(
         self, query_text: str, scope: list[str], types: list[str], tags: list[str], min_trust_values: list[str], limit: int = 50
     ) -> list[dict[str, Any]]:
-        where, params = self._base_where(scope, types, tags, min_trust_values)
-        where.append("c.tsv @@ websearch_to_tsquery('english', %s)")
-        params.append(query_text)
-        sql = (
-            "SELECT c.chunk_id, c.path, c.ord, c.heading, c.text, "
-            "ts_rank(c.tsv, websearch_to_tsquery('english', %s)) AS rank "
-            "FROM chunks c JOIN okf_objects o ON o.path = c.path "
-            f"WHERE {' AND '.join(where)} ORDER BY rank DESC LIMIT %s"
-        )
+        """Full-text search ranked by the IDF of the query lexemes each chunk contains (title matches count extra).
+
+        websearch_to_tsquery ANDs every word, so a natural question ("what caused the ledger migration backfill to
+        fail?") only matched chunks that contained all of them; plain OR + ts_rank has no IDF, so a word found in
+        every document ("apollo") decided the ranking. Every value is still passed as a parameter."""
         async with self.connection() as conn:
-            cur = await conn.execute(sql, (query_text, *params, limit))
+            rows = await (
+                await conn.execute("SELECT unnest(tsvector_to_array(to_tsvector('english', %s))) AS l", (query_text,))
+            ).fetchall()
+            lexemes = sorted({r["l"] for r in rows if _LEXEME.fullmatch(r["l"])})
+            if not lexemes:
+                return []
+            idf, unseen = await self._idf(conn)
+            where, params = self._base_where(scope, types, tags, min_trust_values)
+            title_vec = "to_tsvector('english', coalesce(o.title, ''))"
+            where.append(f"(c.tsv @@ to_tsquery('simple', %s) OR {title_vec} @@ to_tsquery('simple', %s))")
+            any_term = " | ".join(lexemes)
+            terms = " + ".join(
+                f"%s * ((c.tsv @@ to_tsquery('simple', %s))::int + {_TITLE_BONUS} * ({title_vec} @@ to_tsquery('simple', %s))::int)"
+                for _ in lexemes
+            )
+            term_params: list[Any] = []
+            for lx in lexemes:
+                term_params += [idf.get(lx, unseen), lx, lx]
+            sql = (
+                f"SELECT c.chunk_id, c.path, c.ord, c.heading, c.text, ({terms}) AS rank "
+                "FROM chunks c JOIN okf_objects o ON o.path = c.path "
+                f"WHERE {' AND '.join(where)} ORDER BY rank DESC, length(c.text) ASC LIMIT %s"
+            )
+            cur = await conn.execute(sql, (*term_params, *params, any_term, any_term, limit))
             return await cur.fetchall()
 
     async def semantic_search(

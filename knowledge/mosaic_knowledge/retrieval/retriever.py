@@ -15,6 +15,9 @@ from mosaic_contracts.util import path_allowed, privacy_allows
 from ..indexing.store import PgStore
 
 _RRF_K = 60
+# Weighted RRF. Graph neighbours of the top hits are an expansion signal, not a ranking of relevance: at weight 1 they
+# outranked the best lexical/semantic matches (retrieval QA on the demo bundle fell from 8/10 lexical-only to 1/10).
+MODE_WEIGHTS = {"lexical": 1.0, "semantic": 1.0, "graph": 0.1}  # TODO(T9): retune with real embeddings
 _PER_MODE_LIMIT = 50
 _TRUST_ORDER = [TrustLevel.UNTRUSTED, TrustLevel.UNVERIFIED, TrustLevel.TRUSTED, TrustLevel.VERIFIED]
 _PRIVACY_ORDER = [PrivacyLevel.PUBLIC, PrivacyLevel.INTERNAL, PrivacyLevel.CONFIDENTIAL, PrivacyLevel.RESTRICTED]
@@ -29,7 +32,7 @@ class _Candidate:
         self.best_chunk: dict[str, Any] | None = None
 
     def rrf_score(self) -> float:
-        return sum(1.0 / (_RRF_K + r) for r in self.ranks.values())
+        return sum(MODE_WEIGHTS.get(m, 1.0) / (_RRF_K + r) for m, r in self.ranks.items())
 
 
 class HybridRetriever:
