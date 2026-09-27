@@ -9,6 +9,7 @@ import { useClient } from "@/app/providers";
 import { ApprovalDrawer } from "@/components/approval-drawer";
 import { KnowledgePanel } from "@/components/knowledge-panel";
 import { ProcessTree } from "@/components/process-tree";
+import { InvalidationBanner, ResultPanel, SandboxPanel } from "@/components/result-panel";
 import { TaskStatusBadge } from "@/components/status";
 import { Timeline } from "@/components/timeline";
 import { Button } from "@/components/ui/button";
@@ -82,7 +83,10 @@ export default function TaskPage({ params }: { params: Promise<{ id: string }> }
           </div>
         </section>
         <section className="min-h-0 space-y-4 overflow-y-auto">
+          <ResultPanel taskId={id} view={view} />
+          <InvalidationBanner view={view} />
           <KnowledgePanel view={view} />
+          <SandboxPanel view={view} />
         </section>
       </div>
     </div>
