@@ -17,7 +17,7 @@
 ## Team split
 
 | | Split | 
-|---|---|---|
+|---|---|
 | **P1** | [Kernel & Execution](docs/team/P1-kernel-execution.md) | 
 | **P2** | [Knowledge, Memory & Console](docs/team/P2-knowledge-console.md) | 
 | **P3** | [Agents & Models](docs/team/P3-agents-models.md) | 
