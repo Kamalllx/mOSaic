@@ -17,16 +17,18 @@ app = typer.Typer(add_completion=False, help="mOSaic OKF bundle: validate, inges
 
 
 def _build_settings_and_services() -> tuple[Settings, ServiceBundle]:
-    settings = Settings.from_env()
-    services = ServiceBundle(settings=settings)
-    try:
-        from mosaic_contracts.testing.fakes import FakeModelRouter, InMemoryEventBus
+    from mosaic_contracts.testing.fakes import FakeMarkdownConverter, FakeModelRouter, InMemoryEventBus
 
-        services.models = FakeModelRouter()
-        services.event_bus = InMemoryEventBus()
-    except ImportError:  # pragma: no cover — fakes are a test-only dependency in prod images
-        pass
+    settings = Settings.from_env()
+    services = ServiceBundle(settings=settings, models=FakeModelRouter(), event_bus=InMemoryEventBus())
     services.firewall = factory.build_context_firewall(settings, services)
+    if settings.modes.get("converters") == "real":
+        # P4's converters live inside this package; mosaicd/wiring.py picks them the same way.
+        from .ingestion.factory import build_converters
+
+        services.converters = build_converters(settings, services)
+    else:
+        services.converters = [FakeMarkdownConverter()]
     return settings, services
 
 
