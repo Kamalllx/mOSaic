@@ -82,6 +82,9 @@ class HybridRetriever:
                 if obj is None:
                     continue
                 objects[path] = obj
+            # Scope AND privacy are checked here in Python, not in the SQL base filter, so that objects hidden by
+            # privacy are counted in filtered_by_policy (brief §12). Cheap at demo scale; don't move privacy into
+            # SQL without another way to count what it removes.
             ok = path_allowed(path, principal.data_scopes) and privacy_allows(PrivacyLevel(obj["privacy"]), principal.max_privacy)
             if not ok:
                 filtered += 1
