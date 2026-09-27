@@ -14,10 +14,10 @@ Full brief: [docs/team/P3-agents-models.md](../../docs/team/P3-agents-models.md)
 ## Status (owner keeps this current)
 | Item | Status |
 |---|---|
-| Ollama provider + router + embeddings | ☐ |
-| SDK + runtime + registry | ☐ |
-| Planner (with fallback plan) | ☐ |
-| Finance · engineering · research | ☐ |
-| Action (approval path) | ☐ |
-| A2A helpers | ☐ |
-| Prompt tuning on local models (M3) | ☐ |
+| Ollama provider + router + embeddings | ☑ |
+| SDK + runtime + registry | ☑ |
+| Planner (with fallback plan) | ☑ |
+| Finance · engineering · research | ☑ |
+| Action (approval path) | ☑ |
+| A2A helpers | ☑ |
+| Prompt tuning on local models (M3) | ☑ |
