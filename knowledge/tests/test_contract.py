@@ -1,13 +1,33 @@
 """Contract tests for P2 — run against shared/fixtures/okf. SKIP until implemented."""
+
 import pytest
 from mosaic_contracts.testing import contracts as c
 from mosaic_contracts.testing.fakes import FIXTURE_OKF_DIR, FakeModelRouter, InMemoryEventBus
 from mosaic_contracts.wiring import ServiceBundle, Settings
 from mosaic_knowledge import factory
+from mosaic_knowledge.indexing.store import _to_psycopg_dsn
+
+
+def _postgres_reachable(database_url: str) -> bool:
+    """Synchronous, event-loop-agnostic probe: `make()` can be called from inside an already-running
+    loop (some contract tests build the service inside their own `async def go()`), so this must not
+    touch asyncio at all."""
+    import psycopg
+
+    try:
+        with psycopg.connect(_to_psycopg_dsn(database_url), connect_timeout=2):
+            return True
+    except Exception:  # noqa: BLE001 — any connection failure means "unreachable"
+        return False
 
 
 def _build(fn):
-    s = Settings(okf_dir=FIXTURE_OKF_DIR)
+    s = Settings.from_env(dotenv=None)
+    s.okf_dir = FIXTURE_OKF_DIR
+    if not _postgres_reachable(s.database_url):
+        pytest.skip(
+            f"Postgres unreachable at {s.database_url} — run `docker compose -f infra/compose/docker-compose.yml up -d postgres`"
+        )
     b = ServiceBundle(settings=s, models=FakeModelRouter(), event_bus=InMemoryEventBus())
     try:
         b.firewall = factory.build_context_firewall(s, b)

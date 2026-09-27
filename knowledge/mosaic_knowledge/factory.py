@@ -4,6 +4,8 @@ from mosaic_contracts.interfaces import ContextFirewall, KnowledgeService, Memor
 from mosaic_contracts.wiring import ServiceBundle, Settings
 
 from .firewall import ContextFirewall as ContextFirewallImpl
+from .indexing import PgStore
+from .kfs import KnowledgeFS
 
 
 def build_context_firewall(settings: Settings, services: ServiceBundle) -> ContextFirewall:
@@ -12,7 +14,8 @@ def build_context_firewall(settings: Settings, services: ServiceBundle) -> Conte
 
 def build_knowledge_service(settings: Settings, services: ServiceBundle) -> KnowledgeService:
     """Uses services.models (embeddings), services.firewall, services.event_bus."""
-    raise NotImplementedError("P2: kfs.KnowledgeFS(settings.okf_dir, settings.database_url, ...)")
+    store = PgStore(settings.database_url)
+    return KnowledgeFS(settings.okf_dir, store, services.models, services.firewall, services.event_bus, services.converters)
 
 
 def build_memory_service(settings: Settings, services: ServiceBundle) -> MemoryService:

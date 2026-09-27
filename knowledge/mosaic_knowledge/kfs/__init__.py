@@ -3,6 +3,218 @@
 Owner: P2 — Knowledge, Memory & Console
 
 TODO:
-  - [ ] read/list/search/traverse/ingest/reindex/validate per mosaic_contracts.interfaces.KnowledgeService
-  - [ ] raise KNOWLEDGE_NOT_FOUND / KNOWLEDGE_FORBIDDEN
+  - [x] read/list/search/traverse/ingest/reindex/validate per mosaic_contracts.interfaces.KnowledgeService
+  - [x] raise KNOWLEDGE_NOT_FOUND / KNOWLEDGE_FORBIDDEN
 """
+
+from __future__ import annotations
+
+import asyncio
+import posixpath
+from pathlib import Path
+from typing import Any
+
+from mosaic_contracts.errors import MosaicError
+from mosaic_contracts.schema import (
+    ChangeKind,
+    Event,
+    EventType,
+    EvidenceSet,
+    GraphResult,
+    IngestRequest,
+    IngestResult,
+    IngestSourceType,
+    KnowledgeChange,
+    KnowledgeEntry,
+    KnowledgeListing,
+    KnowledgeObject,
+    OKFDraft,
+    Principal,
+    PrivacyLevel,
+    SearchQuery,
+    ValidationReport,
+)
+from mosaic_contracts.util import path_allowed, privacy_allows
+
+from ..graph import GraphStore
+from ..indexing import Indexer, PgStore
+from ..okf import OKFBundle
+from ..retrieval import HybridRetriever
+from ..validation import validate_bundle
+
+
+class KnowledgeFS:
+    def __init__(
+        self,
+        okf_dir: Path,
+        store: PgStore,
+        models: Any,
+        firewall: Any,
+        event_bus: Any = None,
+        converters: list[Any] | None = None,
+    ) -> None:
+        self.bundle = OKFBundle(okf_dir)
+        self.store = store
+        self.models = models
+        self.indexer = Indexer(store, models)
+        self.retriever = HybridRetriever(store, models, firewall)
+        self.graph = GraphStore(store)
+        self.bus = event_bus
+        self.converters = converters or []
+        self.objects: dict[str, KnowledgeObject] = {}
+        self._lock = asyncio.Lock()
+        self._ready = False
+
+    async def _ensure_ready(self) -> None:
+        if self._ready:
+            return
+        async with self._lock:
+            if self._ready:
+                return
+            if self.models is not None:
+                from mosaic_contracts.schema import EmbedRequest
+
+                probe = await self.models.embed(EmbedRequest(texts=["_dimension_probe_"]))
+                dim, model_name = probe.dim, probe.model
+            else:
+                dim, model_name = 64, "none"
+            await self.store.migrate(dim, model_name)
+            self.objects = self.bundle.load_all()
+            await self.indexer.index_objects(self.objects)
+            self._ready = True
+
+    # --- access control (mirrors mosaic_contracts.testing.fakes.FakeKnowledgeService)
+
+    def _visible(self, obj: KnowledgeObject, p: Principal) -> bool:
+        return path_allowed(obj.path, p.data_scopes) and privacy_allows(obj.frontmatter.privacy, p.max_privacy)
+
+    def _get(self, path: str, p: Principal) -> KnowledgeObject:
+        path = path.rstrip("/") or "/org"
+        obj = self.objects.get(path)
+        if obj is None:
+            raise MosaicError("KNOWLEDGE_NOT_FOUND", path)
+        if not self._visible(obj, p):
+            raise MosaicError("KNOWLEDGE_FORBIDDEN", path)
+        return obj
+
+    # --- KnowledgeService
+
+    async def read(self, path: str, principal: Principal) -> KnowledgeObject:
+        await self._ensure_ready()
+        return self._get(path, principal)
+
+    async def list(self, path: str, principal: Principal) -> KnowledgeListing:
+        await self._ensure_ready()
+        base = path.rstrip("/") or "/org"
+        children: dict[str, bool] = {}
+        for p in self.objects:
+            if p.startswith(base + "/"):
+                seg = p[len(base) + 1 :].split("/")[0]
+                child = f"{base}/{seg}"
+                children[child] = children.get(child, False) or p != child
+        if not children and base not in self.objects:
+            raise MosaicError("KNOWLEDGE_NOT_FOUND", base)
+        entries = []
+        for child, is_dir in sorted(children.items()):
+            obj = self.objects.get(child)
+            if obj and not self._visible(obj, principal):
+                continue
+            if (
+                not obj
+                and not path_allowed(child, principal.data_scopes)
+                and not any(g.startswith(child + "/") for g in principal.data_scopes)
+            ):
+                continue
+            entries.append(
+                KnowledgeEntry(
+                    path=child,
+                    title=obj.frontmatter.title if obj else child.rsplit("/", 1)[-1],
+                    type=obj.frontmatter.type if obj else "index",
+                    is_dir=is_dir,
+                    privacy=obj.frontmatter.privacy if obj else PrivacyLevel.INTERNAL,
+                )
+            )
+        return KnowledgeListing(path=base, entries=entries)
+
+    async def search(self, query: SearchQuery, principal: Principal) -> EvidenceSet:
+        await self._ensure_ready()
+        return await self.retriever.search(query, principal)
+
+    async def traverse(self, path: str, principal: Principal, depth: int = 1, relations: list[str] | None = None) -> GraphResult:
+        await self._ensure_ready()
+        self._get(path, principal)  # KNOWLEDGE_NOT_FOUND / KNOWLEDGE_FORBIDDEN on a bad root
+        return await self.graph.traverse(path, principal, depth, relations)
+
+    async def ingest(self, request: IngestRequest) -> IngestResult:
+        await self._ensure_ready()
+        result = IngestResult()
+        if request.source_type not in (IngestSourceType.FILE, IngestSourceType.DIRECTORY):
+            candidate = next((c for c in self.converters if c.can_convert(request)), None)
+            if candidate is None:
+                result.errors.append(f"no converter can handle {request.source_type} {request.uri}")
+                return result
+            try:
+                drafts: list[OKFDraft] = await candidate.convert(request)
+            except Exception as e:  # noqa: BLE001 — surfaced as an ingest error, not a crash
+                result.errors.append(str(e))
+                return result
+        else:
+            src = Path(request.uri)
+            files = [src] if src.is_file() else sorted(src.rglob("*.md"))
+            drafts = []
+            for f in files:
+                rel_base = request.target_path.removeprefix("/org").strip("/")
+                okf_file = posixpath.join(rel_base, f.name) if rel_base else f.name
+                text = f.read_text(encoding="utf-8")
+                from mosaic_contracts.schema import OKFFrontmatter
+
+                from ..okf import parse_okf
+
+                fm_raw, body = parse_okf(text)
+                fm_raw = dict(fm_raw)
+                fm_raw.setdefault("type", "note")
+                fm_raw.setdefault("title", f.stem)
+                drafts.append(OKFDraft(okf_file=okf_file, frontmatter=OKFFrontmatter.model_validate(fm_raw), body=body))
+
+        changed_paths: set[str] = set()
+        for draft in drafts:
+            change = self.bundle.write_draft(draft)
+            (result.created if change.change == ChangeKind.CREATED else result.updated).append(change.path)
+            changed_paths.add(change.path)
+
+        if changed_paths:
+            self.objects = self.bundle.load_all()
+            await self.indexer.index_objects(self.objects, only_paths=changed_paths)
+            if self.bus is not None:
+                for path in changed_paths:
+                    obj = self.objects.get(path)
+                    await self.bus.publish(
+                        Event(
+                            type=EventType.KNOWLEDGE_CHANGED,
+                            source="knowledge.kfs",
+                            payload=KnowledgeChange(
+                                path=path,
+                                change=ChangeKind.CREATED if path in result.created else ChangeKind.UPDATED,
+                                new_hash=obj.content_hash if obj else None,
+                            ).model_dump(mode="json"),
+                        )
+                    )
+        return result
+
+    async def reindex(self, paths: list[str] | None = None) -> int:
+        await self._ensure_ready()
+        self.objects = self.bundle.load_all()
+        only = set(paths) if paths else None
+        n = await self.indexer.index_objects(self.objects, only_paths=only)
+        if self.bus is not None:
+            await self.bus.publish(
+                Event(type=EventType.KNOWLEDGE_REINDEXED, source="knowledge.kfs", payload={"count": len(self.objects)})
+            )
+        return len(self.objects) if paths is None else n
+
+    async def validate(self) -> ValidationReport:
+        await self._ensure_ready()
+        return validate_bundle(self.bundle)
+
+
+__all__ = ["KnowledgeFS"]
