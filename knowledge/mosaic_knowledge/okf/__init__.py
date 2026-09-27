@@ -117,29 +117,41 @@ class OKFBundle:
         return p.read_text(encoding="utf-8") if p.exists() else None
 
     def write_draft(self, draft: OKFDraft) -> KnowledgeChange:
+        """Create or update one OKF file. An unchanged draft (timestamps aside) is not rewritten and comes back
+        with old_hash == new_hash, which callers treat as "skipped"."""
         path = self.root / draft.okf_file
-        existed = path.exists()
+        org_path = okf_file_to_org_path(draft.okf_file)
+        stamps = {"created_at", "updated_at"}
+        created_at = draft.frontmatter.created_at
         old_hash = None
-        if existed:
+        if path.exists():
             old_text = path.read_text(encoding="utf-8")
-            old_hash = hashlib.sha256(old_text.encode("utf-8")).hexdigest()[:16]
-        fm = draft.frontmatter.model_copy(update={"updated_at": datetime.now().astimezone()})
-        if not existed and fm.created_at is None:
-            fm = fm.model_copy(update={"created_at": fm.updated_at})
+            old_hash = _hash(old_text)
+            old_fm_raw, old_body = parse_okf(old_text)
+            try:
+                old_fm = OKFFrontmatter.model_validate({"type": "note", "title": "", **old_fm_raw})
+            except ValueError:
+                old_fm = None
+            if old_fm is not None:
+                same_fm = old_fm.model_dump(exclude=stamps) == draft.frontmatter.model_dump(exclude=stamps)
+                if same_fm and old_body.strip() == draft.body.strip():
+                    return KnowledgeChange(path=org_path, change=ChangeKind.UPDATED, old_hash=old_hash, new_hash=old_hash)
+                created_at = created_at or old_fm.created_at
+        now = datetime.now().astimezone()
+        fm = draft.frontmatter.model_copy(update={"updated_at": now, "created_at": created_at or now})
         text = f"---\n{_serialize_frontmatter(fm)}---\n\n{draft.body.strip()}\n"
-        new_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
-        if existed and old_hash == new_hash:
-            org_path = okf_file_to_org_path(draft.okf_file)
-            return KnowledgeChange(path=org_path, change=ChangeKind.UPDATED, old_hash=old_hash, new_hash=new_hash)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
-        org_path = okf_file_to_org_path(draft.okf_file)
         return KnowledgeChange(
             path=org_path,
-            change=ChangeKind.UPDATED if existed else ChangeKind.CREATED,
+            change=ChangeKind.UPDATED if old_hash else ChangeKind.CREATED,
             old_hash=old_hash,
-            new_hash=new_hash,
+            new_hash=_hash(text),
         )
+
+
+def _hash(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
 
 
 __all__ = ["OKFBundle", "parse_okf"]

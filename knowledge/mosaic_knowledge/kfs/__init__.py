@@ -10,7 +10,7 @@ TODO:
 from __future__ import annotations
 
 import asyncio
-import posixpath
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -23,7 +23,6 @@ from mosaic_contracts.schema import (
     GraphResult,
     IngestRequest,
     IngestResult,
-    IngestSourceType,
     KnowledgeChange,
     KnowledgeEntry,
     KnowledgeListing,
@@ -41,6 +40,8 @@ from ..indexing import Indexer, PgStore
 from ..okf import OKFBundle
 from ..retrieval import HybridRetriever
 from ..validation import validate_bundle
+
+logger = logging.getLogger("mosaic.knowledge.kfs")
 
 
 class KnowledgeFS:
@@ -79,8 +80,7 @@ class KnowledgeFS:
             else:
                 dim, model_name = 64, "none"
             await self.store.migrate(dim, model_name)
-            self.objects = self.bundle.load_all()
-            await self.indexer.index_objects(self.objects)
+            await self._sync_index(None)
             self._ready = True
 
     # --- access control (mirrors mosaic_contracts.testing.fakes.FakeKnowledgeService)
@@ -146,71 +146,66 @@ class KnowledgeFS:
         return await self.graph.traverse(path, principal, depth, relations)
 
     async def ingest(self, request: IngestRequest) -> IngestResult:
+        """converter → write OKF → validate → index changed paths → knowledge.changed per path."""
         await self._ensure_ready()
         result = IngestResult()
-        if request.source_type not in (IngestSourceType.FILE, IngestSourceType.DIRECTORY):
-            candidate = next((c for c in self.converters if c.can_convert(request)), None)
-            if candidate is None:
-                result.errors.append(f"no converter can handle {request.source_type} {request.uri}")
-                return result
-            try:
-                drafts: list[OKFDraft] = await candidate.convert(request)
-            except Exception as e:  # noqa: BLE001 — surfaced as an ingest error, not a crash
-                result.errors.append(str(e))
-                return result
-        else:
-            src = Path(request.uri)
-            files = [src] if src.is_file() else sorted(src.rglob("*.md"))
-            drafts = []
-            for f in files:
-                rel_base = request.target_path.removeprefix("/org").strip("/")
-                okf_file = posixpath.join(rel_base, f.name) if rel_base else f.name
-                text = f.read_text(encoding="utf-8")
-                from mosaic_contracts.schema import OKFFrontmatter
+        converter = next((c for c in self.converters if c.can_convert(request)), None)
+        if converter is None:
+            result.errors.append(f"no converter can handle {request.source_type.value} {request.uri}")
+            return result
+        try:
+            drafts: list[OKFDraft] = await converter.convert(request)
+        except Exception as e:  # noqa: BLE001 — a converter failure is reported in the result, not raised
+            logger.warning("converter %s failed on %s: %s", converter.name, request.uri, e)
+            result.errors.append(f"{converter.name}: {e}")
+            return result
 
-                from ..okf import parse_okf
-
-                fm_raw, body = parse_okf(text)
-                fm_raw = dict(fm_raw)
-                fm_raw.setdefault("type", "note")
-                fm_raw.setdefault("title", f.stem)
-                drafts.append(OKFDraft(okf_file=okf_file, frontmatter=OKFFrontmatter.model_validate(fm_raw), body=body))
-
-        changed_paths: set[str] = set()
+        changes: list[KnowledgeChange] = []
+        written: set[str] = set()
         for draft in drafts:
-            change = self.bundle.write_draft(draft)
+            try:
+                change = self.bundle.write_draft(draft)
+            except Exception as e:  # noqa: BLE001 — one bad draft must not abort the others
+                result.errors.append(f"{draft.okf_file}: {e}")
+                continue
+            if change.old_hash == change.new_hash:
+                result.skipped.append(f"{change.path} (unchanged)")
+                continue
             (result.created if change.change == ChangeKind.CREATED else result.updated).append(change.path)
-            changed_paths.add(change.path)
+            changes.append(change)
+            written.add(draft.okf_file)
+        if not changes:
+            return result
 
-        if changed_paths:
-            self.objects = self.bundle.load_all()
-            await self.indexer.index_objects(self.objects, only_paths=changed_paths)
-            if self.bus is not None:
-                for path in changed_paths:
-                    obj = self.objects.get(path)
-                    await self.bus.publish(
-                        Event(
-                            type=EventType.KNOWLEDGE_CHANGED,
-                            source="knowledge.kfs",
-                            payload=KnowledgeChange(
-                                path=path,
-                                change=ChangeKind.CREATED if path in result.created else ChangeKind.UPDATED,
-                                new_hash=obj.content_hash if obj else None,
-                            ).model_dump(mode="json"),
-                        )
-                    )
+        for issue in validate_bundle(self.bundle).issues:
+            if issue.severity == "error" and issue.okf_file in written:
+                result.errors.append(f"{issue.okf_file}: {issue.message}")
+
+        await self._sync_index({c.path for c in changes})
+        if self.bus is not None:
+            for change in changes:
+                await self.bus.publish(
+                    Event(type=EventType.KNOWLEDGE_CHANGED, source="knowledge.kfs", payload=change.model_dump(mode="json"))
+                )
         return result
 
     async def reindex(self, paths: list[str] | None = None) -> int:
         await self._ensure_ready()
-        self.objects = self.bundle.load_all()
-        only = set(paths) if paths else None
-        n = await self.indexer.index_objects(self.objects, only_paths=only)
+        count = await self._sync_index(set(paths) if paths else None)
         if self.bus is not None:
-            await self.bus.publish(
-                Event(type=EventType.KNOWLEDGE_REINDEXED, source="knowledge.kfs", payload={"count": len(self.objects)})
-            )
-        return len(self.objects) if paths is None else n
+            await self.bus.publish(Event(type=EventType.KNOWLEDGE_REINDEXED, source="knowledge.kfs", payload={"count": count}))
+        return count
+
+    async def _sync_index(self, paths: set[str] | None) -> int:
+        """Reload the bundle and bring the index in line with it: upsert present objects (re-embedding
+        changed ones) and drop rows whose file is gone. Returns the number of objects indexed."""
+        self.objects = self.bundle.load_all()
+        indexed = set(await self.store.all_paths())
+        gone = (indexed if paths is None else paths & indexed) - self.objects.keys()
+        for path in gone:
+            await self.store.delete_object(path)
+        await self.indexer.index_objects(self.objects, only_paths=paths)
+        return len(self.objects) if paths is None else len(paths & self.objects.keys())
 
     async def validate(self) -> ValidationReport:
         await self._ensure_ready()

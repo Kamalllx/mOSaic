@@ -163,7 +163,8 @@ class PgStore:
 
     async def delete_object(self, path: str) -> None:
         async with self.connection() as conn:
-            await conn.execute("DELETE FROM okf_objects WHERE path = %s", (path,))
+            await conn.execute("DELETE FROM okf_objects WHERE path = %s", (path,))  # chunks cascade
+            await conn.execute("DELETE FROM edges WHERE src = %s OR dst = %s", (path, path))
             await conn.commit()
 
     async def get_object_row(self, path: str) -> dict[str, Any] | None:
