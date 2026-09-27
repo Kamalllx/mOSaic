@@ -1,0 +1,14 @@
+{
+  "name": "@mosaic/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "TypeScript types generated from mOSaic JSON Schemas (shared/schemas). Do not edit src/mosaic.d.ts by hand.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "generate": "json2ts -i ../schemas/mosaic.schema.json -o src/mosaic.d.ts --unreachableDefinitions --no-additionalProperties --bannerComment \"/* GENERATED from shared/schemas/mosaic.schema.json. Do not edit. */\""
+  },
+  "devDependencies": {
+    "json-schema-to-typescript": "^15.0.0"
+  }
+}

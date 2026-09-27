@@ -1,0 +1,29 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "texts": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Texts",
+      "type": "array"
+    },
+    "model_hint": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Model Hint"
+    }
+  },
+  "required": [
+    "texts"
+  ],
+  "title": "EmbedRequest",
+  "type": "object"
+}

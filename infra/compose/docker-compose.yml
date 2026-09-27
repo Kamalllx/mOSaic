@@ -1,0 +1,64 @@
+# mOSaic appliance services. File owned by P4 (platform); each block lists who owns the service logic.
+#   docker compose -f infra/compose/docker-compose.yml up -d postgres redis ollama mock-jira
+#   (mosaicd itself usually runs on the host via `uv run mosaicd` during development)
+name: mosaic
+
+
+services:
+  postgres:            # P2 — OKF indexes (pgvector + FTS), graph edges, memories
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: mosaic
+      POSTGRES_PASSWORD: mosaic
+      POSTGRES_DB: mosaic
+    ports: ["5432:5432"]
+    volumes: [pg-data:/var/lib/postgresql/data]
+    healthcheck: {test: ["CMD-SHELL", "pg_isready -U mosaic"], interval: 5s, retries: 10}
+
+  redis:               # P1 — event bus durability (Redis Streams), short-lived state
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    volumes: [redis-data:/data]
+
+  ollama:              # P4 — local model runtime + GPU (P3 chooses the models)
+    image: ollama/ollama:latest
+    ports: ["11434:11434"]
+    volumes: [ollama-models:/root/.ollama]
+    deploy:
+      resources:
+        reservations:
+          devices: [{driver: nvidia, count: all, capabilities: [gpu]}]   # needs NVIDIA Container Toolkit; remove on CPU-only dev boxes
+
+  mock-jira:           # P1 — demo tracker behind the jira.* tools
+    build: {context: ../../, dockerfile: infra/compose/mock-jira.Dockerfile}
+    ports: ["8090:8090"]
+    networks: [default, sandbox]
+
+  vendor-docs:         # P4 — offline "vendor website" the research agent browses from inside its sandbox
+    image: nginx:alpine
+    volumes: [./vendor-docs:/usr/share/nginx/html:ro]
+    networks: [sandbox]
+
+  mosaicd:             # P1 — the kernel/gateway (profile: appliance; on dev machines run it on the host)
+    profiles: [appliance]
+    build: {context: ../../, dockerfile: infra/compose/mosaicd.Dockerfile}
+    env_file: [../../.env]
+    environment:
+      MOSAIC_DATA_DIR: /sovereign-data
+      MOSAIC_DATABASE_URL: postgresql+psycopg://mosaic:mosaic@postgres:5432/mosaic
+      MOSAIC_REDIS_URL: redis://redis:6379/0
+      MOSAIC_OLLAMA_URL: http://ollama:11434
+    ports: ["8080:8080"]
+    volumes:
+      - ${MOSAIC_DATA_DIR:-../../.data}:/sovereign-data
+      - /var/run/docker.sock:/var/run/docker.sock   # sandbox manager (P1) — appliance only
+    depends_on: [postgres, redis, ollama]
+
+networks:
+  sandbox:             # P1 — task sandboxes attach here; egress only via allowlist proxy
+    internal: true
+
+volumes:
+  pg-data:
+  redis-data:
+  ollama-models:

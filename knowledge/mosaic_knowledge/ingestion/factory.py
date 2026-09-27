@@ -1,0 +1,7 @@
+"""Factory for P4's converters (see mosaic_contracts.wiring). mosaicd calls it when MOSAIC_MODE_CONVERTERS=real."""
+from mosaic_contracts.interfaces import SourceConverter
+from mosaic_contracts.wiring import ServiceBundle, Settings
+
+
+def build_converters(settings: Settings, services: ServiceBundle) -> list[SourceConverter]:
+    raise NotImplementedError("P4: [MarkdownConverter(), JiraJsonConverter(), SlackConverter(), CsvConverter(), ...]")

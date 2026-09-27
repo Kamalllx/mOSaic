@@ -1,0 +1,447 @@
+[
+  {
+    "event_id": "EV-0000",
+    "type": "task.created",
+    "ts": "2026-09-27T10:00:00Z",
+    "source": "kernel",
+    "org_id": "acme",
+    "task_id": "T-1842",
+    "pid": null,
+    "correlation_id": null,
+    "payload": {
+      "goal": "Investigate why Project Apollo is over budget and six weeks behind schedule. Identify root causes, update the tracker, and prepare a recovery plan.",
+      "user_id": "alice"
+    }
+  },
+  {
+    "event_id": "EV-0002",
+    "type": "process.spawned",
+    "ts": "2026-09-27T10:00:00.200000Z",
+    "source": "pid:101",
+    "org_id": "acme",
+    "task_id": "T-1842",
+    "pid": 101,
+    "correlation_id": null,
+    "payload": {
+      "agent": "planner-agent",
+      "ppid": null
+    }
+  },
+  {
+    "event_id": "EV-0003",
+    "type": "process.state_changed",
+    "ts": "2026-09-27T10:00:00.300000Z",
+    "source": "pid:101",
+    "org_id": "acme",
+    "task_id": "T-1842",
+    "pid": 101,
+    "correlation_id": null,
+    "payload": {
+      "old": "CREATED",
+      "new": "RUNNING"
+    }
+  },
+  {
+    "event_id": "EV-0020",
+    "type": "agent.log",
+    "ts": "2026-09-27T10:00:02Z",
+    "source": "pid:101",
+    "org_id": "acme",
+    "task_id": "T-1842",
+    "pid": 101,
+    "correlation_id": null,
+    "payload": {
+      "level": "info",
+      "message": "Decomposing goal into 4 subtasks"
+    }
+  },
+  {
+    "event_id": "EV-0030",
+    "type": "model.invoked",
+    "ts": "2026-09-27T10:00:03Z",
+    "source": "pid:101",
+    "org_id": "acme",
+    "task_id": "T-1842",
+    "pid": 101,
+    "correlation_id": null,
+    "payload": {
+      "model": "qwen2.5:7b-instruct",
+      "provider": "ollama",
+      "local": true,
+      "tokens": 812
+    }
+  },
+  {
+    "event_id": "EV-0040",
+    "type": "process.spawned",
+    "ts": "2026-09-27T10:00:04Z",
+    "source": "pid:102",
+    "org_id": "acme",
+    "task_id": "T-1842",
+    "pid": 102,
+    "correlation_id": null,
+    "payload": {
+      "agent": "finance-agent",
+      "ppid": 101
+    }
+  },
+  {
+    "event_id": "EV-0042",
+    "type": "process.spawned",
+    "ts": "2026-09-27T10:00:04.200000Z",
+    "source": "pid:103",
+    "org_id": "acme",
+    "task_id": "T-1842",
+    "pid": 103,
+    "correlation_id": null,
+    "payload": {
+      "agent": "engineering-agent",
+      "ppid": 101
+    }
+  },
+  {
+    "event_id": "EV-0044",
+    "type": "process.spawned",
+    "ts": "2026-09-27T10:00:04.400000Z",
+    "source": "pid:104",
+    "org_id": "acme",
+    "task_id": "T-1842",
+    "pid": 104,
+    "correlation_id": null,
+    "payload": {
+      "agent": "research-agent",
+      "ppid": 101
+    }
+  },
+  {
+    "event_id": "EV-0060",
+    "type": "knowledge.retrieved",
+    "ts": "2026-09-27T10:00:06Z",
+    "source": "pid:102",
+    "org_id": "acme",
+    "task_id": "T-1842",
+    "pid": 102,
+    "correlation_id": null,
+    "payload": {
+      "query": "Apollo budget overrun cloud cost",
+      "hits": 3,
+      "filtered_by_policy": 1,
+      "paths": [
+        "/org/finance/apollo-budget",
+        "/org/decisions/ADR-042",
+        "/org/inbox/vendor-email-2026-09-12"
+      ]
+    }
+  },
+  {
+    "event_id": "EV-0061",
+    "type": "agent.log",
+    "ts": "2026-09-27T10:00:06.100000Z",
+    "source": "pid:102",
+    "org_id": "acme",
+    "task_id": "T-1842",
+    "pid": 102,
+    "correlation_id": null,
+    "payload": {
+      "level": "warning",
+      "message": "Context firewall flagged /org/inbox/vendor-email-2026-09-12 (instruction_like) \u2014 treated as data"
+    }
+  },
+  {
+    "event_id": "EV-0120",
+    "type": "sandbox.started",
+    "ts": "2026-09-27T10:00:12Z",
+    "source": "pid:104",
+    "org_id": "acme",
+    "task_id": "T-1842",
+    "pid": 104,
+    "correlation_id": null,
+    "payload": {
+      "sandbox_id": "SB-4c2",
+      "image": "mosaic/sandbox-base:latest"
+    }
+  },
+  {
+    "event_id": "EV-0150",
+    "type": "tool.completed",
+    "ts": "2026-09-27T10:00:15Z",
+    "source": "pid:104",
+    "org_id": "acme",
+    "task_id": "T-1842",
+    "pid": 104,
+    "correlation_id": null,
+    "payload": {
+      "tool": "browser",
+      "operation": "open",
+      "status": "success"
+    }
+  },
+  {
+    "event_id": "EV-0220",
+    "type": "process.state_changed",
+    "ts": "2026-09-27T10:00:22Z",
+    "source": "pid:102",
+    "org_id": "acme",
+    "task_id": "T-1842",
+    "pid": 102,
+    "correlation_id": null,
+    "payload": {
+      "old": "RUNNING",
+      "new": "COMPLETED"
+    }
+  },
+  {
+    "event_id": "EV-0280",
+    "type": "ipc.message",
+    "ts": "2026-09-27T10:00:28Z",
+    "source": "pid:103",
+    "org_id": "acme",
+    "task_id": "T-1842",
+    "pid": 103,
+    "correlation_id": null,
+    "payload": {
+      "message_id": "MSG-3a",
+      "sender": "engineering-agent",
+      "receiver": "planner-agent",
+      "type": "evidence"
+    }
+  },
+  {
+    "event_id": "EV-0290",
+    "type": "process.state_changed",
+    "ts": "2026-09-27T10:00:29Z",
+    "source": "pid:103",
+    "org_id": "acme",
+    "task_id": "T-1842",
+    "pid": 103,
+    "correlation_id": null,
+    "payload": {
+      "old": "RUNNING",
+      "new": "COMPLETED"
+    }
+  },
+  {
+    "event_id": "EV-0310",
+    "type": "process.state_changed",
+    "ts": "2026-09-27T10:00:31Z",
+    "source": "pid:104",
+    "org_id": "acme",
+    "task_id": "T-1842",
+    "pid": 104,
+    "correlation_id": null,
+    "payload": {
+      "old": "RUNNING",
+      "new": "COMPLETED"
+    }
+  },
+  {
+    "event_id": "EV-0320",
+    "type": "sandbox.destroyed",
+    "ts": "2026-09-27T10:00:32Z",
+    "source": "pid:104",
+    "org_id": "acme",
+    "task_id": "T-1842",
+    "pid": 104,
+    "correlation_id": null,
+    "payload": {
+      "sandbox_id": "SB-4c2"
+    }
+  },
+  {
+    "event_id": "EV-0350",
+    "type": "process.spawned",
+    "ts": "2026-09-27T10:00:35Z",
+    "source": "pid:105",
+    "org_id": "acme",
+    "task_id": "T-1842",
+    "pid": 105,
+    "correlation_id": null,
+    "payload": {
+      "agent": "action-agent",
+      "ppid": 101
+    }
+  },
+  {
+    "event_id": "EV-0390",
+    "type": "syscall.requested",
+    "ts": "2026-09-27T10:00:39Z",
+    "source": "pid:105",
+    "org_id": "acme",
+    "task_id": "T-1842",
+    "pid": 105,
+    "correlation_id": "SC-77f1",
+    "payload": {
+      "capability": "jira.write",
+      "tool": "jira",
+      "operation": "update_issue",
+      "risk": "medium"
+    }
+  },
+  {
+    "event_id": "EV-0391",
+    "type": "syscall.decided",
+    "ts": "2026-09-27T10:00:39.100000Z",
+    "source": "pid:105",
+    "org_id": "acme",
+    "task_id": "T-1842",
+    "pid": 105,
+    "correlation_id": "SC-77f1",
+    "payload": {
+      "decision": "REQUIRES_APPROVAL",
+      "policy": "project-updates-v1"
+    }
+  },
+  {
+    "event_id": "EV-0400",
+    "type": "approval.requested",
+    "ts": "2026-09-27T10:00:40Z",
+    "source": "pid:105",
+    "org_id": "acme",
+    "task_id": "T-1842",
+    "pid": 105,
+    "correlation_id": "APR-882",
+    "payload": {
+      "approval_id": "APR-882",
+      "capability": "jira.write"
+    }
+  },
+  {
+    "event_id": "EV-0401",
+    "type": "process.state_changed",
+    "ts": "2026-09-27T10:00:40.100000Z",
+    "source": "pid:105",
+    "org_id": "acme",
+    "task_id": "T-1842",
+    "pid": 105,
+    "correlation_id": null,
+    "payload": {
+      "old": "RUNNING",
+      "new": "WAITING"
+    }
+  },
+  {
+    "event_id": "EV-0402",
+    "type": "task.status_changed",
+    "ts": "2026-09-27T10:00:40.200000Z",
+    "source": "kernel",
+    "org_id": "acme",
+    "task_id": "T-1842",
+    "pid": null,
+    "correlation_id": null,
+    "payload": {
+      "old": "running",
+      "new": "waiting_approval"
+    }
+  },
+  {
+    "event_id": "EV-0520",
+    "type": "approval.resolved",
+    "ts": "2026-09-27T10:00:52Z",
+    "source": "pid:105",
+    "org_id": "acme",
+    "task_id": "T-1842",
+    "pid": 105,
+    "correlation_id": "APR-882",
+    "payload": {
+      "approval_id": "APR-882",
+      "status": "approved",
+      "resolved_by": "alice"
+    }
+  },
+  {
+    "event_id": "EV-0530",
+    "type": "tool.started",
+    "ts": "2026-09-27T10:00:53Z",
+    "source": "pid:105",
+    "org_id": "acme",
+    "task_id": "T-1842",
+    "pid": 105,
+    "correlation_id": "SC-77f1",
+    "payload": {
+      "tool": "jira",
+      "operation": "update_issue"
+    }
+  },
+  {
+    "event_id": "EV-0540",
+    "type": "tool.completed",
+    "ts": "2026-09-27T10:00:54Z",
+    "source": "pid:105",
+    "org_id": "acme",
+    "task_id": "T-1842",
+    "pid": 105,
+    "correlation_id": "SC-77f1",
+    "payload": {
+      "tool": "jira",
+      "operation": "update_issue",
+      "status": "success"
+    }
+  },
+  {
+    "event_id": "EV-0545",
+    "type": "transaction.committed",
+    "ts": "2026-09-27T10:00:54.500000Z",
+    "source": "pid:105",
+    "org_id": "acme",
+    "task_id": "T-1842",
+    "pid": 105,
+    "correlation_id": "SC-77f1",
+    "payload": {
+      "verified": true
+    }
+  },
+  {
+    "event_id": "EV-0550",
+    "type": "process.state_changed",
+    "ts": "2026-09-27T10:00:55Z",
+    "source": "pid:105",
+    "org_id": "acme",
+    "task_id": "T-1842",
+    "pid": 105,
+    "correlation_id": null,
+    "payload": {
+      "old": "WAITING",
+      "new": "COMPLETED"
+    }
+  },
+  {
+    "event_id": "EV-0580",
+    "type": "memory.consolidated",
+    "ts": "2026-09-27T10:00:58Z",
+    "source": "kernel",
+    "org_id": "acme",
+    "task_id": "T-1842",
+    "pid": null,
+    "correlation_id": null,
+    "payload": {
+      "created": 2
+    }
+  },
+  {
+    "event_id": "EV-0600",
+    "type": "process.state_changed",
+    "ts": "2026-09-27T10:01:00Z",
+    "source": "pid:101",
+    "org_id": "acme",
+    "task_id": "T-1842",
+    "pid": 101,
+    "correlation_id": null,
+    "payload": {
+      "old": "RUNNING",
+      "new": "COMPLETED"
+    }
+  },
+  {
+    "event_id": "EV-0601",
+    "type": "task.completed",
+    "ts": "2026-09-27T10:01:00.100000Z",
+    "source": "kernel",
+    "org_id": "acme",
+    "task_id": "T-1842",
+    "pid": null,
+    "correlation_id": null,
+    "payload": {
+      "summary": "Root causes identified; APOLLO-12 updated; recovery plan attached."
+    }
+  }
+]

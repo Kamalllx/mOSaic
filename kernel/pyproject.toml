@@ -1,0 +1,38 @@
+[project]
+name = "mosaic-kernel"
+version = "0.1.0"
+description = "mOSaic AI kernel: tasks, processes, scheduler, lifecycle, policy, syscalls, transactions, audit, gateway, CLI"
+requires-python = ">=3.12"
+dependencies = [
+    "mosaic-contracts[api]",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "sqlalchemy>=2.0",
+    "aiosqlite>=0.20",
+    "redis>=5",
+    "typer>=0.12",
+    "rich>=13",
+    "httpx>=0.27",
+    "websockets>=12",
+]
+
+[project.scripts]
+ai = "mosaic_kernel.cli.main:app"
+ai-ps = "mosaic_kernel.cli.main:ps"
+ai-tree = "mosaic_kernel.cli.main:tree"
+ai-top = "mosaic_kernel.cli.main:top"
+ai-kill = "mosaic_kernel.cli.main:kill"
+ai-audit = "mosaic_kernel.cli.main:audit"
+ai-checkpoint = "mosaic_kernel.cli.main:checkpoint"
+ai-resume = "mosaic_kernel.cli.main:resume"
+ai-mount = "mosaic_kernel.cli.main:mount"
+
+[tool.uv.sources]
+mosaic-contracts = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["mosaic_kernel"]

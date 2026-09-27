@@ -1,0 +1,46 @@
+[project]
+name = "mosaic-workspace"
+version = "0.1.0"
+description = "mOSaic monorepo (uv workspace root). Work split: docs/MASTER_PLAN.md"
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = [
+    "shared/python",   # mosaic-contracts  — joint ownership, changes need all-4 review
+    "kernel",          # mosaic-kernel     — P1
+    "knowledge",       # mosaic-knowledge  — P2 (ingestion/: P4)
+    "agents",          # mosaic-agents     — P3
+    "models",          # mosaic-models     — P3 (gpu/: P4)
+    "execution",       # mosaic-execution  — P1 (browser/: P4)
+    "mosaicd",         # composition root  — P1 maintains, everyone registers factories
+]
+
+[dependency-groups]
+dev = ["pytest>=8", "httpx>=0.27", "ruff>=0.6", "mosaic-contracts[api,test]"]
+
+[tool.uv.sources]
+mosaic-contracts = { workspace = true }
+
+[tool.pytest.ini_options]
+addopts = "--import-mode=importlib -q"
+testpaths = [
+    "shared/python/tests",
+    "kernel/tests",
+    "knowledge/tests",
+    "agents/tests",
+    "models/tests",
+    "execution/tests",
+    "tests/integration",
+]
+
+[tool.ruff]
+line-length = 130
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501", "F403", "F405", "B008"]  # B008: FastAPI Query()/Body() defaults are idiomatic

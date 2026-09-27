@@ -1,0 +1,61 @@
+{
+  "additionalProperties": false,
+  "description": "Body of POST /agents/spawn and the argument of AgentContext.spawn().",
+  "properties": {
+    "agent": {
+      "title": "Agent",
+      "type": "string"
+    },
+    "goal": {
+      "title": "Goal",
+      "type": "string"
+    },
+    "task_id": {
+      "pattern": "^T-[A-Za-z0-9]+$",
+      "title": "Task Id",
+      "type": "string"
+    },
+    "ppid": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Ppid"
+    },
+    "inputs": {
+      "additionalProperties": true,
+      "title": "Inputs",
+      "type": "object"
+    },
+    "capabilities": {
+      "anyOf": [
+        {
+          "items": {
+            "pattern": "^(\\*|[a-z][a-z0-9_]*(\\.([a-z][a-z0-9_]*|\\*))+)$",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional narrowing; can never exceed the child's manifest. The parent controls WHICH agents it may spawn (its manifest.capabilities.agents), not their capabilities",
+      "title": "Capabilities"
+    }
+  },
+  "required": [
+    "agent",
+    "goal",
+    "task_id"
+  ],
+  "title": "SpawnRequest",
+  "type": "object"
+}

@@ -1,0 +1,33 @@
+# python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# runtime data (the appliance uses /sovereign-data)
+.data/
+*.db
+
+# node
+node_modules/
+.next/
+out/
+
+# env / secrets
+.env
+.env.local
+*.pem
+
+# os / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# coding-agent context
+CLAUDE.local.md
+.context/

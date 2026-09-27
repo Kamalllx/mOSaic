@@ -1,0 +1,40 @@
+# Replace @p1 … @p4 with GitHub usernames. Split definitions: docs/MASTER_PLAN.md
+#   P1 Kernel & Execution (Claude Code)      P2 Knowledge, Memory & Console (Claude Code)
+#   P3 Agents & Models                       P4 Platform, Data & Demo
+# Contract changes need the provider AND consumers (see shared/README.md). Later rules override earlier ones.
+
+*                                         @p1 @p2 @p3 @p4
+
+/shared/                                  @p1 @p2 @p3 @p4
+/docs/                                    @p1 @p2 @p3 @p4
+/AGENTS.md                                @p1 @p2 @p3 @p4
+/CLAUDE.md                                @p1 @p2 @p3 @p4
+/tests/integration/                       @p1 @p2 @p3 @p4
+
+# P1 — Kernel & Execution
+/kernel/                                  @p1
+/mosaicd/                                 @p1
+/policies/                                @p1
+/execution/                               @p1
+
+# P2 — Knowledge, Memory & Console
+/knowledge/                               @p2
+/apps/                                    @p2
+/agents/mosaic_agents/adapters/           @p2
+
+# P3 — Agents & Models
+/agents/                                  @p3
+/agents/mosaic_agents/adapters/           @p2
+/models/                                  @p3
+
+# P4 — Platform, Data & Demo
+/infra/                                   @p4
+/data/                                    @p4
+/scripts/                                 @p4
+/knowledge/mosaic_knowledge/ingestion/    @p4
+/knowledge/tests/test_ingestion_contract.py @p4
+/knowledge/tests/samples/                 @p4
+/execution/mosaic_execution/browser/      @p4
+/execution/images/sandbox-browser/        @p4
+/execution/tests/test_browser_contract.py @p4
+/models/mosaic_models/gpu/                @p4
