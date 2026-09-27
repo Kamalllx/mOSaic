@@ -195,6 +195,13 @@ class PgStore:
             await conn.execute("DELETE FROM edges WHERE src = %s OR dst = %s", (path, path))
             await conn.commit()
 
+    async def get_object_rows(self, paths: list[str]) -> dict[str, dict[str, Any]]:
+        if not paths:
+            return {}
+        async with self.connection() as conn:
+            cur = await conn.execute("SELECT * FROM okf_objects WHERE path = ANY(%s)", (paths,))
+            return {r["path"]: r for r in await cur.fetchall()}
+
     async def get_object_row(self, path: str) -> dict[str, Any] | None:
         async with self.connection() as conn:
             cur = await conn.execute("SELECT * FROM okf_objects WHERE path = %s", (path,))

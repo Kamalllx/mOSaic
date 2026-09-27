@@ -72,16 +72,13 @@ class HybridRetriever:
 
         total_candidates = len(candidates)
 
-        objects: dict[str, dict[str, Any]] = {}
+        objects = await self.store.get_object_rows(list(candidates))
         filtered = 0
         visible: list[_Candidate] = []
         for path, cand in candidates.items():
             obj = objects.get(path)
             if obj is None:
-                obj = await self.store.get_object_row(path)
-                if obj is None:
-                    continue
-                objects[path] = obj
+                continue
             # Scope AND privacy are checked here in Python, not in the SQL base filter, so that objects hidden by
             # privacy are counted in filtered_by_policy (brief §12). Cheap at demo scale; don't move privacy into
             # SQL without another way to count what it removes.
