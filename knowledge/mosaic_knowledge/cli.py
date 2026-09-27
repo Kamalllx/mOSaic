@@ -11,6 +11,7 @@ from mosaic_contracts.testing.fakes import user_principal
 from mosaic_contracts.wiring import ServiceBundle, Settings
 
 from . import factory
+from .compat import ensure_selector_loop_on_windows
 
 app = typer.Typer(add_completion=False, help="mOSaic OKF bundle: validate, ingest, reindex, search.")
 
@@ -91,4 +92,5 @@ def ingest(path: str, target: str = "/org") -> None:
 
 
 def main() -> None:
+    ensure_selector_loop_on_windows()
     app()

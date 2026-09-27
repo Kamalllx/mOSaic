@@ -5,9 +5,7 @@ Owner: P2 — Knowledge, Memory & Console
 
 from __future__ import annotations
 
-import asyncio
 import logging
-import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -15,18 +13,17 @@ from pathlib import Path
 from typing import Any
 
 import psycopg
+from mosaic_contracts.errors import MosaicError
 from pgvector import Vector
 from pgvector.psycopg import register_vector_async
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
 
+from ..compat import running_on_proactor_loop
+
 logger = logging.getLogger("mosaic.knowledge.store")
 
 _SCHEMA_PATH = Path(__file__).parent / "schema.sql"
-
-if sys.platform == "win32":
-    # psycopg's async mode needs a selector loop; Windows defaults to ProactorEventLoop.
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
 def _to_psycopg_dsn(database_url: str) -> str:
@@ -56,6 +53,12 @@ class PgStore:
 
     async def _ensure_pool(self) -> AsyncConnectionPool:
         if self.pool is None:
+            if running_on_proactor_loop():
+                raise MosaicError(
+                    "INTERNAL",
+                    "psycopg async needs a selector event loop on Windows: call "
+                    "mosaic_knowledge.compat.ensure_selector_loop_on_windows() before the event loop starts",
+                )
             pool = AsyncConnectionPool(
                 self.database_url,
                 min_size=1,
