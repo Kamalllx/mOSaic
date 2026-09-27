@@ -63,7 +63,7 @@ PACKS: dict[str, list[str]] = {
         f"{C}/schema/knowledge.py", f"{C}/schema/tools.py", f"{C}/schema/system.py",
         f"{C}/testing/fakes.py::P4: converters", "knowledge/tests/test_ingestion_contract.py", "execution/tests/test_browser_contract.py",
         "models/tests/test_probe_contract.py", "shared/fixtures/okf/projects/apollo.md", "shared/fixtures/okf/finance/apollo-budget.md",
-        "infra/compose/docker-compose.yml", "infra/gpu/README.md", "infra/appliance/README.md", "data/okf/README.md",
+        "infra/compose/docker-compose.yml", "infra/gpu/README.md", "infra/appliance/README.md", "data/README.md",
         "docs/DEMO_SCRIPT.md",
     ],
 }

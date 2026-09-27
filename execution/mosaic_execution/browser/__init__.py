@@ -6,10 +6,10 @@ The browser runs INSIDE the sandbox container (image execution/images/sandbox-br
 P1's SandboxManager with spec.display=True). This module only connects to it — never launch a host browser.
 
 TODO:
-  - [ ] images/sandbox-browser/Dockerfile: Playwright + Chromium, `playwright run-server --port 3000`, non-root
-  - [ ] driver.py: PlaywrightDriver connecting with `chromium.connect(sandbox.endpoints["playwright"])`
-  - [ ] one browser context per sandbox_id (cache), open/click/type -> BrowserPage (text truncated to 20k chars)
-  - [ ] screenshot -> PNG bytes (P1 stores it as an artifact and emits sandbox.screenshot)
-  - [ ] errors: unreachable endpoint -> SANDBOX_FAILED, navigation timeout (15s) -> TIMEOUT
-  - [ ] factory.build_browser_driver(); BrowserDriverContract green (tests skip without docker)
+  - [x] images/sandbox-browser/Dockerfile: Playwright + Chromium, `playwright run-server --port 3000`, non-root
+  - [x] driver.py: PlaywrightDriver connecting with `chromium.connect(sandbox.endpoints["playwright"])`
+  - [x] one browser context per sandbox_id (cache), open/click/type -> BrowserPage (text truncated to 20k chars)
+  - [x] screenshot -> PNG bytes (P1 stores it as an artifact and emits sandbox.screenshot)
+  - [x] errors: unreachable endpoint -> SANDBOX_FAILED, navigation timeout (15s) -> TIMEOUT
+  - [x] factory.build_browser_driver(); BrowserDriverContract green (tests skip without docker)
 """

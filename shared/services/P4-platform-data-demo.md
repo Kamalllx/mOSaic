@@ -14,10 +14,14 @@ Full brief: [docs/team/P4-platform-data-demo.md](../../docs/team/P4-platform-dat
 ## Status (owner keeps this current)
 | Item | Status |
 |---|---|
-| RTX box: drivers · Docker · toolkit · Ollama models | ☐ |
-| Resource probe | ☐ |
-| Converters: markdown · jira-json · slack · csv | ☐ |
-| Browser image + driver + vendor-docs | ☐ |
-| data/okf ≥ 30 (M1) / ≥ 60 (M3) files + QA.md | ☐ / ☐ |
-| systemd boot + LAN access | ☐ |
-| Demo script · 3 rehearsals · backup video | ☐ |
+| RTX box: drivers · Docker · toolkit · Ollama models | ☐ runbook + `infra/appliance/install.sh` ready; run on the node |
+| Resource probe | ☑ `HostProbe` (psutil + nvidia-smi, stale-while-revalidate < 500 ms); contract green |
+| Converters: markdown · jira-json · slack · csv · document | ☑ all five; contract + unit tests green (document needs the `ingest` extra) |
+| Browser image + driver + vendor-docs | ☑ Playwright 1.63.0 image (offline, uid 10001, read-only fs); contract green under P1's sandbox flags |
+| data/okf ≥ 30 (M1) / ≥ 60 (M3) files + qa.yaml | ☑ / ☑ 73 files; `data/qa.yaml`; `scripts/check_okf.py` OK |
+| systemd boot + LAN access | ☐ units + Tailscale/ufw in install.sh; verify with a cold boot on the node |
+| Demo script · 3 rehearsals · backup video | ☐ script written; rehearsals pending |
+
+Notes for consumers:
+- **P2:** `build_converters` returns specific converters first and markdown (the catch-all for any .md file or directory) last; take the first `can_convert`. `request.options["frontmatter"]` overrides converter defaults (e.g. `{"privacy": "confidential"}`). QA questions live in `data/qa.yaml` (outside the bundle).
+- **P1:** display sandboxes: `init=True`, network `mosaic_sandbox`, `endpoints["playwright"] = ws://<container-ip>:3000/`, uid 10001 OK. Call `browser.close(sb)` before `sandbox.destroy`. The driver raises `BAD_REQUEST` for non-http(s) URLs, `TIMEOUT`, `SANDBOX_FAILED` (unreachable/disconnected), `TOOL_FAILED` (other navigation errors).

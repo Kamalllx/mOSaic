@@ -2,6 +2,8 @@
 from mosaic_contracts.interfaces import ResourceProbe
 from mosaic_contracts.wiring import ServiceBundle, Settings
 
+from .probe import HostProbe
+
 
 def build_resource_probe(settings: Settings, services: ServiceBundle) -> ResourceProbe:
-    raise NotImplementedError("P4: probe.HostProbe()")
+    return HostProbe()

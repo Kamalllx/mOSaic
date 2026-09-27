@@ -1,17 +1,25 @@
 # /etc/systemd/system/mosaicd.service on the appliance (P4 installs, P1 owns the process).
+# mosaicd runs on the HOST (not in compose): it needs the Docker socket, nvidia-smi (resource probe)
+# and a route to sandbox container IPs on the internal mosaic_sandbox network.
 [Unit]
 Description=mOSaic AI kernel and gateway
 After=network-online.target docker.service sovereign-data.mount
+Wants=network-online.target
 Requires=docker.service sovereign-data.mount
 
 [Service]
 Type=simple
 User=mosaic
+Group=mosaic
+SupplementaryGroups=docker
 WorkingDirectory=/opt/mosaic
 EnvironmentFile=/opt/mosaic/.env
 Environment=MOSAIC_DATA_DIR=/sovereign-data
-ExecStartPre=/usr/bin/docker compose -f /opt/mosaic/infra/compose/docker-compose.yml up -d postgres redis ollama mock-jira
+Environment=PYTHONUNBUFFERED=1
+# --wait blocks until every service is healthy, so mosaicd never races Postgres/Ollama. First boot may pull images.
+ExecStartPre=/usr/bin/docker compose -f /opt/mosaic/infra/compose/docker-compose.yml -f /opt/mosaic/infra/compose/docker-compose.gpu.yml up -d --wait postgres redis ollama mock-jira vendor-docs
 ExecStart=/opt/mosaic/.venv/bin/mosaicd
+TimeoutStartSec=300
 Restart=on-failure
 RestartSec=3
 

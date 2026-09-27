@@ -2,10 +2,14 @@
 
 It starts the browser container directly (no dependency on P1's SandboxManager), so P4 can test alone:
     docker build -t mosaic/sandbox-browser:latest execution/images/sandbox-browser
+The container runs with the same hardening flags as P1's DockerSandboxManager, so the image is proven under them.
 """
+import importlib.metadata
+import re
 import shutil
 import subprocess
 import time
+from pathlib import Path
 
 import pytest
 from mosaic_contracts.schema import SandboxInfo, SandboxSpec, SandboxStatus
@@ -13,7 +17,17 @@ from mosaic_contracts.testing import contracts as c
 from mosaic_contracts.wiring import ServiceBundle, Settings
 from mosaic_execution.browser import factory
 
-pytestmark = pytest.mark.skipif(shutil.which("docker") is None, reason="docker not installed")
+DOCKERFILE = Path(__file__).resolve().parents[1] / "images" / "sandbox-browser" / "Dockerfile"
+HARDENED = ["--read-only", "--tmpfs", "/tmp", "--user", "10001", "--cap-drop", "ALL",
+            "--security-opt", "no-new-privileges", "--init"]
+needs_docker = pytest.mark.skipif(shutil.which("docker") is None, reason="docker not installed")
+
+
+def test_image_version_matches_client():
+    """A Playwright client/server version mismatch breaks connect(): the image tag must follow uv.lock."""
+    pinned = re.search(r"^ARG PW_VERSION=([\d.]+)$", DOCKERFILE.read_text(encoding="utf-8"), re.MULTILINE)
+    assert pinned, "Dockerfile must declare ARG PW_VERSION=<x.y.z>"
+    assert pinned.group(1) == importlib.metadata.version("playwright")
 
 
 @pytest.fixture(scope="module")
@@ -30,7 +44,8 @@ def browser_sandbox(driver):
     name = "mosaic-browser-contract-test"
     if subprocess.run(["docker", "image", "inspect", "mosaic/sandbox-browser:latest"], capture_output=True).returncode != 0:
         pytest.skip("image mosaic/sandbox-browser:latest not built")
-    started = subprocess.run(["docker", "run", "-d", "--rm", "--name", name, "-p", "3999:3000",
+    subprocess.run(["docker", "rm", "-f", name], capture_output=True)
+    started = subprocess.run(["docker", "run", "-d", "--rm", "--name", name, *HARDENED, "-p", "3999:3000",
                               "mosaic/sandbox-browser:latest"], capture_output=True, text=True)
     if started.returncode != 0:
         pytest.skip(f"cannot start mosaic/sandbox-browser: {started.stderr.strip()[:200]}")
@@ -40,6 +55,7 @@ def browser_sandbox(driver):
     subprocess.run(["docker", "rm", "-f", name], capture_output=True)
 
 
+@needs_docker
 class TestBrowser(c.BrowserDriverContract):
     @pytest.fixture(autouse=True)
     def _setup(self, driver, browser_sandbox):
