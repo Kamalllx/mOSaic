@@ -1,0 +1,253 @@
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ mOSaic · P1 Kernel & Execution demo                                          │
+│ Agents are processes · actions are governed syscalls · everything is audited │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+─────────────────────────────────────────────────── Scene 1 · Boot ────────────────────────────────────────────────────
+The kernel boots on a ServiceBundle; every P1 component is the real implementation.
+┌────────────────┬──────────────────────┬────────────────────┐
+│ service        │ implementation       │ mode               │
+├────────────────┼──────────────────────┼────────────────────┤
+│ kernel         │ Kernel               │ real               │
+│ event_bus      │ KernelEventBus       │ real               │
+│ policy         │ YamlPolicyEngine     │ real               │
+│ audit          │ SqliteAuditLog       │ real               │
+│ models         │ FakeModelRouter      │ fake               │
+│ knowledge      │ FakeKnowledgeService │ fake               │
+│ firewall       │ FakeContextFirewall  │ fake               │
+│ memory         │ FakeMemoryService    │ fake               │
+│ agent_registry │ FakeAgentRegistry    │ fake               │
+│ agent_runtime  │ DemoRuntime          │ demo-script        │
+│ tools          │ Executor             │ real               │
+│ sandbox        │ FakeSandboxManager   │ fake (see scene 8) │
+│ browser        │ FakeBrowserDriver    │ fake (P4)          │
+│ artifacts      │ FsArtifactStore      │ real               │
+│ converters     │ list                 │ fake               │
+│ probe          │ FakeResourceProbe    │ fake               │
+└────────────────┴──────────────────────┴────────────────────┘
+policies loaded: finance-agent-v1, project-updates-v1, research-agent-v1, default-v1
+
+─────────────────────────────────────────────────── Scene 2 · Input ───────────────────────────────────────────────────
+A user submits a goal (POST /tasks · `ai run` · the web console all produce this TaskCreate).
+{
+  "goal": "Investigate why Project Apollo is over budget and six weeks behind schedule. Identify root causes, update the tracker, and prepare a recovery plan.",
+  "priority": "high",
+  "privacy": "internal",
+  "data_scope": [
+    "/org/**"
+  ]
+}
+identity from headers → X-Mosaic-User: alice, X-Mosaic-Org: acme
+
+────────────────────────────────────── Scene 3 · Processing (live event stream) ───────────────────────────────────────
+Planner spawns specialists; every ctx.* call is checked, charged, evented and audited.
+ 0.36s 101 planner-agent      spawned planner-agent (parent -)
+ 0.38s                         task status → running
+ 0.38s                         task status → planning
+ 0.38s 101 planner-agent      “Decomposing the goal into specialist subtasks”
+ 0.38s 101 planner-agent      knowledge: 4 hits, 1 hidden by policy apollo, projects, finance, apollo-status
+ 0.38s 101 planner-agent      model fake-chat (79 tokens, local=True)
+ 0.39s 102 finance-agent      spawned finance-agent (parent 101)
+ 0.39s                         task status → running
+ 0.39s 103 engineering-agent  spawned engineering-agent (parent 101)
+ 0.39s 104 research-agent     spawned research-agent (parent 101)
+ 0.39s 101 planner-agent      RUNNING → WAITING
+ 0.39s 102 finance-agent      knowledge: 3 hits, 8 hidden by policy apollo-budget, apollo, finance
+ 0.39s 102 finance-agent      model fake-chat (163 tokens, local=True)
+ 0.39s 102 finance-agent      IPC evidence → planner-agent
+ 0.39s 102 finance-agent      RUNNING → COMPLETED
+ 0.41s 103 engineering-agent  knowledge: 3 hits, 7 hidden by policy apollo, apollo-status, ADR-042
+ 0.41s 103 engineering-agent  syscall jira.read jira.get_issue (risk low)
+ 0.41s 103 engineering-agent  policy ALLOW by default-v1
+ 0.41s 103 engineering-agent  tool jira.get_issue → success
+ 0.41s 103 engineering-agent  transaction committed (post-condition verified)
+ 0.41s 103 engineering-agent  syscall jira.read jira.get_issue (risk low)
+ 0.41s 103 engineering-agent  policy ALLOW by default-v1
+ 0.41s 103 engineering-agent  tool jira.get_issue → success
+ 0.41s 103 engineering-agent  transaction committed (post-condition verified)
+ 0.41s 103 engineering-agent  IPC evidence → planner-agent
+ 0.41s 103 engineering-agent  RUNNING → COMPLETED
+ 0.41s 104 research-agent     knowledge: 3 hits, 1 hidden by policy vendor-email-2026-09-12, apollo-status, apollo
+ 0.41s 104 research-agent     “Context firewall flagged /org/inbox/vendor-email-2026-09-12 — treated as data”
+ 0.42s 104 research-agent     syscall browser.open browser.open (risk low)
+ 0.42s 104 research-agent     policy ALLOW by research-agent-v1
+ 0.42s 104 research-agent     sandbox SB-828eef0f22 started
+ 0.42s 101 planner-agent      WAITING → RUNNING
+ 0.42s 101 planner-agent      RUNNING → WAITING
+ 0.42s 101 planner-agent      WAITING → RUNNING
+ 0.42s 101 planner-agent      RUNNING → WAITING
+ 0.42s 104 research-agent     screenshot saved artifact://T-355c581feb/screenshots/001.png
+ 0.42s 104 research-agent     tool browser.open → success
+ 0.42s 104 research-agent     transaction committed (post-condition verified)
+ 0.42s 104 research-agent     IPC evidence → planner-agent
+ 0.44s 104 research-agent     RUNNING → COMPLETED
+ 0.44s 101 planner-agent      WAITING → RUNNING
+ 0.44s 101 planner-agent      checkpoint CKPT-847d8c1d0b
+ 0.44s 105 action-agent       spawned action-agent (parent 101)
+ 0.44s 101 planner-agent      RUNNING → WAITING
+ 0.44s 105 action-agent       syscall jira.write jira.update_issue (risk medium)
+ 0.44s 105 action-agent       policy REQUIRES_APPROVAL by project-updates-v1
+ 0.44s 105 action-agent       approval required APR-bfedbcadaf
+┌───────────────────────────────────────── APPROVAL CENTER · APR-bfedbcadaf ──────────────────────────────────────────┐
+│ action-agent#105 wants jira.write → jira.update_issue on APOLLO-12                                                  │
+│ risk: medium · policy: project-updates-v1 (jira.write requires human approval (approval.jira.write=required))       │
+│ arguments: {"key": "APOLLO-12", "fields": {"status": "At Risk"}, "comment": "mOSaic root causes: dual-run cloud     │
+│ cost (+1.9 lakh) caused by the migration slip and ADR-042; ledger backfill failed on dup…                           │
+│ justification: Record the root causes on the migration ticket                                                       │
+│ evidence: /org/finance/apollo-budget, /org/engineering/apollo-status, /org/decisions/ADR-042                        │
+└─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+ 0.44s 105 action-agent       RUNNING → WAITING
+ 0.44s                         task status → waiting_approval
+ai-ps while the kernel waits for a human                                                 
+┌─────┬──────┬───────────────────┬───────────┬────────┬───────┬─────────────────────────┐
+│ PID │ PPID │ AGENT             │ STATE     │ TOKENS │ TOOLS │ WAITING ON              │
+├─────┼──────┼───────────────────┼───────────┼────────┼───────┼─────────────────────────┤
+│ 101 │ -    │ planner-agent     │ WAITING   │ 79     │ 0     │ pid:105                 │
+│ 102 │ 101  │ finance-agent     │ COMPLETED │ 163    │ 0     │                         │
+│ 103 │ 101  │ engineering-agent │ COMPLETED │ 0      │ 2     │                         │
+│ 104 │ 101  │ research-agent    │ COMPLETED │ 0      │ 1     │                         │
+│ 105 │ 101  │ action-agent      │ WAITING   │ 0      │ 0     │ approval:APR-bfedbcadaf │
+└─────┴──────┴───────────────────┴───────────┴────────┴───────┴─────────────────────────┘
+task status: waiting_approval
+ 0.53s 105 action-agent       approval approved by alice
+ 0.55s 105 action-agent       WAITING → RUNNING
+ 0.55s                         task status → running
+ 0.55s 105 action-agent       tool jira.update_issue → success
+ 0.55s 105 action-agent       transaction committed (post-condition verified)
+ 0.55s 105 action-agent       syscall fs.write fs.write_file (risk low)
+ 0.55s 105 action-agent       policy ALLOW by project-updates-v1
+ 0.55s 105 action-agent       tool fs.write_file → success
+ 0.56s 105 action-agent       transaction committed (post-condition verified)
+ 0.56s 105 action-agent       RUNNING → COMPLETED
+ 0.56s 101 planner-agent      WAITING → RUNNING
+ 0.56s 101 planner-agent      RUNNING → COMPLETED
+ 0.56s                         task status → completed
+ 0.56s 104 research-agent     sandbox SB-828eef0f22 destroyed
+ 0.56s                         task completed
+
+────────────────────────────────────────────────── Scene 4 · Output ───────────────────────────────────────────────────
+TaskResult, artifacts, the world change (Jira) and the process tree.
+┌─────────────────────────────────────── TaskResult · T-355c581feb · completed ───────────────────────────────────────┐
+│ Apollo is 31% over budget and 6 weeks late. Root causes: dual-run cloud cost (+1.9 lakh) caused by the migration    │
+│ slip and ADR-042; ledger backfill failed on duplicate reconciliation ids (APOLLO-12); vendor SDK v5 blocked on      │
+│ certification (APOLLO-31). Tracker: jira.write completed. Recovery plan: artifact://T-355c581feb/recovery-plan.md   │
+└─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+artifacts: ['artifact://T-355c581feb/recovery-plan.md', 'artifact://T-355c581feb/screenshots/001.png']
+committed actions: ['SC-bd02857e49', 'SC-2d62c57bc9', 'SC-a4a2720658', 'SC-f54c4203a1', 'SC-349812c36e']
+usage: 242 tokens, 5 tool calls
+┌──────────────────────────────────────────── artifact · recovery-plan.md ────────────────────────────────────────────┐
+│ # Apollo recovery plan                                                                                              │
+│                                                                                                                     │
+│ ## Root causes                                                                                                      │
+│ - dual-run cloud cost (+1.9 lakh) caused by the migration slip and ADR-042                                          │
+│ - ledger backfill failed on duplicate reconciliation ids (APOLLO-12)                                                │
+│ - vendor SDK v5 blocked on certification (APOLLO-31)                                                                │
+│                                                                                                                     │
+│ ## Actions                                                                                                          │
+│ 1. Stop the dual-run as soon as the ledger backfill passes parity (ADR-042)                                         │
+│ 2. Re-run the backfill with deduplicated reconciliation ids (APOLLO-12)                                             │
+│ 3. Escalate the SDK v5 certification with the vendor; keep the v4 path until GA (APOLLO-31)                         │
+│                                                                                                                     │
+│ ## Tracker                                                                                                          │
+│ APOLLO-12 update: jira.write completed                                                                              │
+└─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+Jira APOLLO-12 status: In Progress → At Risk; new comment: “mOSaic root causes: dual-run cloud cost (+1.9 lakh) caused 
+by the migration slip and ADR-0…”
+task T-355c581feb
+└── 101 planner-agent COMPLETED
+    ├── 102 finance-agent COMPLETED
+    ├── 103 engineering-agent COMPLETED
+    ├── 104 research-agent COMPLETED
+    └── 105 action-agent COMPLETED
+
+──────────────────────────────────────────── Scene 5 · Audit & provenance ─────────────────────────────────────────────
+Every decision is journaled; the per-task hash chain makes tampering detectable.
+ai-audit T-355c581feb · 5 agents · 7 knowledge objects · 3 IPC · 5 tool calls · 1 privileged · 1 approval              
+┌────┬───────────┬─────────────────────────────┬──────────────────────────────────────────────────────────────────────┐
+│ #  │ KIND      │ ACTOR                       │ SUMMARY                                                              │
+├────┼───────────┼─────────────────────────────┼──────────────────────────────────────────────────────────────────────┤
+│ 1  │ task      │ user:alice                  │ Task created                                                         │
+│ 2  │ spawn     │ kernel.lifecycle            │ Spawned planner-agent                                                │
+│ 6  │ knowledge │ agent:planner-agent#101     │ Retrieved 4 objects (1 filtered by policy)                           │
+│ 8  │ spawn     │ agent:planner-agent#101     │ Spawned finance-agent                                                │
+│ 12 │ spawn     │ agent:planner-agent#101     │ Spawned engineering-agent                                            │
+│ 16 │ spawn     │ agent:planner-agent#101     │ Spawned research-agent                                               │
+│ 21 │ knowledge │ agent:finance-agent#102     │ Retrieved 3 objects (8 filtered by policy)                           │
+│ 22 │ knowledge │ agent:finance-agent#102     │ Read /org/finance/apollo-budget                                      │
+│ 24 │ ipc       │ agent:finance-agent#102     │ evidence → planner-agent#101                                         │
+│ 27 │ knowledge │ agent:engineering-agent#103 │ Retrieved 3 objects (7 filtered by policy)                           │
+│ 28 │ syscall   │ agent:engineering-agent#103 │ jira.read jira.get_issue                                             │
+│ 29 │ policy    │ kernel.policy               │ jira.read: ALLOW (jira.read allowed by default-v1)                   │
+│ 30 │ tool      │ kernel.syscall              │ jira.get_issue → success                                             │
+│ 31 │ verify    │ kernel.transactions         │ Post-condition passed                                                │
+│ 32 │ commit    │ kernel.transactions         │ Committed SC-bd02857e49                                              │
+│ 33 │ syscall   │ agent:engineering-agent#103 │ jira.read jira.get_issue                                             │
+│ 34 │ policy    │ kernel.policy               │ jira.read: ALLOW (jira.read allowed by default-v1)                   │
+│ 35 │ tool      │ kernel.syscall              │ jira.get_issue → success                                             │
+│ 36 │ verify    │ kernel.transactions         │ Post-condition passed                                                │
+│ 37 │ commit    │ kernel.transactions         │ Committed SC-2d62c57bc9                                              │
+│ 38 │ ipc       │ agent:engineering-agent#103 │ evidence → planner-agent#101                                         │
+│ 41 │ knowledge │ agent:research-agent#104    │ Retrieved 3 objects (1 filtered by policy)                           │
+│ 42 │ syscall   │ agent:research-agent#104    │ browser.open browser.open                                            │
+│ 43 │ policy    │ kernel.policy               │ browser.open: ALLOW (browser.open allowed by research-agent-v1)      │
+│ 48 │ tool      │ kernel.syscall              │ browser.open → success                                               │
+│ 49 │ verify    │ kernel.transactions         │ Post-condition passed                                                │
+│ 50 │ commit    │ kernel.transactions         │ Committed SC-a4a2720658                                              │
+│ 51 │ ipc       │ agent:research-agent#104    │ evidence → planner-agent#101                                         │
+│ 55 │ spawn     │ agent:planner-agent#101     │ Spawned action-agent                                                 │
+│ 60 │ syscall   │ agent:action-agent#105      │ jira.write jira.update_issue                                         │
+│ 61 │ policy    │ kernel.policy               │ jira.write: REQUIRES_APPROVAL (jira.write requires human approval    │
+│    │           │                             │ (approval.jira.write=requi…                                          │
+│ 63 │ approval  │ user:alice                  │ Approved APR-bfedbcadaf                                              │
+│ 65 │ tool      │ kernel.syscall              │ jira.update_issue → success                                          │
+│ 66 │ verify    │ kernel.transactions         │ Post-condition passed                                                │
+│ 67 │ commit    │ kernel.transactions         │ Committed SC-f54c4203a1                                              │
+│ 68 │ syscall   │ agent:action-agent#105      │ fs.write fs.write_file                                               │
+│ 69 │ policy    │ kernel.policy               │ fs.write: ALLOW (fs.write allowed by project-updates-v1)             │
+│ 70 │ tool      │ kernel.syscall              │ fs.write_file → success                                              │
+│ 71 │ verify    │ kernel.transactions         │ Post-condition passed                                                │
+│ 72 │ commit    │ kernel.transactions         │ Committed SC-349812c36e                                              │
+│ 78 │ task      │ kernel.tasks                │ Task completed                                                       │
+└────┴───────────┴─────────────────────────────┴──────────────────────────────────────────────────────────────────────┘
+hash chain verified: True (78 entries, sha256-linked)
+
+──────────────────────────────────── Scene 6 · Governance: what the kernel refuses ────────────────────────────────────
+A rogue agent tries an ungranted write, an unallowed command, and confidential data.
+┌───────────────────┬──────────────────────────────────────────────────────────┐
+│ attempt           │ kernel answer                                            │
+├───────────────────┼──────────────────────────────────────────────────────────┤
+│ jira.update_issue │ denied: capability jira.write not granted to rogue-agent │
+│ sandbox.exec      │ denied: no policy allows sandbox.exec                    │
+│ read payroll      │ KNOWLEDGE_FORBIDDEN                                      │
+└───────────────────┴──────────────────────────────────────────────────────────┘
+
+──────────────────────────────── Scene 7 · OS controls: pause · resume · kill · quotas ────────────────────────────────
+Processes are real: they can be paused mid-run, killed with their children, and stopped by quotas.
+ai pause 107   → PAUSED  (task: paused)
+ai resume 107  → RUNNING
+ai kill 107    → TERMINATED  (task: cancelled)
+chatty agent with a 400-token budget → task failed: QUOTA_EXCEEDED (pid 109 used 503/400 tokens)
+
+────────────────────────────────────── Scene 8 · Execution sandbox (real Docker) ──────────────────────────────────────
+Commands run in a disposable, locked-down container.
+sandbox SB-fbd6c9827d (mosaic/sandbox-base, network   
+none, 256 MB, 0.5 CPU)                                
+┌─────────────────────┬──────────────────────────────┐
+│ check               │ result                       │
+├─────────────────────┼──────────────────────────────┤
+│ whoami (uid)        │ 10001                        │
+│ write to /etc       │ DENIED                       │
+│ write to /workspace │ ok                           │
+│ capabilities        │ CapEff: 0000000000000000     │
+│ internet            │ BLOCKED: OSError             │
+└─────────────────────┴──────────────────────────────┘
+sandbox destroyed: container removed = True
+
+──────────────────────────────── Scene 9 · Crash-safe: shutdown suspends, boot resumes ────────────────────────────────
+The kernel is stopped mid-task; a brand-new kernel on the same data resumes it from its checkpoint.
+kernel #1 stopped while pid 110 was running (task stays planning)
+kernel #2 booted → task completed with new pid 111: resumed after restart from checkpoint {'stage': 
+'evidence-gathered', 'hits': 3}
+
+──────────────────────────────────────────────────── Demo complete ────────────────────────────────────────────────────
+state, audit log and artifacts are in C:\Users\kamal\AppData\Local\Temp\mosaic-demo-fvv3cjxk

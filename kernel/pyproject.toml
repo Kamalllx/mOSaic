@@ -26,6 +26,7 @@ ai-audit = "mosaic_kernel.cli.main:audit"
 ai-checkpoint = "mosaic_kernel.cli.main:checkpoint"
 ai-resume = "mosaic_kernel.cli.main:resume"
 ai-mount = "mosaic_kernel.cli.main:mount"
+ai-demo = "mosaic_kernel.demo:main"
 
 [tool.uv.sources]
 mosaic-contracts = { workspace = true }
