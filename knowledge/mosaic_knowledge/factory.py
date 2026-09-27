@@ -1,10 +1,13 @@
 """Factory contract for P2 (see mosaic_contracts.wiring)."""
+
 from mosaic_contracts.interfaces import ContextFirewall, KnowledgeService, MemoryService
 from mosaic_contracts.wiring import ServiceBundle, Settings
 
+from .firewall import ContextFirewall as ContextFirewallImpl
+
 
 def build_context_firewall(settings: Settings, services: ServiceBundle) -> ContextFirewall:
-    raise NotImplementedError("P2: firewall.ContextFirewall(models=services.models)")
+    return ContextFirewallImpl(models=services.models)
 
 
 def build_knowledge_service(settings: Settings, services: ServiceBundle) -> KnowledgeService:
