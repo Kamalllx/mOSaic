@@ -5,6 +5,7 @@ Owner: P2 — Knowledge, Memory & Console
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -17,7 +18,6 @@ from mosaic_contracts.errors import MosaicError
 from pgvector import Vector
 from pgvector.psycopg import register_vector_async
 from psycopg.rows import dict_row
-from psycopg_pool import AsyncConnectionPool
 
 from ..compat import running_on_proactor_loop
 
@@ -40,56 +40,75 @@ class ChunkRow:
     text: str
 
 
+_MAX_CONNECTIONS = 10
+
+
 class PgStore:
-    """Thin async wrapper over the mosaic Postgres schema (§6.3 of the P2 brief)."""
+    """Thin async wrapper over the mosaic Postgres schema (§6.3 of the P2 brief).
+
+    Connections come from a minimal pool with no background tasks: idle connections behind a semaphore. Services
+    get no close() call from the kernel, and psycopg_pool's maintenance workers swallow CancelledError, so an
+    unclosed psycopg_pool kept asyncio.run() (ai-demo, uvicorn shutdown) from ever returning. Nothing here
+    outlives the event loop; close() is still the tidy way to release connections.
+    """
 
     def __init__(self, database_url: str) -> None:
         self.database_url = _to_psycopg_dsn(database_url)
-        self.pool: AsyncConnectionPool | None = None
+        self._idle: list[psycopg.AsyncConnection] = []
+        self._slots: asyncio.Semaphore | None = None
         self.dim: int | None = None
 
-    async def _configure(self, conn: psycopg.AsyncConnection) -> None:
-        await register_vector_async(conn)
-
-    async def _ensure_pool(self) -> AsyncConnectionPool:
-        if self.pool is None:
-            if running_on_proactor_loop():
-                raise MosaicError(
-                    "INTERNAL",
-                    "psycopg async needs a selector event loop on Windows: call "
-                    "mosaic_knowledge.compat.ensure_selector_loop_on_windows() before the event loop starts",
-                )
-            pool = AsyncConnectionPool(
-                self.database_url,
-                min_size=1,
-                max_size=10,
-                open=False,
-                configure=self._configure,
-                kwargs={"row_factory": dict_row},
+    async def _connect(self) -> psycopg.AsyncConnection:
+        if running_on_proactor_loop():
+            raise MosaicError(
+                "INTERNAL",
+                "psycopg async needs a selector event loop on Windows: call "
+                "mosaic_knowledge.compat.ensure_selector_loop_on_windows() before the event loop starts",
             )
-            await pool.open(wait=True, timeout=5)
-            self.pool = pool
-        return self.pool
+        conn = await psycopg.AsyncConnection.connect(self.database_url, row_factory=dict_row, connect_timeout=5)
+        await register_vector_async(conn)
+        return conn
+
+    @asynccontextmanager
+    async def connection(self) -> AsyncIterator[psycopg.AsyncConnection]:
+        """One connection for a unit of work. Anything left uncommitted is rolled back when it's returned."""
+        if self._slots is None:
+            self._slots = asyncio.Semaphore(_MAX_CONNECTIONS)
+        async with self._slots:
+            conn = None
+            while self._idle and conn is None:
+                candidate = self._idle.pop()
+                conn = None if candidate.closed else candidate
+            if conn is None:
+                conn = await self._connect()
+            try:
+                yield conn
+            finally:
+                await self._release(conn)
+
+    async def _release(self, conn: psycopg.AsyncConnection) -> None:
+        if conn.closed:
+            return
+        try:
+            if conn.info.transaction_status != psycopg.pq.TransactionStatus.IDLE:
+                await conn.rollback()
+        except psycopg.Error:
+            await conn.close()
+            return
+        self._idle.append(conn)
 
     async def ping(self) -> bool:
         try:
-            pool = await self._ensure_pool()
-            async with pool.connection() as conn:
+            async with self.connection() as conn:
                 await conn.execute("SELECT 1")
             return True
         except Exception:  # noqa: BLE001 — connectivity probe, any failure means "unreachable"
             return False
 
     async def close(self) -> None:
-        if self.pool is not None:
-            await self.pool.close()
-            self.pool = None
-
-    @asynccontextmanager
-    async def connection(self) -> AsyncIterator[psycopg.AsyncConnection]:
-        pool = await self._ensure_pool()
-        async with pool.connection() as conn:
-            yield conn
+        idle, self._idle = self._idle, []
+        for conn in idle:
+            await conn.close()
 
     # --------------------------------------------------------------------- migration
 
