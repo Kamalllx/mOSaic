@@ -16,12 +16,12 @@
 
 ## Team split
 
-| | Split | Tooling |
+| | Split | 
 |---|---|---|
-| **P1** | [Kernel & Execution](docs/team/P1-kernel-execution.md) | Claude Code |
-| **P2** | [Knowledge, Memory & Console](docs/team/P2-knowledge-console.md) | Claude Code |
-| **P3** | [Agents & Models](docs/team/P3-agents-models.md) | chat assistant + context pack |
-| **P4** | [Platform, Data & Demo](docs/team/P4-platform-data-demo.md) | chat assistant + context pack |
+| **P1** | [Kernel & Execution](docs/team/P1-kernel-execution.md) | 
+| **P2** | [Knowledge, Memory & Console](docs/team/P2-knowledge-console.md) | 
+| **P3** | [Agents & Models](docs/team/P3-agents-models.md) | 
+| **P4** | [Platform, Data & Demo](docs/team/P4-platform-data-demo.md) |
 
 ## Quick start
 
