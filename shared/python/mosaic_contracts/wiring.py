@@ -71,6 +71,9 @@ class Settings(BaseModel):
     default_embed_model: str = "nomic-embed-text"
     gateway_host: str = "0.0.0.0"
     gateway_port: int = 8080
+    knowledge_watch: bool = Field(
+        False, description="P2: watch okf_dir and publish knowledge.changed for manual edits (500 ms debounce)"
+    )
     modes: dict[str, Mode] = Field(default_factory=lambda: {c: "fake" for c in COMPONENTS})
 
     @classmethod
