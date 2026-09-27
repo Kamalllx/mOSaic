@@ -262,3 +262,13 @@ All P1 contract suites run and are green · gateway conformance green · e2e gre
 - SQLite concurrency: use one writer connection (or `aiosqlite` with WAL mode).
 - The Docker SDK is synchronous; wrap it with `asyncio.to_thread`. On Windows dev hosts, container IPs aren't routable, so publish ports.
 - Payload keys in events are consumed by P2's UI. Keep them exactly as in `events.yaml`.
+
+## 12. As built (implementation notes)
+Everything in §7 T1–T14 is implemented, plus stretch S1–S4 and scheduled agents (cron). Only the OpenShell/microVM backend is left. Current status and how each part is tested: [shared/services/P1-kernel-execution.md](../../shared/services/P1-kernel-execution.md). Differences from the spec above:
+- **Persistence** uses stdlib `sqlite3` (WAL mode, one lock) rather than SQLAlchemy/aiosqlite. It isn't bound to an event loop, which keeps tests and restarts simple.
+- **Recovery** is stronger than "fail cleanly": `shutdown` suspends, and `boot` resumes unfinished tasks from the root agent's last checkpoint (bounded by `MOSAIC_KERNEL_MAX_RESTARTS`).
+- **Failure handling:** after 3 attempts, the kernel can **escalate to a human** through the approval center (`agent.retry`) when `MOSAIC_KERNEL_ESCALATION_TIMEOUT_S > 0`. There is no separate "fallback agent", because manifests have no field for one.
+- **Child limit** per agent = the task quota's `max_children` (default 8), and only for agents that may spawn at all.
+- **Network allowlists** apply to agent-chosen destinations (browser, sandbox). Operator-configured connectors (Jira URL, MCP servers) are trusted.
+- **The WebSocket replays task history** before streaming, so late or reconnecting clients never miss events. The history is durable when Redis is up.
+- **Browser sandboxes** (`display=True`) don't use `read_only`/`cap_drop` because Chromium needs a writable home and `/dev/shm`. They still use `no-new-privileges`, resource limits and the internal network. P4's image installs the Playwright server at build time, with a version pinned to the Python client.

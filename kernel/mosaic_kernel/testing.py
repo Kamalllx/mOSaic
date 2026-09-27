@@ -17,6 +17,7 @@ from mosaic_contracts.schema import (
 from mosaic_contracts.testing.fakes import FakeAgentRegistry, fake_bundle, user_principal
 from mosaic_contracts.wiring import Settings
 
+from .config import KernelConfig
 from .kernel import Kernel
 
 Script = Callable[[str, Any], Awaitable[AgentResult]]
@@ -40,17 +41,21 @@ class ScriptedRuntime:
     def __init__(self, scripts: dict[str, Script]) -> None:
         self.scripts = scripts
         self.calls: dict[str, int] = {}
+        self.restored: dict[str, int] = {}
 
     async def run(self, m: AgentManifest, goal: str, ctx: Any) -> AgentResult:
         self.calls[m.name] = self.calls.get(m.name, 0) + 1
         return await self.scripts[m.name](goal, ctx)
 
     async def restore(self, m: AgentManifest, goal: str, ctx: Any, state: dict) -> AgentResult:
+        ctx.inputs["_restored"] = dict(state)  # scripts can tell a resumed run from a fresh one
+        self.restored[m.name] = self.restored.get(m.name, 0) + 1
         return await self.run(m, goal, ctx)
 
 
-def kernel_factory(tmp_path):
-    def _make(scripts: dict[str, Script] | None = None, manifests: list[AgentManifest] | None = None, **overrides: Any):
+def kernel_factory(tmp_path, config: KernelConfig | None = None):
+    def _make(scripts: dict[str, Script] | None = None, manifests: list[AgentManifest] | None = None,
+              config: KernelConfig | None = config, **overrides: Any):
         settings = Settings(data_dir=tmp_path)
         bundle = fake_bundle(settings)
         if manifests is not None:
@@ -59,7 +64,7 @@ def kernel_factory(tmp_path):
             bundle.agent_runtime = ScriptedRuntime(scripts)
         for name, value in overrides.items():
             setattr(bundle, name, value)
-        return Kernel(settings, bundle)
+        return Kernel(settings, bundle, config or KernelConfig(policy_watch_interval_s=0))
 
     return _make
 

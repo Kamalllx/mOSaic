@@ -18,6 +18,10 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - run: uv sync --all-packages
       - run: uvx ruff check .
+      - name: build images used by live Docker tests (browser image is skipped in CI; its test skips)
+        run: |
+          docker build -t mosaic/sandbox-base:latest execution/images/sandbox-base
+          docker build -t mosaic/mock-jira:latest -f infra/compose/mock-jira.Dockerfile .
       # contracts + every split's contract tests (skip until implemented) + e2e (skips until the kernel exists)
       - run: uv run pytest -rs
       - name: generated contract artifacts are up to date

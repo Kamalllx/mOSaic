@@ -150,19 +150,31 @@ class DockerSandboxManager:
         ip = ((attrs.get("Networks") or {}).get(SANDBOX_NETWORK) or {}).get("IPAddress")
         return {"playwright": f"ws://{ip}:{PLAYWRIGHT_PORT}/"} if ip else {}
 
-    async def _wait_for_port(self, url: str, timeout: float = 20.0) -> None:
+    async def _wait_for_port(self, url: str, timeout: float = 30.0) -> None:
+        """Ready = the server inside answers HTTP. (Docker's port proxy accepts TCP before the server listens.)"""
         if not url:
             return
         host, port = url.removeprefix("ws://").rstrip("/").rsplit(":", 1)
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
+            writer = None
             try:
-                _, writer = await asyncio.wait_for(asyncio.open_connection(host, int(port)), 1)
-                writer.close()
-                return
+                reader, writer = await asyncio.wait_for(asyncio.open_connection(host, int(port)), 1)
+                writer.write(b"GET / HTTP/1.1\r\nHost: sandbox\r\nConnection: close\r\n\r\n")
+                await writer.drain()
+                if await asyncio.wait_for(reader.read(1), 1):
+                    return
             except (OSError, TimeoutError):
-                await asyncio.sleep(0.3)
-        log.warning("browser endpoint %s not reachable after %ss", url, timeout)
+                pass
+            finally:
+                if writer is not None:  # always release the socket, including on timeouts
+                    writer.close()
+                    try:
+                        await writer.wait_closed()
+                    except OSError:
+                        pass
+            await asyncio.sleep(0.3)
+        raise MosaicError("SANDBOX_FAILED", f"browser endpoint {url} not ready after {timeout}s")
 
     def _get(self, sandbox_id: str) -> Any:
         if sandbox_id not in self._containers:

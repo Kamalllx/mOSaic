@@ -13,15 +13,21 @@ from mosaic_contracts.schema import (
     AgentResult,
     AgentResultStatus,
     AgentState,
+    Approval,
+    ApprovalStatus,
     AuditKind,
     Checkpoint,
+    Decision,
     ErrorInfo,
     EventType,
+    PolicyDecision,
     Principal,
     PrincipalKind,
     PrivacyLevel,
     ResourceQuota,
+    Risk,
     SpawnRequest,
+    SyscallRequest,
     Task,
     can_transition,
 )
@@ -82,6 +88,7 @@ class Lifecycle:
         self.contexts: dict[int, KernelAgentContext] = {}
         self.manifests: dict[int, AgentManifest] = {}
         self.results: dict[int, asyncio.Future[AgentResult]] = {}
+        self.suspending = False
 
     # ------------------------------------------------------------------ spawn
     async def spawn(self, req: SpawnRequest) -> int:
@@ -101,7 +108,7 @@ class Lifecycle:
         quota = ResourceQuota(
             max_tokens=manifest.resources.max_tokens_per_task, max_tool_calls=manifest.resources.max_tool_calls,
             max_wall_seconds=max(task.quota.max_wall_seconds, MIN_AGENT_WALL_SECONDS),
-            max_children=max(len(manifest.capabilities.agents) * 2, 1) if manifest.capabilities.agents else 0,
+            max_children=task.quota.max_children if manifest.capabilities.agents else 0,
             cpu=manifest.resources.cpu, memory_mb=parse_memory_mb(manifest.resources.memory), gpu=manifest.resources.gpu)
 
         proc = k.procs.create(task_id=task.task_id, agent=manifest.name, agent_version=manifest.version, goal=req.goal,
@@ -116,8 +123,10 @@ class Lifecycle:
                                  principal=principal, inputs=req.inputs)
         self.manifests[pid], self.contexts[pid] = manifest, ctx
         self.results[pid] = asyncio.get_running_loop().create_future()
+        restore_state: dict | None = None
         if parent is None:
             await k.tasks.set_root(task.task_id, pid)
+            restore_state = self._resume_state(task)
 
         await k.emit(EventType.PROCESS_SPAWNED, {"agent": manifest.name, "ppid": req.ppid}, task_id=task.task_id, pid=pid)
         await k.journal(task.task_id, AuditKind.SPAWN, f"Spawned {manifest.name}", pid=pid,
@@ -125,8 +134,23 @@ class Lifecycle:
                         data={"agent": manifest.name, "ppid": req.ppid, "goal": req.goal, "capabilities": caps})
         for state in (AgentState.INITIALIZING, AgentState.READY, AgentState.RUNNING):
             await k.procs.transition(pid, state)
-        self.tasks[pid] = asyncio.create_task(self._run(pid, manifest, ctx), name=f"pid-{pid}")
+        if restore_state is not None:
+            ctx.last_state = dict(restore_state)
+            await k.emit(EventType.AGENT_LOG, {"level": "info", "message": "resuming from checkpoint after kernel restart",
+                                              "data": {"checkpoint": task.metadata.get("resume_from")}},
+                         task_id=task.task_id, pid=pid, source="kernel.lifecycle")
+        self.tasks[pid] = asyncio.create_task(self._run(pid, manifest, ctx, restore_state), name=f"pid-{pid}")
         return pid
+
+    def _resume_state(self, task: Task) -> dict | None:
+        cp_id = task.metadata.get("resume_from")
+        if not cp_id:
+            return None
+        previous = task.metadata.get("previous_root_pid")
+        cp = self.k.store.latest_checkpoint(previous) if previous else None
+        meta = {k: v for k, v in task.metadata.items() if k != "resume_from"}
+        self.k.tasks._save(self.k.tasks.get(task.task_id).model_copy(update={"metadata": meta}))
+        return dict(cp.agent_state) if cp and cp.checkpoint_id == cp_id and cp.agent_state else None
 
     def _scopes(self, manifest: AgentManifest, task: Task, caps: list[str]) -> list[str]:
         scopes = intersect_scopes(mounts_as_globs(manifest.memory.mounts), list(task.data_scope))
@@ -140,24 +164,26 @@ class Lifecycle:
         return scopes
 
     # ------------------------------------------------------------------ run
-    async def _run(self, pid: int, manifest: AgentManifest, ctx: KernelAgentContext) -> None:
+    async def _run(self, pid: int, manifest: AgentManifest, ctx: KernelAgentContext,
+                   restore_state: dict | None = None) -> None:
         k = self.k
         runtime = k.services.require("agent_runtime")
         goal = k.procs.get(pid).goal
         result: AgentResult | None = None
         try:
-            attempt = 0
+            attempt, budget = 0, MAX_ATTEMPTS
             while result is None:
+                error: ErrorInfo | None = None
                 try:
-                    checkpoint = k.store.latest_checkpoint(pid) if attempt else None
-                    if checkpoint is not None and checkpoint.agent_state:
-                        result = await runtime.restore(manifest, goal, ctx, checkpoint.agent_state)
+                    state = restore_state if attempt == 0 else self._checkpoint_state(pid)
+                    if state:
+                        result = await runtime.restore(manifest, goal, ctx, state)
                     else:
                         result = await runtime.run(manifest, goal, ctx)
                     break
                 except MosaicError as e:
                     error = e.to_info()
-                    if e.code == "QUOTA_EXCEEDED" or attempt + 1 >= MAX_ATTEMPTS:
+                    if e.code == "QUOTA_EXCEEDED":
                         result = self._failed(pid, manifest, error)
                         break
                 except asyncio.CancelledError:
@@ -165,15 +191,19 @@ class Lifecycle:
                 except Exception as e:
                     log.exception("agent %s (pid %s) crashed", manifest.name, pid)
                     error = ErrorInfo(code="INTERNAL", message=f"{type(e).__name__}: {e}", retriable=True)
-                    if attempt + 1 >= MAX_ATTEMPTS:
-                        result = self._failed(pid, manifest, error)
-                        break
                 attempt += 1
                 await self._to(pid, AgentState.FAILED, reason=error.message, error=error)
                 k.procs.update(pid, attempt_count=attempt)
-                await self._to(pid, AgentState.RETRYING, reason=f"attempt {attempt + 1}/{MAX_ATTEMPTS}")
+                if attempt >= budget:
+                    if not await self._escalate(pid, manifest, error, attempt):
+                        result = self._failed(pid, manifest, error)
+                        break
+                    budget += 1  # a human granted one more attempt
+                await self._to(pid, AgentState.RETRYING, reason=f"attempt {attempt + 1}/{budget}")
                 await self._to(pid, AgentState.RUNNING)
         except asyncio.CancelledError:
+            if self.suspending:
+                return  # kernel shutdown: leave the process unfinished; its task resumes on the next boot
             result = AgentResult(pid=pid, agent=manifest.name, status=AgentResultStatus.CANCELLED,
                                  summary=f"{manifest.name} was terminated")
             await self._finish(pid, result, AgentState.TERMINATED)
@@ -182,6 +212,42 @@ class Lifecycle:
         if result.status == AgentResultStatus.CANCELLED:
             target = AgentState.TERMINATED
         await self._finish(pid, result, target)
+
+    def _checkpoint_state(self, pid: int) -> dict | None:
+        cp = self.k.store.latest_checkpoint(pid)
+        return dict(cp.agent_state) if cp is not None and cp.agent_state else None
+
+    async def _escalate(self, pid: int, manifest: AgentManifest, error: ErrorInfo, attempts: int) -> bool:
+        """Blueprint §49 human escalation: ask the approval center whether to try once more. False = give up."""
+        k = self.k
+        timeout = k.config.escalation_timeout_s
+        if timeout <= 0:
+            return False
+        proc = k.procs.get(pid)
+        req = SyscallRequest(syscall_id=new_id("SC"), task_id=proc.task_id, pid=pid, capability="agent.retry",
+                             tool="kernel", operation="retry", risk=Risk.HIGH, resource=f"pid/{pid}",
+                             justification=f"{manifest.name} failed {attempts} times: {error.message}")
+        decision = PolicyDecision(decision=Decision.REQUIRES_APPROVAL, policy="kernel.escalation",
+                                  approval_id=new_id("APR"), matched_rules=["retries-exhausted"],
+                                  reason=f"{manifest.name} failed {attempts} times; retry once more?")
+        fut = await k.approvals.create(Approval(approval_id=decision.approval_id, task_id=proc.task_id, pid=pid,
+                                                agent=manifest.name, syscall=req, decision=decision))
+        k.procs.update(pid, waiting_on=f"approval:{decision.approval_id}")
+        await k.tasks.on_process_change(proc.task_id)
+        await k.journal(proc.task_id, AuditKind.APPROVAL, f"Escalated to a human after {attempts} failed attempts",
+                        pid=pid, actor="kernel.lifecycle", refs=[decision.approval_id], data={"error": error.message})
+        try:
+            status = await asyncio.wait_for(asyncio.shield(fut), timeout)
+        except TimeoutError:
+            await k.approvals.expire(decision.approval_id, "escalation timed out")
+            status = ApprovalStatus.EXPIRED
+        except asyncio.CancelledError:
+            await k.approvals.expire(decision.approval_id, "process terminated")
+            raise
+        finally:
+            k.procs.update(pid, waiting_on=None)
+            await k.tasks.on_process_change(proc.task_id)
+        return status == ApprovalStatus.APPROVED
 
     @staticmethod
     def _failed(pid: int, manifest: AgentManifest, error: ErrorInfo) -> AgentResult:
@@ -297,7 +363,9 @@ class Lifecycle:
             await self.k.procs.transition(pid, AgentState.RUNNING)
         return cp
 
-    async def shutdown(self) -> None:
+    async def suspend(self) -> None:
+        """Kernel shutdown: cancel running agents WITHOUT finishing their processes/tasks (resumed on next boot)."""
+        self.suspending = True
         live = [t for t in self.tasks.values() if not t.done()]
         for t in live:
             t.cancel()

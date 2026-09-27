@@ -4,9 +4,17 @@ from mosaic_contracts.wiring import ServiceBundle, Settings
 
 
 def build_event_bus(settings: Settings, services: ServiceBundle) -> EventBus:
-    from .events.bus import KernelEventBus
+    """In-process bus; mirrored to a Redis Stream when Redis answers (MOSAIC_EVENTS_REDIS=off disables)."""
+    import logging
+    import os
 
-    return KernelEventBus()
+    from .events.bus import KernelEventBus, RedisMirror, redis_reachable
+
+    mirror = None
+    if os.getenv("MOSAIC_EVENTS_REDIS", "auto").lower() != "off" and redis_reachable(settings.redis_url):
+        mirror = RedisMirror(settings.redis_url)
+    logging.getLogger("mosaic.kernel").info("event bus: %s", "redis-mirrored" if mirror else "in-process only")
+    return KernelEventBus(mirror=mirror)
 
 
 def build_policy_engine(settings: Settings, services: ServiceBundle) -> PolicyEngine:

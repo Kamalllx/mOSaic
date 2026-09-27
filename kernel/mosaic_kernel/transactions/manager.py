@@ -56,7 +56,7 @@ class TransactionManager:
                         pid=pid, actor="kernel.transactions", refs=[sid],
                         data={"checks": [c.model_dump(mode="json") for c in verification.checks]})
         if verification.passed:
-            k.committed.setdefault(task_id, []).append(sid)
+            k.tasks.add_action(task_id, sid)
             await k.emit(EventType.TRANSACTION_COMMITTED, {"verified": True}, task_id=task_id, pid=pid, correlation_id=sid)
             await k.journal(task_id, AuditKind.COMMIT, f"Committed {sid}", pid=pid, actor="kernel.transactions", refs=[sid])
             return SyscallResult(syscall_id=sid, status=SyscallStatus.COMPLETED, decision=decision, tool_result=result,

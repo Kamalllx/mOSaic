@@ -35,7 +35,23 @@ class Executor:
             await self._on_task_end(event.task_id)
 
     async def list_tools(self) -> list[ToolSpec]:
-        return [b.spec() for b in self.backends.values()]
+        specs = []
+        for b in self.backends.values():
+            discover = getattr(b, "discover", None)
+            if discover is not None:  # e.g. MCP servers: tools are only known after connecting
+                try:
+                    await discover()
+                except Exception as e:
+                    log.error("tool backend %s unavailable: %s", b.name, e)
+                    continue
+            specs.append(b.spec())
+        return specs
+
+    async def aclose(self) -> None:
+        for b in self.backends.values():
+            close = getattr(b, "aclose", None)
+            if close is not None:
+                await close()
 
     async def execute(self, invocation: ToolInvocation) -> ToolResult:
         backend = self.backends.get(invocation.tool)

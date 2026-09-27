@@ -6,5 +6,5 @@ TODO:
   - [x] deny by default; tools allow/deny globs via mosaic_contracts.util.capability_matches
   - [x] approval map: required / auto / never; risk >= high always requires approval
   - [x] network constraints -> PolicyDecision.constraints['network_allow']
-  - [ ] watch policies/ and call reload() on change (reload() itself publishes policy.updated)
+  - [x] watch policies/ and hot-reload on change; a broken edit keeps the last good set
 """

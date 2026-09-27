@@ -76,6 +76,11 @@ class TaskManager:
         await self.k.scheduler.enqueue(t)
         return t
 
+    def add_action(self, task_id: str, syscall_id: str) -> None:
+        """Record a committed syscall on the task (persisted, so it survives restarts)."""
+        t = self.get(task_id)
+        self._save(t.model_copy(update={"metadata": {**t.metadata, "actions": [*t.metadata.get("actions", []), syscall_id]}}))
+
     async def set_root(self, task_id: str, pid: int) -> None:
         self._save(self.get(task_id).model_copy(update={"root_pid": pid, "updated_at": utcnow()}))
 
@@ -91,7 +96,8 @@ class TaskManager:
         if not procs:
             return t.status
         live = [p for p in procs if p.state not in TERMINAL_STATES and p.state != AgentState.FAILED]
-        if any(p.waiting_on and p.waiting_on.startswith("approval:") for p in live):
+        waiting = [p for p in procs if p.state not in TERMINAL_STATES]  # FAILED pids can await an escalation
+        if any(p.waiting_on and p.waiting_on.startswith("approval:") for p in waiting):
             return TaskStatus.WAITING_APPROVAL
         if live and all(p.state == AgentState.PAUSED for p in live):
             return TaskStatus.PAUSED
@@ -117,7 +123,7 @@ class TaskManager:
         evidence = list(dict.fromkeys(e for r in results for e in r.evidence))
         artifacts = list(dict.fromkeys([*await self._artifacts(task_id), *root_result.artifacts]))
         result = TaskResult(summary=root_result.summary, artifacts=artifacts, evidence=evidence,
-                            actions=list(self.k.committed.get(task_id, [])),
+                            actions=list(t.metadata.get("actions", [])),
                             usage=sum_usage([p.usage for p in procs]))
         t = await self._set_status(t, TaskStatus.COMPLETED, result=result)
         await self.k.emit(EventType.TASK_COMPLETED, {"summary": result.summary}, task_id=task_id)

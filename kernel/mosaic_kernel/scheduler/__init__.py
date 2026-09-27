@@ -6,5 +6,5 @@ TODO:
   - [x] priority queues: high / normal / background with admission control
   - [x] respect max concurrent RUNNING pids and GPU share (from models.gpu monitor via ResourceSnapshot)
   - [x] score candidates from AgentRegistry.match(goal) — used when the planner asks for 'best agent'
-  - [ ] stretch: preemption of background tasks when a high-priority task arrives
+  - [x] preemption: a high-priority task pauses a running background task until a slot frees
 """

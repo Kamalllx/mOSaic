@@ -70,33 +70,180 @@ def test_audit_hash_chain(tmp_path):
     assert not log.verify_chain("T-1")
 
 
-def test_boot_recovery_fails_interrupted_work(make_kernel, tmp_path):
+def test_boot_recovery_resumes_interrupted_work(make_kernel, tmp_path):
     store = StateStore(tmp_path / "kernel.db")
-    store.put_task(Task(task_id="T-old", org_id="acme", user_id="alice", goal="g", status=TaskStatus.RUNNING, root_pid=101))
+    store.put_task(Task(task_id="T-old", org_id="acme", user_id="alice", goal="g", status=TaskStatus.RUNNING, root_pid=101,
+                        metadata={"root_agent": "planner-agent"}))
     store.put_task(Task(task_id="T-queued", org_id="acme", user_id="alice", goal="g", status=TaskStatus.QUEUED,
                         metadata={"root_agent": "planner-agent"}))
+    store.put_task(Task(task_id="T-crashy", org_id="acme", user_id="alice", goal="g", status=TaskStatus.RUNNING,
+                        root_pid=102, metadata={"root_agent": "planner-agent", "restarts": 2}))
     store.put_process(AgentProcess(pid=101, task_id="T-old", owner="alice", agent="planner-agent", state=AgentState.WAITING))
+    store.put_process(AgentProcess(pid=102, task_id="T-crashy", owner="alice", agent="planner-agent",
+                                   state=AgentState.RUNNING))
     req = _req("jira.write", "jira", "update_issue")
     store.put_approval(Approval(approval_id="APR-1", task_id="T-old", pid=101, agent="planner-agent", syscall=req,
                                 decision=PolicyDecision(decision=Decision.REQUIRES_APPROVAL, policy="p", reason="r")))
 
     async def planner(goal, ctx):
-        return done(ctx)
+        return done(ctx, "resumed" if "_restored" in ctx.inputs else "fresh run")
 
     k = make_kernel({"planner-agent": planner}, [manifest("planner-agent")])
 
     async def go():
         await k.boot()
         queued = await k.tasks.wait_terminal("T-queued")
+        old = await k.tasks.wait_terminal("T-old")
         await k.shutdown()
-        return queued
+        return queued, old
 
-    queued = run(go)
-    assert k.tasks.get("T-old").status == TaskStatus.FAILED
-    assert k.procs.get(101).state == AgentState.TERMINATED
-    assert k.approvals.get("APR-1").status == ApprovalStatus.EXPIRED
+    queued, old = run(go)
+    assert k.procs.get(101).state == AgentState.TERMINATED and k.procs.get(101).last_error.message == "kernel restarted"
+    assert k.approvals.get("APR-1").status == ApprovalStatus.EXPIRED, "the resumed run asks again"
+    assert old.status == TaskStatus.COMPLETED and old.metadata["restarts"] == 1 and old.root_pid > 102
+    assert old.result.summary == "fresh run", "no checkpoint existed, so the root started over"
     assert queued.status == TaskStatus.COMPLETED, "queued tasks survive a restart"
-    assert k.procs.get(queued.root_pid).pid > 101, "PIDs are never reused"
+    assert k.tasks.get("T-crashy").status == TaskStatus.FAILED, "restart budget exhausted"
+    assert "restarted 3 times" in k.tasks.get("T-crashy").error.message
+
+
+def test_graceful_shutdown_suspends_and_boot_resumes_from_checkpoint(tmp_path):
+    """Kernel A is shut down mid-task; kernel B (same data dir) resumes the root from its last checkpoint."""
+    import asyncio as aio
+
+    from mosaic_kernel.testing import eventually, kernel_factory
+
+    async def planner(goal, ctx):
+        if "_restored" in ctx.inputs:
+            return done(ctx, f"resumed at stage {ctx.inputs['_restored']['stage']}")
+        await ctx.checkpoint({"stage": "evidence-gathered"})
+        await aio.sleep(3600)  # long work, interrupted by the shutdown
+
+    scripts, manifests = {"planner-agent": planner}, [manifest("planner-agent")]
+
+    async def first_life():
+        k = kernel_factory(tmp_path)(scripts, manifests)
+        await k.boot()
+        tid = await start_task(k)
+        await eventually(lambda: k.tasks.get(tid).root_pid is not None
+                         and k.store.latest_checkpoint(k.tasks.get(tid).root_pid) is not None)
+        await k.shutdown()
+        return tid, k.tasks.get(tid).status
+
+    async def second_life(tid):
+        k = kernel_factory(tmp_path)(scripts, manifests)
+        await k.boot()
+        t = await k.tasks.wait_terminal(tid)
+        tl = await k.audit.timeline(tid)
+        await k.shutdown()
+        return t, tl, k.bus.of_type("agent.log")
+
+    tid, status_after_shutdown = run(first_life)
+    assert status_after_shutdown not in (TaskStatus.CANCELLED, TaskStatus.FAILED), "shutdown suspends, it does not kill"
+    t, tl, logs = run(lambda: second_life(tid))
+    assert t.status == TaskStatus.COMPLETED and t.result.summary == "resumed at stage evidence-gathered"
+    assert any("Resumed after kernel restart" in e.summary for e in tl.entries)
+    assert any("resuming from checkpoint" in e.payload["message"] for e in logs)
+
+
+def test_escalation_lets_a_human_grant_another_attempt(make_kernel):
+    from mosaic_kernel.config import KernelConfig
+
+    attempts = {"n": 0}
+
+    async def flaky(goal, ctx):
+        attempts["n"] += 1
+        if attempts["n"] <= 3:
+            raise RuntimeError(f"boom {attempts['n']}")
+        return done(ctx, "fixed on attempt 4")
+
+    k = make_kernel({"planner-agent": flaky}, [manifest("planner-agent")],
+                    config=KernelConfig(escalation_timeout_s=5, policy_watch_interval_s=0))
+
+    async def go():
+        await k.boot()
+        seen = []
+
+        async def approve(ev):
+            seen.append(ev.payload)
+            await k.approvals.resolve(ev.payload["approval_id"], True, "alice", "try again")
+
+        k.bus.subscribe("approval.requested", approve)
+        t = await k.tasks.wait_terminal(await start_task(k))
+        await k.shutdown()
+        return t, seen
+
+    t, seen = run(go)
+    assert t.status == TaskStatus.COMPLETED and t.result.summary == "fixed on attempt 4"
+    assert seen[0]["capability"] == "agent.retry" and seen[0]["policy"] == "kernel.escalation"
+
+
+def test_escalation_rejected_fails_the_task(make_kernel):
+    from mosaic_kernel.config import KernelConfig
+
+    async def broken(goal, ctx):
+        raise RuntimeError("always")
+
+    k = make_kernel({"planner-agent": broken}, [manifest("planner-agent")],
+                    config=KernelConfig(escalation_timeout_s=5, policy_watch_interval_s=0))
+
+    async def go():
+        await k.boot()
+        statuses = []
+
+        async def reject(ev):
+            await k.approvals.resolve(ev.payload["approval_id"], False, "alice")
+
+        async def track(ev):
+            if ev.payload.get("new") == "waiting_approval":
+                statuses.append("seen-waiting")
+
+        k.bus.subscribe("task.status_changed", track)
+        k.bus.subscribe("approval.requested", reject)
+        t = await k.tasks.wait_terminal(await start_task(k))
+        await k.shutdown()
+        return t, statuses
+
+    t, statuses = run(go)
+    assert t.status == TaskStatus.FAILED and "always" in t.error.message
+    assert "seen-waiting" in statuses, "a pending escalation shows up as waiting_approval"
+
+
+def test_policy_hot_reload(tmp_path):
+    import asyncio as aio
+    import shutil
+
+    from mosaic_contracts.testing.fakes import fake_bundle
+    from mosaic_contracts.wiring import Settings
+    from mosaic_kernel.config import KernelConfig
+    from mosaic_kernel.kernel import Kernel
+
+    policies = tmp_path / "policies"
+    shutil.copytree(REPO_ROOT / "policies", policies)
+    settings = Settings(data_dir=tmp_path / "data", policies_dir=policies)
+    bundle = fake_bundle(settings)
+    bundle.policy = YamlPolicyEngine(policies, event_bus=bundle.event_bus)
+    k = Kernel(settings, bundle, KernelConfig(policy_watch_interval_s=0.05))
+    probe = (_req("sandbox.exec", "sandbox", "exec"), _agent("engineering-agent", ["sandbox.exec"]))
+    good = ("policy: sandbox-ok\npriority: 5\napplies_to: {agents: [engineering-agent]}\n"
+            "tools: {allow: [sandbox.exec]}\napproval: {sandbox.exec: required}\n")
+
+    async def go():
+        await k.boot()
+        before = await k.policy.evaluate(*probe)
+        (policies / "zz-sandbox.yaml").write_text(good)
+        await aio.sleep(0.4)
+        after = await k.policy.evaluate(*probe)
+        (policies / "zz-sandbox.yaml").write_text("policy: [broken")
+        await aio.sleep(0.4)
+        still = await k.policy.evaluate(*probe)
+        await k.shutdown()
+        return before, after, still, bundle.event_bus.of_type("policy.updated")
+
+    before, after, still, events = run(go)
+    assert before.decision == Decision.DENY and after.decision == Decision.REQUIRES_APPROVAL
+    assert still.decision == Decision.REQUIRES_APPROVAL, "a broken edit keeps the last good policy set"
+    assert "sandbox-ok" in events[0].payload["policies"] and events[-1].payload.get("error")
 
 
 def test_websocket_replays_history_for_late_subscribers(make_kernel):

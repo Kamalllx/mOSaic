@@ -1,4 +1,10 @@
-"""The Kernel: composes every kernel subsystem on top of a ServiceBundle (fake or real services)."""
+"""The Kernel: composes every kernel subsystem on top of a ServiceBundle (fake or real services).
+
+Boot/shutdown semantics (blueprint §5):
+  * shutdown SUSPENDS: running agents are cancelled but their tasks stay unfinished in the state store;
+  * boot RESUMES: each unfinished task is re-run from its root agent's last checkpoint (up to max_restarts),
+    queued tasks are re-queued, pending approvals expire (the resumed run asks again).
+"""
 from __future__ import annotations
 
 import asyncio
@@ -6,6 +12,7 @@ import logging
 import time
 from collections import deque
 from collections.abc import Coroutine
+from pathlib import Path
 from typing import Any
 
 from mosaic_contracts.schema import (
@@ -19,17 +26,20 @@ from mosaic_contracts.schema import (
     ErrorInfo,
     Event,
     EventType,
+    Task,
     TaskStatus,
 )
 from mosaic_contracts.schema.common import new_id, utcnow
 from mosaic_contracts.wiring import ServiceBundle, Settings
 
 from .approvals.queue import ApprovalQueue
+from .config import KernelConfig
 from .context.mailboxes import Mailboxes
 from .lifecycle.manager import Lifecycle
 from .persistence.store import StateStore
 from .process.table import ProcessTable
 from .quota.manager import QuotaManager
+from .scheduler.cron import CronRunner, load_schedules
 from .scheduler.scheduler import Scheduler
 from .syscalls.gateway import SyscallGateway
 from .tasks.manager import TaskManager
@@ -41,8 +51,9 @@ HISTORY_PER_TASK = 5000
 
 
 class Kernel:
-    def __init__(self, settings: Settings, services: ServiceBundle) -> None:
+    def __init__(self, settings: Settings, services: ServiceBundle, config: KernelConfig | None = None) -> None:
         self.settings, self.services = settings, services
+        self.config = config or KernelConfig.from_env()
         self.bus = services.require("event_bus")
         self.audit = services.require("audit")
         self.policy = services.require("policy")
@@ -53,33 +64,43 @@ class Kernel:
         self.mailboxes = Mailboxes()
         self.approvals = ApprovalQueue(self)
         self.transactions = TransactionManager(self)
-        self.syscalls = SyscallGateway(self)
+        self.syscalls = SyscallGateway(self, approval_timeout=self.config.approval_timeout_s)
         self.lifecycle = Lifecycle(self)
-        self.scheduler = Scheduler(self)
-        self.committed: dict[str, list[str]] = {}
+        self.scheduler = Scheduler(self, max_concurrent_tasks=self.config.max_concurrent_tasks)
         self.history: dict[str, deque[Event]] = {}
         self.ready = False
         self.started_at = time.monotonic()
         self._background: set[asyncio.Task] = set()
         self._subscriptions: list[Any] = []
+        self.cron: CronRunner | None = None
 
     # ------------------------------------------------------------------ boot / shutdown
     async def boot(self) -> None:
         self.tasks.load(self.store.tasks())
         self.procs.load(self.store.processes())
         self.approvals.load(self.store.approvals())
+        await self._restore_history()
         requeue = self._recover()
         self._subscriptions = [self.bus.subscribe("*", self._record_history),
                                self.bus.subscribe(EventType.KNOWLEDGE_CHANGED.value, self._on_knowledge_changed)]
         await self.scheduler.start()
         for t in requeue:
+            if t.metadata.get("resume_from") is not None or t.metadata.get("restarts"):
+                await self.journal(t.task_id, AuditKind.TASK, f"Resumed after kernel restart #{t.metadata['restarts']}",
+                                   actor="kernel", data={"checkpoint": t.metadata.get("resume_from")})
             await self.scheduler.enqueue(t)
+        schedules = load_schedules(self.config.schedules_file)
+        if schedules:
+            self.cron = CronRunner(self, schedules)
+            self.spawn_background(self.cron.run())
+        if self.config.policy_watch_interval_s > 0 and hasattr(self.policy, "policies_dir"):
+            self.spawn_background(self._watch_policies(self._policy_fingerprint()))  # snapshot now: no edit is missed
         self.ready = True
         await self.emit(EventType.SYSTEM_READY, {"components": [c.model_dump(mode="json") for c in self.components()]})
-        log.info("kernel ready (%d tasks restored, %d re-queued)", len(self.tasks.list()), len(requeue))
+        log.info("kernel ready (%d tasks known, %d queued/resumed)", len(self.tasks.list()), len(requeue))
 
-    def _recover(self) -> list:
-        """Blueprint §5.3, MVP semantics: interrupted work fails cleanly; queued work is re-queued."""
+    def _recover(self) -> list[Task]:
+        """Interrupted processes are retired; unfinished tasks are resumed from their root checkpoint or failed."""
         restart = ErrorInfo(code="INTERNAL", message="kernel restarted", retriable=True)
         for p in self.procs.list():
             if p.state not in TERMINAL_STATES and p.state != AgentState.FAILED:
@@ -87,22 +108,49 @@ class Kernel:
         for a in self.approvals.list(ApprovalStatus.PENDING):
             self.approvals._save(a.model_copy(update={"status": ApprovalStatus.EXPIRED, "resolved_at": utcnow(),
                                                       "resolved_by": "kernel", "comment": "kernel restarted"}))
-        requeue = []
+        requeue: list[Task] = []
         for t in self.tasks.list():
             if t.status == TaskStatus.QUEUED:
                 requeue.append(t)
             elif t.status not in TERMINAL_TASK_STATUSES:
-                self.tasks._save(t.model_copy(update={"status": TaskStatus.FAILED, "error": restart, "updated_at": utcnow()}))
+                restarts = int(t.metadata.get("restarts", 0))
+                if restarts >= self.config.max_restarts:
+                    self.tasks._save(t.model_copy(update={"status": TaskStatus.FAILED, "updated_at": utcnow(),
+                                                          "error": restart.model_copy(update={
+                                                              "message": f"kernel restarted {restarts + 1} times"})}))
+                    continue
+                cp = self.store.latest_checkpoint(t.root_pid) if t.root_pid else None
+                meta = {**t.metadata, "restarts": restarts + 1, "resume_from": cp.checkpoint_id if cp else None,
+                        "previous_root_pid": t.root_pid}
+                requeue.append(self.tasks._save(t.model_copy(update={"status": TaskStatus.QUEUED, "root_pid": None,
+                                                                     "metadata": meta, "updated_at": utcnow()})))
         return requeue
 
+    async def _restore_history(self) -> None:
+        replay = getattr(self.bus, "replay", None)
+        if replay is None:
+            return
+        for event in await replay():
+            if event.task_id:
+                self.history.setdefault(event.task_id, deque(maxlen=HISTORY_PER_TASK)).append(event)
+
     async def shutdown(self) -> None:
+        """Suspend: stop the scheduler and running agents without finishing their tasks (they resume on boot)."""
         self.ready = False
         await self.scheduler.stop()
-        await self.lifecycle.shutdown()
+        await self.lifecycle.suspend()
         for sub in self._subscriptions:
             sub.unsubscribe()
         for t in list(self._background):
             t.cancel()
+        if self._background:
+            await asyncio.gather(*self._background, return_exceptions=True)
+        close_tools = getattr(self.services.tools, "aclose", None)
+        if close_tools is not None:
+            await close_tools()
+        mirror = getattr(self.bus, "mirror", None)
+        if mirror is not None:
+            await mirror.close()
 
     # ------------------------------------------------------------------ shared helpers
     async def emit(self, type_: EventType | str, payload: dict[str, Any] | None = None, *, task_id: str | None = None,
@@ -147,7 +195,7 @@ class Kernel:
                                        detail="" if svc is not None else "not wired"))
         return out
 
-    # ------------------------------------------------------------------ subscriptions
+    # ------------------------------------------------------------------ subscriptions & watchers
     async def _record_history(self, event: Event) -> None:
         if event.task_id:
             self.history.setdefault(event.task_id, deque(maxlen=HISTORY_PER_TASK)).append(event)
@@ -165,3 +213,22 @@ class Kernel:
                 await self.emit(EventType.AGENT_LOG, {"level": "warning", "data": report.model_dump(mode="json"),
                                                      "message": f"{path} changed: {len(report.invalidated)} memories are stale"},
                                 task_id=p.task_id, pid=p.pid, source="kernel.events")
+
+    def _policy_fingerprint(self) -> tuple:
+        directory = Path(self.policy.policies_dir)
+        return tuple(sorted((f.name, f.stat().st_mtime_ns, f.stat().st_size) for f in directory.glob("*.yaml")))
+
+    async def _watch_policies(self, last: tuple) -> None:
+        while True:
+            await asyncio.sleep(self.config.policy_watch_interval_s)
+            try:
+                current = self._policy_fingerprint()
+            except OSError:
+                continue
+            if current != last:
+                last = current
+                try:
+                    await self.policy.reload()
+                except Exception as e:  # a broken edit keeps the last good policy set
+                    log.error("policy reload rejected, keeping the previous policies: %s", e)
+                    await self.emit(EventType.POLICY_UPDATED, {"error": str(e), "policies": None}, source="kernel.policy")

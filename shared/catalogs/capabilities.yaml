@@ -10,6 +10,7 @@ memory.write:     {owner: P2, risk: low,    approval: never,    desc: "Store epi
 
 agent.spawn:      {owner: P1, risk: low,    approval: never,    desc: "Spawn child agents listed in manifest.capabilities.agents"}
 agent.message:    {owner: P1, risk: low,    approval: never,    desc: "A2A/IPC messages within the same task"}
+agent.retry:      {owner: P1, risk: high,   approval: required, desc: "Kernel-internal: human escalation to retry a process whose retries are exhausted"}
 
 jira.read:        {owner: P1, risk: low,    approval: never,    desc: "Read issues (mock-jira in the demo)"}
 jira.write:       {owner: P1, risk: medium, approval: required, desc: "Update issues / add comments (reversible)"}
