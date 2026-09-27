@@ -3,7 +3,12 @@
 Owner: P2 — Knowledge, Memory & Console
 
 TODO:
-  - [ ] chunk by heading; embeddings via ModelRouter.embed (dim from embedding_dim())
-  - [ ] Postgres: pgvector table + tsvector full-text; incremental by content_hash
-  - [ ] reindex() rebuilds from scratch; publish knowledge.reindexed
+  - [x] chunk by heading; embeddings via ModelRouter.embed (dim from embedding_dim())
+  - [x] Postgres: pgvector table + tsvector full-text; incremental by content_hash
+  - [x] reindex() rebuilds from scratch; publish knowledge.reindexed (kfs.KnowledgeFS.reindex)
 """
+
+from .indexer import Indexer, chunk_body
+from .store import PgStore
+
+__all__ = ["Indexer", "PgStore", "chunk_body"]
