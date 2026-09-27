@@ -23,6 +23,9 @@ from mosaic_knowledge.memory import MemoryManager
 
 from .test_contract import _postgres_reachable
 
+# Not the contract suite's "acme": leftover rows here must never leak into its recall assertions.
+TEST_ORG = f"test-{uuid4().hex[:8]}"
+
 
 def _manager(bus=None) -> MemoryManager:
     s = Settings.from_env(dotenv=None)
@@ -36,7 +39,7 @@ def _rec(content: str, derived: list[str], owner: str = "finance-agent", **kw) -
         memory_id=new_id("MEM"),
         kind=kw.pop("kind", MemoryKind.EPISODIC),
         scope=MemoryScope.AGENT,
-        org_id=kw.pop("org_id", "acme"),
+        org_id=kw.pop("org_id", TEST_ORG),
         owner=owner,
         content=content,
         derived_from=derived,
@@ -83,8 +86,8 @@ def test_stale_recalled_only_with_include_stale():
         r = _rec(f"zephyr{tag} ledger note", [f"/org/src-{tag}"])
         await m.store(r)
         await m.invalidate(f"/org/src-{tag}")
-        default = await m.recall(MemoryQuery(text=f"zephyr{tag}", org_id="acme"))
-        with_stale = await m.recall(MemoryQuery(text=f"zephyr{tag}", org_id="acme", include_stale=True))
+        default = await m.recall(MemoryQuery(text=f"zephyr{tag}", org_id=TEST_ORG))
+        with_stale = await m.recall(MemoryQuery(text=f"zephyr{tag}", org_id=TEST_ORG, include_stale=True))
         return r, default, with_stale
 
     r, default, with_stale = asyncio.run(go())
@@ -162,3 +165,49 @@ def test_consolidate_promotes_important_episodic_per_owner():
     assert {keep.memory_id, keep2.memory_id, "/org/finance/apollo-budget", "/org/decisions/ADR-042"} <= set(fin.derived_from)
     assert drop.memory_id not in fin.derived_from
     assert events and events[0].payload == {"created": 2}
+
+
+class _VectorRouter:
+    """Returns hand-built vectors for known texts, so similarity is controlled independently of shared words."""
+
+    def __init__(self, vectors: dict[str, list[float]], dim: int = 64) -> None:
+        self.vectors, self.dim = vectors, dim
+
+    async def embed(self, request):
+        from mosaic_contracts.schema import EmbedResponse
+
+        other = [0.0] * self.dim
+        other[-1] = 1.0
+        return EmbedResponse(model="fake-embed", dim=self.dim, vectors=[self.vectors.get(t, other) for t in request.texts])
+
+    async def embedding_dim(self) -> int:
+        return self.dim
+
+
+def _unit(*weights: tuple[int, float], dim: int = 64) -> list[float]:
+    v = [0.0] * dim
+    for i, w in weights:
+        v[i] = w
+    n = sum(x * x for x in v) ** 0.5
+    return [x / n for x in v]
+
+
+def test_semantically_close_memory_is_recalled_without_shared_words():
+    org = f"org-{uuid4().hex[:8]}"
+    query, close, far = "apollo spend increase", "quarterly outlay climbed sharply", "lunch menu rotation"
+    router = _VectorRouter({query: _unit((3, 1.0)), close: _unit((3, 1.0), (4, 0.1)), far: _unit((10, 1.0))})
+
+    async def go():
+        s = Settings.from_env(dotenv=None)
+        if not _postgres_reachable(s.database_url):
+            pytest.skip(f"Postgres unreachable at {s.database_url}")
+        m = MemoryManager(PgStore(s.database_url), router)
+        near_rec, far_rec = _rec(close, [], org_id=org), _rec(far, [], org_id=org)
+        await m.store(near_rec)
+        await m.store(far_rec)
+        return near_rec, far_rec, await m.recall(MemoryQuery(text=query, org_id=org))
+
+    near_rec, far_rec, got = asyncio.run(go())
+    ids = [r.memory_id for r in got]
+    assert near_rec.memory_id in ids, "high cosine similarity alone must be enough to recall a memory"
+    assert far_rec.memory_id not in ids, "no shared words and low similarity: not relevant"

@@ -29,6 +29,10 @@ from mosaic_contracts.util import estimate_tokens
 
 from ..indexing.store import PgStore
 
+# A memory with no word in common with the query is recalled only if its cosine similarity reaches this.
+# TODO(T9): retune RECALL_KEYWORD_GATE_COSINE with real embeddings; semantically-related memories with no shared words must still be recalled.
+RECALL_KEYWORD_GATE_COSINE = 0.5
+
 _INVALIDATE_CTE = """
 WITH RECURSIVE dep(id) AS (
   SELECT memory_id FROM memories WHERE %s = ANY(derived_from)
@@ -123,12 +127,12 @@ class MemoryManager:
             if q_terms:
                 doc_terms = set(_terms((row["content"] or "") + " " + " ".join(row["tags"] or [])))
                 keyword_overlap = len(q_terms & doc_terms) / len(q_terms)
-                if keyword_overlap == 0.0:
-                    continue  # no textual relevance signal at all — don't surface it just because it exists
             cosine = 0.0
             if qvec is not None and row.get("embedding") is not None:
                 emb = row["embedding"]
                 cosine = _cosine(qvec, emb.to_list() if hasattr(emb, "to_list") else list(emb))
+            if q_terms and keyword_overlap == 0.0 and cosine < RECALL_KEYWORD_GATE_COSINE:
+                continue  # neither a shared word nor strong similarity: not relevant, however much memory exists
             score = 0.6 * cosine + 0.3 * keyword_overlap + 0.1 * (row["importance"] or 0.0)
             scored.append((score, row))
         scored.sort(key=lambda x: -x[0])
