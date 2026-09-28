@@ -21,3 +21,9 @@ Full brief: [docs/team/P3-agents-models.md](../../docs/team/P3-agents-models.md)
 | Action (approval path) | ☑ |
 | A2A helpers | ☑ |
 | Prompt tuning on local models (M3) | ☑ |
+| Integrated on `integration/m3` (2026-09-28) | ☑ real runs on llama3.2:3b + nomic-embed-text through the console: cited root causes, 6.2 lakh / 31%, one action agent, one approval |
+| Memory: finance/engineering `remember_finding` (drives consolidation + invalidation) | ☑ |
+| Citations limited to documents retrieved in the run; approval evidence = root-cause documents | ☑ |
+| Router: batch `/api/embed`, schema-invalid JSON repaired, `MODEL_UNAVAILABLE` at routing time; model tests skip when models aren't pulled | ☑ |
+| Agents consult `/org/policies` (needed for the security-policy-v2 invalidation demo) | ☐ follow-up |
+| Review leftovers: `MOSAIC_MODELS_CONFIG` override (contract field); nomic `search_query:`/`search_document:` prefixes (contract, co-propose with P2) | ☐ |

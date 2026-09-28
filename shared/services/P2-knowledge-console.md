@@ -33,11 +33,13 @@ Full brief: [docs/team/P2-knowledge-console.md](../../docs/team/P2-knowledge-con
 | `test_chunker.py`, `test_validation.py` | chunking, linter rules; the fixtures validate with zero errors | nothing |
 
 ## Live invalidation demo (S2)
-1. Run `mosaicd` with `MOSAIC_KNOWLEDGE_WATCH=true` (contract 0.3.0) and the bundle in `MOSAIC_OKF_DIR`; keep the console's `/knowledge?path=/org/policies/security` open.
-2. Memories derived from the policy must exist: agents that `ctx.remember(...)` a record with `derived_from=["/org/policies/security"]` (P3's agents don't call `ctx.remember` yet, see the P3 review; seed one with `MemoryManager.store` for rehearsals). With a local patch in which finance/engineering remember their findings, editing `finance/cloud-bill-2026-09.md` staled exactly the finance-agent memories in 0.1 s and left engineering-agent's fresh (2026-09-28, real models).
-3. `cp data/demo-assets/security-policy-v2.md data/okf/policies/security.md`.
-4. Within ~1 s: `knowledge.changed` → `memory.invalidated` (count + affected agents; derived-of-derived memories too) → `knowledge.reindexed`. The console toasts the invalidation on every page and the explorer switches to v2 without a reload. Verified on the full real stack (P1 kernel + P4 bundle) on 2026-09-28.
-5. Reset afterwards with `git checkout data/okf/policies/security.md` (the watcher reindexes v1).
+The demo steps are in `docs/DEMO_SCRIPT.md` (step 18). In short:
+1. Run `mosaicd` with `MOSAIC_KNOWLEDGE_WATCH=true` after a completed run. The finance and engineering agents `ctx.remember` their findings, derived from the documents they cited.
+2. Append a line to `data/okf/finance/cloud-bill-2026-09.md`.
+3. Within ~1 s: `knowledge.changed` → `memory.invalidated` (count + affected agents; derived-of-derived memories too) → `knowledge.reindexed`. The console toasts the invalidation on every page, and the explorer shows the edit without a reload. On `integration/m3` (2026-09-28, real models) the toast came after 0.2 s and named only finance-agent; the explorer updated after 0.9 s, and engineering-agent's memories stayed fresh.
+4. Reset with `git checkout data/okf/finance/cloud-bill-2026-09.md`.
+
+Security policy v2 (`data/demo-assets/security-policy-v2.md`) reindexes but invalidates nothing until agents consult `/org/policies` (P3 follow-up).
 
 ## Status (owner keeps this current)
 | Item | Status |
@@ -48,10 +50,10 @@ Full brief: [docs/team/P2-knowledge-console.md](../../docs/team/P2-knowledge-con
 | Context firewall | ✅ regex; optional LLM classifier built, off by default |
 | Memory manager + coherence | ✅ (re-consolidation queue not done) |
 | Ingest pipeline (uses P4 converters) | ✅ all five of P4's converters through the pipeline; output byte-identical to P4's committed data/okf |
-| Run under P1's real kernel (T9 part 1) | ✅ locally (P1 not on `main` yet) |
+| Run under P1's real kernel (T9 part 1) | ✅ on `integration/m3` |
 | Real embeddings (T9 part 2) | ✅ with P3's router + `nomic-embed-text` (768-dim): gate 0.5 → 0.42; RRF graph weight checked (0/0.1 → 9/10, 0.25 slips, ≥0.5 collapses), stays 0.1. Full index of P4's 73 files: 38.7 s; model switch re-embeds 107 chunks in 14 s |
-| UI: composer · timeline · tree · approvals | ✅ on `p2/console` (mock + real gateway) |
-| UI: audit · explorer · monitor · result | ✅ on `p2/console`; artifact bytes/screenshots wait on a gateway route |
-| Retrieval QA ≥ 9/10 on data/okf | ✅ 9/10 with fake and with real embeddings (`test_retrieval_qa.py`); the miss (Q7, ADR-042 "decommission") is a wording gap in the data |
-| Dress rehearsal (real P1 + P3 + P4, llama3.2:3b) | ✅ 39.6 s end to end, 3 approvals from the console; all 3 root causes found by the specialists |
-| Live invalidation demo (S2) | ✅ |
+| UI: composer · timeline · tree · approvals | ✅ on `integration/m3` (mock + real gateway); the tree re-fits on resize |
+| UI: audit · explorer · monitor · result | ✅ on `integration/m3`; the recovery plan and screenshots render in W7/W8 (contract 0.4.0 artifact route); firewall-flagged retrievals come from `knowledge.retrieved.flagged` |
+| Retrieval QA ≥ 9/10 on data/okf | ✅ 10/10 after P4's ADR-042 wording fix (`test_retrieval_qa.py`) |
+| Dress rehearsal (real P1 + P3 + P4, llama3.2:3b) | ✅ `integration/m3`, driven through the console: 65.9 s and 75.1 s, 1 approval each; flagged vendor email in W2 with no agent acting on it; cited root causes; 6.2 lakh / 31%; screenshots in W7/W8; hash chain intact in W5 |
+| Live invalidation demo (S2) | ✅ cloud-bill edit (DEMO_SCRIPT step 18); policy v2 waits on P3 |

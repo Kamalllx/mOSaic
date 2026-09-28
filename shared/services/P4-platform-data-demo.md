@@ -16,11 +16,12 @@ Full brief: [docs/team/P4-platform-data-demo.md](../../docs/team/P4-platform-dat
 |---|---|
 | RTX box: drivers · Docker · toolkit · Ollama models | ☐ runbook + `infra/appliance/install.sh` ready; run on the node |
 | Resource probe | ☑ `HostProbe` (psutil + nvidia-smi, stale-while-revalidate < 500 ms); contract green |
-| Converters: markdown · jira-json · slack · csv · document | ☑ all five; contract + unit tests green (document needs the `ingest` extra) |
+| Converters: markdown · jira-json · slack · csv · document | ☑ four; `document` not shipped on `integration/m3` (its 3 contract tests skip: "converter 'document' not shipped yet") |
 | Browser image + driver + vendor-docs | ☑ Playwright 1.63.0 image (offline, uid 10001, read-only fs); contract green under P1's sandbox flags |
-| data/okf ≥ 30 (M1) / ≥ 60 (M3) files + qa.yaml | ☑ / ☑ 73 files; `data/qa.yaml`; `scripts/check_okf.py` OK |
+| data/okf ≥ 30 (M1) / ≥ 60 (M3) files + qa.yaml | ☑ / ☑ 73 files; `data/qa.yaml`; `scripts/check_okf.py` OK; 0 validation warnings (Slack folder indexes); retrieval QA 10/10 (ADR-042 wording) |
 | systemd boot + LAN access | ☐ units + Tailscale/ufw in install.sh; verify with a cold boot on the node |
-| Demo script · 3 rehearsals · backup video | ☐ script written; rehearsals pending |
+| Demo script · 3 rehearsals · backup video | ☐ script updated on `integration/m3` (models, URLs, fallbacks, cloud-bill invalidation as step 18, Docker Desktop known limit); 2 clean real runs on a Windows dev laptop; RTX rehearsals + video pending |
+| Dev-laptop fixes | ☑ `MOSAIC_HOST_PORT` for compose; `browser_smoke.py` on Docker Desktop; `.env.example` covers the merged stack |
 
 Notes for consumers:
 - **P2:** `build_converters` returns specific converters first and markdown (the catch-all for any .md file or directory) last; take the first `can_convert`. `request.options["frontmatter"]` overrides converter defaults (e.g. `{"privacy": "confidential"}`). QA questions live in `data/qa.yaml` (outside the bundle).

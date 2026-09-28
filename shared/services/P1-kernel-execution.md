@@ -30,6 +30,7 @@ Full brief: [docs/team/P1-kernel-execution.md](../../docs/team/P1-kernel-executi
 - Scheduled agents: `MOSAIC_KERNEL_SCHEDULES_FILE` (see `kernel/schedules.example.yaml`). Each firing publishes `cron.triggered` and creates a normal task owned by user `scheduler`, and a job never overlaps itself.
 
 **Totals at hand-off:** P1 suites 97 passed, 1 skipped (waiting on P4's BrowserDriver). Whole repo 171 passed, 34 skipped (all other splits' pending work).
+**Integrated (`integration/m3`, 2026-09-28):** whole repo 290 passed, 0 failed, 3 skipped (P4's document converter).
 
 ## How it is tested
 | Suite | What it proves | Needs |
@@ -53,7 +54,9 @@ Full brief: [docs/team/P1-kernel-execution.md](../../docs/team/P1-kernel-executi
 | Gateway (route conformance, WS history replay) · CLI (`ai-*`, `ai run`) | ✅ |
 | Artifacts · fs (jailed, reversible) · mock Jira + jira tool · executor · MCP adapter | ✅ |
 | Docker sandbox manager (hardening verified inside live containers) | ✅ |
-| Browser backend (live-tested with a reference Playwright client) | ✅ waiting on P4's production BrowserDriver |
+| Browser backend | ✅ with P4's `PlaywrightDriver` on `integration/m3` (screenshots in real runs) |
+| Integrated on `integration/m3` (2026-09-28) | ✅ real runs through the console (75 s, 1 approval, hash chain intact); hard kill mid-run → task resumed from its root checkpoint and completed |
+| Deferred: browser sandbox egress in port mode (Docker Desktop) | ☐ default bridge is needed to publish :3000; needs a relay or mosaicd on `mosaic_sandbox`. `ip` mode (Linux node) is unaffected |
 | Quotas · suspend/resume across restarts · checkpoints | ✅ |
 | e2e: all-fake ✅ · every P1 component real on real containers ✅ | ✅ |
 | Scheduled agents (cron, `MOSAIC_KERNEL_SCHEDULES_FILE`) | ✅ |
