@@ -6,6 +6,7 @@ import { Box, Camera, CircleCheck, CircleX, Cpu, Gauge, MemoryStick, MonitorCog 
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useClient } from "@/app/providers";
+import { ArtifactImage, isImage } from "@/components/artifacts";
 import { formatTime } from "@/components/status";
 import { str } from "@/lib/events";
 import { cn } from "@/lib/utils";
@@ -47,12 +48,29 @@ function useScreenshots() {
   return shots;
 }
 
+/** Before any live screenshot arrives: the screenshots of the most recent task that has some. */
+function useLastTaskScreenshots() {
+  const client = useClient();
+  return useQuery({
+    queryKey: ["last-task-screenshots"],
+    queryFn: async () => {
+      const tasks = (await client.listTasks()).sort((a, b) => (b.updated_at ?? "").localeCompare(a.updated_at ?? "")).slice(0, 5);
+      for (const t of tasks) {
+        const refs = (await client.taskArtifacts(t.task_id)).filter(isImage);
+        if (refs.length) return { taskId: t.task_id, refs };
+      }
+      return null;
+    },
+  });
+}
+
 export default function SystemPage() {
   const client = useClient();
   const status = useQuery({ queryKey: ["system-status"], queryFn: () => client.status(), refetchInterval: 10_000 });
   const res = useQuery({ queryKey: ["system-resources"], queryFn: () => client.resources(), refetchInterval: 2_000 });
   const sandboxes = useQuery({ queryKey: ["sandboxes"], queryFn: () => client.sandboxes(), refetchInterval: 3_000 });
   const shots = useScreenshots();
+  const last = useLastTaskScreenshots();
   const r = res.data;
   const gpu = r?.gpu;
 
@@ -133,22 +151,30 @@ export default function SystemPage() {
             ))}
           </ul>
           <h2 className="flex items-center gap-2 pt-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground"><Camera className="size-4" /> Latest screenshots</h2>
-          {shots.length === 0 ? (
+          {shots.length === 0 && last.data ? (
+            <div className="space-y-1">
+              <p className="flex font-mono text-xs text-muted-foreground">
+                from the last run
+                <Link href={`/tasks/${last.data.taskId}`} className="ml-auto text-primary hover:underline">{last.data.taskId}</Link>
+              </p>
+              {last.data.refs.map((r) => <ArtifactImage key={r} artifact={r} />)}
+            </div>
+          ) : shots.length === 0 ? (
             <p className="text-sm text-muted-foreground">Screenshots appear here live when an agent browses inside a sandbox.</p>
           ) : (
-            <ul className="space-y-1 font-mono text-xs">
-              {shots.map((e) => (
-                <li key={e.event_id} className="flex gap-3">
-                  <span className="text-muted-foreground">{formatTime(e.ts)}</span>
-                  <span className="text-ev-tool">{str(e, "artifact")}</span>
-                  <span className="text-muted-foreground">pid {e.pid}</span>
+            <ul className="space-y-3">
+              {shots.map((e, i) => (
+                <li key={e.event_id} className="space-y-1">
+                  <p className="flex gap-3 font-mono text-xs">
+                    <span className="text-muted-foreground">{formatTime(e.ts)}</span>
+                    <span className="text-muted-foreground">pid {e.pid}</span>
+                    <Link href={`/tasks/${e.task_id}`} className="ml-auto text-primary hover:underline">{e.task_id}</Link>
+                  </p>
+                  {str(e, "artifact") && <ArtifactImage artifact={str(e, "artifact")!} className={i === 0 ? "" : "max-w-xs opacity-80"} />}
                 </li>
               ))}
             </ul>
           )}
-          <p className="text-xs text-muted-foreground">
-            The gateway lists artifacts but has no route that serves their bytes yet, so screenshots show as references.
-          </p>
         </section>
       </div>
     </div>

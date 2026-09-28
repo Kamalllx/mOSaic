@@ -7,6 +7,7 @@ import remarkGfm from "remark-gfm";
 import { useClient } from "@/app/providers";
 import { str, strList, type TaskView } from "@/lib/events";
 import { cn } from "@/lib/utils";
+import { ArtifactImage, ArtifactMarkdown, artifactName, isImage } from "./artifacts";
 import { PidChip } from "./status";
 import { EvidencePath } from "./timeline";
 
@@ -18,6 +19,9 @@ export function ResultPanel({ taskId, view }: { taskId: string; view: TaskView }
   const failed = view.status !== "completed";
   const r = view.task?.result;
   const tokens = (r?.usage?.tokens_prompt ?? 0) + (r?.usage?.tokens_completion ?? 0);
+  const refs = artifacts.data ?? [];
+  const plan = refs.find((a) => a.endsWith("/recovery-plan.md"));
+  const shots = refs.filter(isImage);
 
   return (
     <div className={cn("rounded-lg border-2 bg-card p-4", failed ? "border-st-failed/60" : "border-st-running/50")}>
@@ -32,12 +36,26 @@ export function ResultPanel({ taskId, view }: { taskId: string; view: TaskView }
           <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground"><Paperclip className="size-3.5" /> Artifacts</h3>
           <ul className="mt-1 space-y-0.5 font-mono text-xs">
             {artifacts.data.map((a) => (
-              <li key={a} className="flex items-center gap-2 text-ev-tool">
-                {a.endsWith(".png") ? <Camera className="size-3.5" /> : <FileText className="size-3.5" />}
-                {a}
+              <li key={a}>
+                <a href={client.artifactUrl(a) ?? undefined} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-ev-tool hover:underline">
+                  {isImage(a) ? <Camera className="size-3.5" /> : <FileText className="size-3.5" />}
+                  {artifactName(a)}
+                </a>
               </li>
             ))}
           </ul>
+        </section>
+      )}
+      {plan && (
+        <section className="mt-4 rounded-md border bg-background/60 p-3">
+          <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground"><FileText className="size-3.5" /> Recovery plan</h3>
+          <ArtifactMarkdown artifact={plan} />
+        </section>
+      )}
+      {!!shots.length && (
+        <section className="mt-4">
+          <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground"><Camera className="size-3.5" /> Screenshots</h3>
+          <div className="grid gap-2 sm:grid-cols-2">{shots.map((s) => <ArtifactImage key={s} artifact={s} />)}</div>
         </section>
       )}
       {!!r?.evidence?.length && (
@@ -75,7 +93,9 @@ export function SandboxPanel({ view }: { view: TaskView }) {
             </p>
             {b.image && <p className="pl-11 font-mono text-xs text-muted-foreground">{b.image}</p>}
             {b.screenshots.map((s) => (
-              <p key={s} className="flex items-center gap-1.5 pl-11 font-mono text-xs text-ev-tool"><Camera className="size-3.5" /> {s}</p>
+              <div key={s} className="mt-1.5 pl-11">
+                <ArtifactImage artifact={s} className="max-w-md" />
+              </div>
             ))}
           </li>
         ))}
