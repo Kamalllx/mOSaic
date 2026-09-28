@@ -1,13 +1,12 @@
 """Script to run the Apollo scenario through the P3 Agents & Models implementation."""
 import asyncio
-import os
-import sys
 
-from mosaic_contracts.testing.fakes import fake_bundle, FakeAgentContext
-from mosaic_contracts.wiring import Settings
 from mosaic_agents.factory import build_agent_registry, build_agent_runtime
+from mosaic_contracts.schema import AgentResult
+from mosaic_contracts.testing.fakes import FakeAgentContext, fake_bundle
+from mosaic_contracts.wiring import Settings
 from mosaic_models.factory import build_model_router
-from mosaic_contracts.schema import AgentManifest, AgentResult
+
 
 async def main():
     settings = Settings.from_env()

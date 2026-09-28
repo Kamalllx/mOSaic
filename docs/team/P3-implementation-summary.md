@@ -55,4 +55,4 @@ Provides the base `MosaicAgent` class and utilities for all library agents.
 
 ### For P4 (Platform & Infrastructure)
 - **Deployment:** Ensure `models.yaml` matches the Ollama tags pulled locally (e.g., `nomic-embed-text` is required for embeddings). 
-- **Fake vs Real Wiring:** The E2E script `scripts/run_p3_apollo.py` serves as a template for wiring P3's real components against fake outer systems until all modules land.
+- **Fake vs Real Wiring:** The E2E script `agents/examples/run_p3_apollo.py` (`uv run python agents/examples/run_p3_apollo.py`) serves as a template for wiring P3's real components against fake outer systems until all modules land.
