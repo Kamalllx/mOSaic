@@ -41,6 +41,7 @@ class TaskManager:
     def __init__(self, kernel: Kernel) -> None:
         self.k = kernel
         self._tasks: dict[str, Task] = {}
+        self._finishing: set[str] = set()  # terminal status saved, but its events/journal not yet written
 
     def load(self, tasks: list[Task]) -> None:
         for t in tasks:
@@ -125,10 +126,14 @@ class TaskManager:
         result = TaskResult(summary=root_result.summary, artifacts=artifacts, evidence=evidence,
                             actions=list(t.metadata.get("actions", [])),
                             usage=sum_usage([p.usage for p in procs]))
-        t = await self._set_status(t, TaskStatus.COMPLETED, result=result)
-        await self.k.emit(EventType.TASK_COMPLETED, {"summary": result.summary}, task_id=task_id)
-        await self.k.journal(task_id, AuditKind.TASK, "Task completed", actor="kernel.tasks",
-                             refs=result.artifacts, data={"actions": result.actions})
+        self._finishing.add(task_id)
+        try:
+            t = await self._set_status(t, TaskStatus.COMPLETED, result=result)
+            await self.k.emit(EventType.TASK_COMPLETED, {"summary": result.summary}, task_id=task_id)
+            await self.k.journal(task_id, AuditKind.TASK, "Task completed", actor="kernel.tasks",
+                                 refs=result.artifacts, data={"actions": result.actions})
+        finally:
+            self._finishing.discard(task_id)
         self.k.scheduler.release(task_id)
         self.k.spawn_background(self._consolidate(task_id))
         return t
@@ -138,9 +143,14 @@ class TaskManager:
         if t.status in TERMINAL_TASK_STATUSES:
             return t
         error = error or ErrorInfo(code="INTERNAL", message=reason)
-        t = await self._set_status(t, TaskStatus.FAILED, error=error)
-        await self.k.emit(EventType.TASK_FAILED, {"reason": reason, "error": error.model_dump(mode="json")}, task_id=task_id)
-        await self.k.journal(task_id, AuditKind.TASK, f"Task failed: {reason}", actor="kernel.tasks")
+        self._finishing.add(task_id)
+        try:
+            t = await self._set_status(t, TaskStatus.FAILED, error=error)
+            await self.k.emit(EventType.TASK_FAILED, {"reason": reason, "error": error.model_dump(mode="json")},
+                              task_id=task_id)
+            await self.k.journal(task_id, AuditKind.TASK, f"Task failed: {reason}", actor="kernel.tasks")
+        finally:
+            self._finishing.discard(task_id)
         self.k.scheduler.release(task_id)
         return t
 
@@ -182,9 +192,12 @@ class TaskManager:
         return sum(1 for t in self._tasks.values() if t.status == TaskStatus.QUEUED)
 
     async def wait_terminal(self, task_id: str, timeout: float = 60) -> Task:
-        """Test/CLI helper: poll until the task reaches a terminal status."""
+        """Test/CLI helper: poll until the task reaches a terminal status and its task.completed/failed is published.
+
+        The status is saved before those events go out (subscribers read it); returning in between let a caller shut
+        the kernel down mid-publish, and the terminal event was lost from the durable history."""
         async def poll() -> Task:
-            while self.get(task_id).status not in TERMINAL_TASK_STATUSES:
+            while self.get(task_id).status not in TERMINAL_TASK_STATUSES or task_id in self._finishing:
                 await asyncio.sleep(0.02)
             return self.get(task_id)
 
