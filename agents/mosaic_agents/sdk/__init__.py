@@ -161,6 +161,19 @@ def propose_action(
     )
 
 
+async def keep_retrieved(ctx: Any, cited: Any, retrieved: set[str], where: str) -> list[str]:
+    """The cited /org paths that were really retrieved in this run, in order and de-duplicated. Every other citation
+    is logged and dropped: prompts say "never fabricate citations", this enforces it."""
+    kept: list[str] = []
+    for p in dict.fromkeys(c for c in (cited if isinstance(cited, list) else [cited]) if isinstance(c, str)):
+        if p in retrieved:
+            kept.append(p)
+        else:
+            await ctx.log(f"{ctx.manifest.name}: dropped citation {p!r} in {where}: not retrieved in this run",
+                          level="warning")
+    return kept
+
+
 async def remember_finding(ctx: Any, content: str, derived_from: list[str], importance: float = 0.7,
                            tags: list[str] | None = None) -> None:
     """Store this run's finding as an episodic memory. derived_from = the documents it rests on, so the memory goes
@@ -181,6 +194,7 @@ __all__ = [
     "ask_json",
     "cite",
     "gather_evidence",
+    "keep_retrieved",
     "propose_action",
     "remember_finding",
 ]

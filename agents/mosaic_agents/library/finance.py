@@ -15,7 +15,7 @@ from mosaic_contracts.schema.common import new_id
 from mosaic_contracts.schema.ipc import A2AMessage
 
 from mosaic_agents.prompts import FinanceOut
-from mosaic_agents.sdk import MosaicAgent, ask_json, cite, gather_evidence, remember_finding
+from mosaic_agents.sdk import MosaicAgent, ask_json, cite, gather_evidence, keep_retrieved, remember_finding
 
 log = logging.getLogger("mosaic.agents.finance")
 
@@ -74,6 +74,11 @@ class FinanceAgent(MosaicAgent):
 
         await ctx.log(f"finance-agent: analysis complete — overrun {finance_out.overrun_lakh}L ({finance_out.overrun_pct}%)")
 
+        retrieved = {h.path for h in evidence.hits}
+        for d in finance_out.drivers:
+            if isinstance(d, dict):
+                d["evidence"] = await keep_retrieved(ctx, d.get("evidence", []), retrieved, "drivers")
+
         # Send evidence to parent if we have one
         if ctx.ppid:
             try:
@@ -102,7 +107,6 @@ class FinanceAgent(MosaicAgent):
         }
 
         # Remember the finding, derived from the documents it rests on (they going stale invalidates it)
-        retrieved = {h.path for h in evidence.hits}
         cited = sorted({q for d in finance_out.drivers if isinstance(d, dict) for q in d.get("evidence", [])} & retrieved)
         await remember_finding(ctx, finance_out.summary or "finance finding", cited or sorted(retrieved)[:5], tags=["finance", "apollo"])
 

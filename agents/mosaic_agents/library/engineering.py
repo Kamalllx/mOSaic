@@ -12,7 +12,7 @@ from mosaic_contracts.schema.common import new_id
 from mosaic_contracts.schema.ipc import A2AMessage
 
 from mosaic_agents.prompts import EngOut
-from mosaic_agents.sdk import MosaicAgent, ask_json, cite, gather_evidence, remember_finding
+from mosaic_agents.sdk import MosaicAgent, ask_json, cite, gather_evidence, keep_retrieved, remember_finding
 
 log = logging.getLogger("mosaic.agents.engineering")
 
@@ -94,6 +94,11 @@ class EngineeringAgent(MosaicAgent):
 
         await ctx.log(f"engineering-agent: analysis complete — {eng_out.slip_weeks} weeks slip, {len(eng_out.blockers)} blockers")
 
+        retrieved = {h.path for h in evidence.hits}
+        for d in eng_out.blockers:
+            if isinstance(d, dict):
+                d["evidence"] = await keep_retrieved(ctx, d.get("evidence", []), retrieved, "blockers")
+
         # Send evidence to parent
         if ctx.ppid:
             try:
@@ -121,7 +126,6 @@ class EngineeringAgent(MosaicAgent):
         }
 
         # Remember the finding, derived from the documents it rests on (they going stale invalidates it)
-        retrieved = {h.path for h in evidence.hits}
         cited = sorted({q for d in eng_out.blockers if isinstance(d, dict) for q in d.get("evidence", [])} & retrieved)
         await remember_finding(ctx, eng_out.summary or "engineering finding", cited or sorted(retrieved)[:5], tags=["engineering", "apollo"])
 

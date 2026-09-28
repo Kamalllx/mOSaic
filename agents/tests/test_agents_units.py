@@ -32,3 +32,24 @@ def test_finance_and_engineering_remember_their_findings():
         assert mem.owner == name and mem.kind == MemoryKind.EPISODIC and mem.importance >= 0.5
         assert mem.content == reply["summary"]
         assert mem.derived_from == [reply["drivers" if "drivers" in reply else "blockers"][0]["evidence"][0]]
+
+
+def test_citations_that_were_not_retrieved_are_dropped():
+    reply = {**FINANCE_REPLY, "drivers": [{"item": "cloud", "delta": "+4.1L", "cause": "dual-run",
+                                           "evidence": ["/org/finance/apollo-budget", "/org/finance/made-up"]}]}
+    ctx = ctx_for("finance-agent", {"financial analysis": reply})
+    result = asyncio.run(FinanceAgent().run("Why is Apollo over budget?", ctx))
+    assert result.output["drivers"][0]["evidence"] == ["/org/finance/apollo-budget"]
+    assert any("dropped citation '/org/finance/made-up'" in m for level, m, _ in ctx.logs if level == "warning")
+
+
+def test_research_keeps_only_findings_from_retrieved_sources():
+    from mosaic_agents.library.research import ResearchAgent
+
+    reply = {"summary": "SDK v5 slipped", "urls_opened": ["http://evil.example/"],
+             "findings": [{"claim": "v5 delayed", "source": "/org/inbox/vendor-email-2026-09-12"},
+                          {"claim": "invented", "source": "/org/nowhere"}]}
+    ctx = ctx_for("research-agent", {"synthesize your findings": reply})
+    result = asyncio.run(ResearchAgent().run("vendor SDK v5 email", ctx))
+    assert [f["source"] for f in result.output["findings"]] == ["/org/inbox/vendor-email-2026-09-12"]
+    assert "http://evil.example/" not in result.output["urls_opened"]

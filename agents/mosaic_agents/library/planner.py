@@ -21,7 +21,7 @@ from typing import Any
 from mosaic_contracts.schema import AgentResult, AgentResultStatus
 
 from mosaic_agents.prompts import PlanOut, PlanStep, SynthesisOut
-from mosaic_agents.sdk import MosaicAgent, ask_json, cite, gather_evidence
+from mosaic_agents.sdk import MosaicAgent, ask_json, cite, gather_evidence, keep_retrieved
 
 log = logging.getLogger("mosaic.agents.planner")
 
@@ -101,6 +101,7 @@ class PlannerAgent(MosaicAgent):
         # 5 & 6. Execute steps respecting depends_on (parallel where possible)
         upstream: dict[str, Any] = {}
         step_pids: dict[str, int] = {}
+        retrieved = {h.path for h in evidence.hits}  # every /org path this task really retrieved (planner + specialists)
 
         # Topological execution: spawn all steps whose deps are complete
         completed_steps: set[str] = set()
@@ -134,6 +135,7 @@ class PlannerAgent(MosaicAgent):
                     try:
                         result = await ctx.wait(pid)
                         upstream[step.step_id] = result.output
+                        retrieved.update(p for p in result.evidence if isinstance(p, str))
                         completed_steps.add(step.step_id)
                         await ctx.log(f"planner: step {step.step_id} ({step.agent}) completed: {result.status}")
                     except Exception as e:
@@ -155,6 +157,14 @@ class PlannerAgent(MosaicAgent):
 
         synthesis = await ask_json(ctx, SYNTHESIS_SYSTEM, synthesis_prompt, SynthesisOut, max_tokens=2000)
         await ctx.log("planner: synthesis complete")
+        if synthesis:
+            backed = []
+            for rc in synthesis.root_causes:
+                if isinstance(rc, dict):
+                    rc["evidence"] = await keep_retrieved(ctx, rc.get("evidence", []), retrieved, "root_causes")
+                    if rc["evidence"]:
+                        backed.append(rc)
+            synthesis.root_causes = backed
 
         # 8. Write artifact
         recovery_md = self._make_recovery_md(goal, synthesis, upstream)
@@ -173,6 +183,7 @@ class PlannerAgent(MosaicAgent):
                     all_evidence.extend(d.get("evidence", []))
                 for b in out.get("blockers", []):
                     all_evidence.extend(b.get("evidence", []))
+        all_evidence = [p for p in all_evidence if p in retrieved]
 
         return AgentResult(
             pid=ctx.pid,

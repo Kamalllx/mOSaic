@@ -15,7 +15,7 @@ from mosaic_contracts.schema.common import new_id
 from mosaic_contracts.schema.ipc import A2AMessage
 
 from mosaic_agents.prompts import ResearchOut
-from mosaic_agents.sdk import MosaicAgent, ask_json, cite, gather_evidence, propose_action
+from mosaic_agents.sdk import MosaicAgent, ask_json, cite, gather_evidence, keep_retrieved, propose_action
 
 log = logging.getLogger("mosaic.agents.research")
 
@@ -95,6 +95,15 @@ class ResearchAgent(MosaicAgent):
                 urls_opened=urls_opened,
                 summary="Research complete. See evidence paths for details.",
             )
+
+        # Keep only findings whose source was really retrieved (an /org path from the search or a URL opened here)
+        retrieved = {h.path for h in evidence.hits} | set(urls_opened)
+        findings = []
+        for f in research_out.findings:
+            if isinstance(f, dict) and await keep_retrieved(ctx, f.get("source"), retrieved, "findings"):
+                findings.append(f)
+        research_out.findings = findings
+        research_out.urls_opened = [u for u in research_out.urls_opened if u in urls_opened]
 
         # Merge urls_opened from syscall
         if urls_opened and VENDOR_DOCS_URL not in research_out.urls_opened:
