@@ -103,3 +103,19 @@ def test_markdown_bad_yaml_is_bad_request(tmp_path):
     with pytest.raises(MosaicError) as ei:
         run(MarkdownConverter().convert(req(f)))
     assert ei.value.code == "BAD_REQUEST"
+
+
+def test_jira_traversal_key_is_skipped(tmp_path):
+    f = tmp_path / "export.json"
+    f.write_text(json.dumps({"issues": [{"key": "../../outside", "fields": {}}, {"key": "APOLLO-1", "fields": {}}]}))
+    files = sorted(d.okf_file for d in run(JiraJsonConverter().convert(req(f))))
+    assert files == ["imported/apollo-1.md", "imported/index.md"]
+
+
+def test_paths_are_sanitised_and_never_escape(tmp_path):
+    (tmp_path / "My Notes (v2).md").write_text("# Notes\n\nText.\n", encoding="utf-8")
+    (d,) = run(MarkdownConverter().convert(req(tmp_path, IngestSourceType.DIRECTORY)))
+    assert d.okf_file == "imported/My-Notes-v2.md"
+    with pytest.raises(MosaicError) as ei:
+        run(MarkdownConverter().convert(req(tmp_path, IngestSourceType.DIRECTORY, target="/org/../etc")))
+    assert ei.value.code == "BAD_REQUEST"

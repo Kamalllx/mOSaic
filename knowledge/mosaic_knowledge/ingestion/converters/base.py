@@ -20,11 +20,26 @@ def slug(text: str) -> str:
 
 
 def target_rel(req: IngestRequest) -> str:
-    return req.target_path.removeprefix("/org").strip("/")
+    # KnowledgePath's pattern admits ".." segments, so the target is checked like every other segment
+    rel = req.target_path.removeprefix("/org").strip("/")
+    return "/".join(safe_segment(s) for s in rel.split("/")) if rel else ""
+
+
+_UNSAFE = re.compile(r"[^A-Za-z0-9._\-]+")
+
+
+def safe_segment(segment: str) -> str:
+    """One path segment valid in a KnowledgePath; '.'/'..' (traversal) and empty segments are rejected."""
+    seg = _UNSAFE.sub("-", segment.strip()).strip("-")
+    if seg in ("", ".", "..") or segment.strip() in (".", ".."):
+        raise MosaicError("BAD_REQUEST", f"unsafe path segment {segment!r}")
+    return seg
 
 
 def okf_path(req: IngestRequest, *parts: str) -> str:
-    return "/".join(p for p in (target_rel(req), *parts) if p) + ".md"
+    """Bundle-relative .md path under the request target. Every segment is sanitised, so the result never escapes."""
+    segments = [safe_segment(s) for p in parts if p for s in p.replace("\\", "/").split("/")]
+    return "/".join(s for s in (target_rel(req), *segments) if s) + ".md"
 
 
 def org_path(okf_file: str) -> str:

@@ -4,6 +4,8 @@
 # /sovereign-data mounted from its own ext4 partition via fstab.
 #
 #   sudo REPO_URL=https://github.com/Kamalllx/mOSaic bash infra/appliance/install.sh
+#   after `tailscale up`, build the console too:
+#   sudo MOSAIC_PUBLIC_URL=http://<node>.<tailnet>.ts.net:8080 bash infra/appliance/install.sh
 set -euo pipefail
 
 REPO_URL=${REPO_URL:-https://github.com/Kamalllx/mOSaic}
@@ -25,7 +27,7 @@ apt-get update -qq
 apt-get install -y -qq ca-certificates curl gnupg git jq ufw python3
 
 step "Docker Engine + compose plugin (official repo)"
-if ! command -v docker >/dev/null; then
+if ! command -v docker >/dev/null || ! docker compose version >/dev/null 2>&1 || ! docker buildx version >/dev/null 2>&1; then
   install -m 0755 -d /etc/apt/keyrings
   curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
   chmod a+r /etc/apt/keyrings/docker.asc
@@ -34,6 +36,7 @@ if ! command -v docker >/dev/null; then
   apt-get update -qq
   apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 fi
+docker compose version
 systemctl enable --now docker
 
 step "NVIDIA Container Toolkit"
@@ -60,8 +63,9 @@ if [[ ! -d $APP/.git ]]; then
   install -d -o "$SVC_USER" -g "$SVC_USER" "$APP"
   as_user "git clone --branch $BRANCH $REPO_URL $APP"
 fi
-as_user "command -v uv >/dev/null || curl -LsSf https://astral.sh/uv/install.sh | sh"
-as_user "cd $APP && ~/.local/bin/uv sync --all-packages --extra ingest --python 3.12"
+as_user "command -v uv >/dev/null || [ -x ~/.local/bin/uv ] || curl -LsSf https://astral.sh/uv/install.sh | sh"
+# --extra ingest selects mosaic-knowledge's extra: uv resolves member extras when syncing --all-packages
+as_user "cd $APP && UV=\$(command -v uv || echo ~/.local/bin/uv) && \"\$UV\" sync --all-packages --extra ingest --python 3.12"
 if [[ ! -f $APP/.env ]]; then
   as_user "cd $APP && cp .env.example .env"
   sed -i -e 's|^MOSAIC_DATA_DIR=.*|MOSAIC_DATA_DIR=/sovereign-data|' \
@@ -94,12 +98,19 @@ docker build -t mosaic/sandbox-base:latest "$APP/execution/images/sandbox-base"
 docker build -t mosaic/sandbox-browser:latest "$APP/execution/images/sandbox-browser"
 
 step "web console build"
-if [[ -f $APP/apps/web/package.json ]]; then
+# NEXT_PUBLIC_MOSAIC_URL is baked in at build time; without it clients would call their own localhost.
+WEB=0
+if [[ ! -f $APP/apps/web/package.json ]]; then
+  echo "apps/web not bootstrapped yet (P2): skipping mosaic-web.service"
+elif [[ -z ${MOSAIC_PUBLIC_URL:-} ]] && ! grep -qs '^NEXT_PUBLIC_MOSAIC_URL=http' "$APP/apps/web/.env.local"; then
+  echo "skipping web build: re-run with MOSAIC_PUBLIC_URL=http://<node>.<tailnet>.ts.net:8080 (gateway URL as clients see it)"
+else
   command -v npm >/dev/null || { curl -fsSL https://deb.nodesource.com/setup_22.x | bash -; apt-get install -y -qq nodejs; }
+  if [[ -n ${MOSAIC_PUBLIC_URL:-} ]]; then
+    as_user "cd $APP/apps/web && touch .env.local && sed -i '/^NEXT_PUBLIC_MOSAIC_URL=/d' .env.local && echo 'NEXT_PUBLIC_MOSAIC_URL=$MOSAIC_PUBLIC_URL' >> .env.local"
+  fi
   as_user "cd $APP/apps/web && npm ci && npm run build"
   WEB=1
-else
-  echo "apps/web not bootstrapped yet (P2): skipping mosaic-web.service"; WEB=0
 fi
 
 step "systemd units"
@@ -107,7 +118,7 @@ install -m 0644 "$APP/infra/systemd/mosaicd.service" /etc/systemd/system/mosaicd
 install -m 0644 "$APP/infra/systemd/mosaic-web.service" /etc/systemd/system/mosaic-web.service
 systemctl daemon-reload
 systemctl enable --now mosaicd
-[[ $WEB == 1 ]] && systemctl enable --now mosaic-web
+if [[ $WEB == 1 ]]; then systemctl enable --now mosaic-web; fi
 
 step "laptop-as-server hardening"
 install -d /etc/systemd/logind.conf.d

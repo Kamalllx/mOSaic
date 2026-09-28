@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import re
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +12,8 @@ from mosaic_contracts.schema import IngestRequest, IngestSourceType, OKFDraft
 
 from .base import draft, okf_path, org_path, read_text, require_path
 
+log = logging.getLogger("mosaic.knowledge.ingestion.jira_json")
+_KEY = re.compile(r"^[A-Z][A-Z0-9_]*-[0-9]+$")  # Jira issue key, e.g. APOLLO-12; also keeps file paths safe
 _BLOCKS = {"paragraph", "heading", "listItem", "codeBlock", "blockquote"}
 
 
@@ -60,7 +64,14 @@ class JiraJsonConverter:
         issues = data.get("issues") if isinstance(data, dict) else None
         if not isinstance(issues, list):
             raise MosaicError("BAD_REQUEST", f"{src} is not a Jira export (no 'issues' list)")
-        issues = [i for i in issues if isinstance(i, dict) and i.get("key")]
+        valid = []
+        for i in issues:
+            key = i.get("key") if isinstance(i, dict) else None
+            if isinstance(key, str) and _KEY.match(key):
+                valid.append(i)
+            else:
+                log.warning("skipping issue with invalid key %r in %s", key, src)
+        issues = valid
         keys = {i["key"] for i in issues}
         drafts, rows = [], []
         for issue in issues:

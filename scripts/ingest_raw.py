@@ -45,7 +45,9 @@ async def main() -> None:
             raise SystemExit(f"no converter for {uri}")
         drafts = await conv.convert(req)
         for d in drafts:
-            out = OKF / d.okf_file
+            out = (OKF / d.okf_file).resolve()
+            if not out.is_relative_to(OKF.resolve()):
+                raise SystemExit(f"refusing to write outside the bundle: {d.okf_file}")
             out.parent.mkdir(parents=True, exist_ok=True)
             out.write_text(render(d), encoding="utf-8", newline="\n")
         print(f"{conv.name:13} {uri.relative_to(ROOT)} -> {target} ({len(drafts)} files)")

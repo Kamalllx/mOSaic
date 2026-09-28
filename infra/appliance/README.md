@@ -17,6 +17,8 @@ The node is stock Ubuntu 24.04 LTS, with mOSaic as the system authority in user 
 git clone https://github.com/Kamalllx/mOSaic /tmp/mosaic
 sudo bash /tmp/mosaic/infra/appliance/install.sh     # idempotent; re-run after fixing any failure
 sudo tailscale up
+# build + enable the web console once the node's Tailscale name is known (baked into the Next.js build)
+sudo MOSAIC_PUBLIC_URL=http://<node>.<tailnet>.ts.net:8080 bash /opt/mosaic/infra/appliance/install.sh
 bash /opt/mosaic/scripts/preflight.sh
 ```
 The installer:

@@ -17,7 +17,11 @@ check() {  # check "<label>" <command...>
 
 echo "services"
 check "mosaicd.service active" systemctl is-active --quiet mosaicd
-check "mosaic-web.service active" systemctl is-active --quiet mosaic-web
+if systemctl is-enabled --quiet mosaic-web 2>/dev/null; then
+  check "mosaic-web.service active" systemctl is-active --quiet mosaic-web
+else
+  printf '  \033[33m–\033[0m %s\n' "mosaic-web.service not installed (apps/web missing or MOSAIC_PUBLIC_URL unset): skipped"
+fi
 for s in postgres redis ollama mock-jira vendor-docs; do
   check "compose: $s running" bash -c "[ -n \"\$(${COMPOSE[*]} ps --status running -q $s)\" ]"
 done
