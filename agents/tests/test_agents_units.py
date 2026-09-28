@@ -89,3 +89,18 @@ def test_planner_runs_exactly_one_action_agent_last():
     assert agents.count("action-agent") == 1 and agents[-1] == "action-agent", agents
     assert sorted(agents[:-1]) == ["engineering-agent", "finance-agent"]
     assert set(spawned[-1][1]["upstream"]) == {"f", "e"}, "the action step gets every specialist's output"
+
+
+def test_action_agent_shows_the_root_cause_documents_to_the_approver():
+    from mosaic_agents.library.action import ActionAgent
+
+    upstream = {"f": {"drivers": [{"item": "cloud", "evidence": ["/org/finance/apollo-budget", "/org/decisions/ADR-042"]}]},
+                "e": {"blockers": [{"issue": "APOLLO-12", "evidence": ["/org/engineering/apollo-status"]}]},
+                "r": {"findings": [{"claim": "v5 late", "source": "/org/inbox/vendor-email-2026-09-12"},
+                                   {"claim": "docs", "source": "http://vendor-docs/sdk-v5.html"}]}}
+    ctx = ctx_for("action-agent", inputs={"upstream": upstream})
+    result = asyncio.run(ActionAgent().run("Record root causes on APOLLO-12", ctx))
+    jira = next(req for req, _ in ctx.syscalls if req.capability == "jira.write")
+    assert jira.evidence == ["/org/finance/apollo-budget", "/org/decisions/ADR-042", "/org/engineering/apollo-status",
+                             "/org/inbox/vendor-email-2026-09-12"]
+    assert "jira.write completed" in result.summary

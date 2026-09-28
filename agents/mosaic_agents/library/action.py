@@ -36,9 +36,12 @@ class ActionAgent(MosaicAgent):
         upstream = ctx.inputs.get("upstream", {})
         syscall_results: list[dict[str, Any]] = []
 
-        # Gather brief evidence for justification
-        evidence = await gather_evidence(ctx, goal, scope=["/org/projects", "/org/engineering"], top_k=4)
-        ev_paths = [h.path for h in evidence.hits]
+        # The approver must see the documents behind the root causes: the specialists' citations (already checked
+        # against what they retrieved). Only without upstream citations fall back to a search of our own.
+        ev_paths = self._upstream_evidence(upstream)
+        if not ev_paths:
+            evidence = await gather_evidence(ctx, goal, scope=["/org/projects", "/org/engineering"], top_k=4)
+            ev_paths = [h.path for h in evidence.hits]
 
         if ctx.cancelled():
             return self.result(ctx, "cancelled", status=AgentResultStatus.CANCELLED)
@@ -126,8 +129,9 @@ class ActionAgent(MosaicAgent):
                 await ctx.log(f"action-agent: fs.write syscall error (non-fatal): {e}", level="warning")
                 syscall_results.append({"capability": "fs.write", "status": "error", "error": str(e)})
 
-        # Determine overall status
-        summary = f"Action agent completed {len(syscall_results)} syscall(s)"
+        # Determine overall status: say what happened to each action (the planner's synthesis reads this)
+        summary = "Action agent: " + (", ".join(f"{r['capability']} {r['status']}" for r in syscall_results)
+                                      or "no actions")
         if report_path_result:
             summary += f", report at {report_path_result}"
 
@@ -143,6 +147,20 @@ class ActionAgent(MosaicAgent):
             },
             evidence=ev_paths,
         )
+
+    @staticmethod
+    def _upstream_evidence(upstream: dict) -> list[str]:
+        paths: list[str] = []
+        for out in upstream.values():
+            if not isinstance(out, dict):
+                continue
+            for item in [*out.get("drivers", []), *out.get("blockers", [])]:
+                if isinstance(item, dict):
+                    paths.extend(p for p in item.get("evidence", []) if isinstance(p, str))
+            for f in out.get("findings", []):
+                if isinstance(f, dict) and str(f.get("source", "")).startswith("/org"):
+                    paths.append(f["source"])
+        return list(dict.fromkeys(paths))
 
     def _build_comment(self, goal: str, upstream: dict) -> str:
         """Build a Jira comment from upstream specialist findings."""
