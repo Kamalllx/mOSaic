@@ -1,9 +1,4 @@
-"""ModelProvider implementations.
+"""Model providers package."""
+from .ollama import OllamaProvider
 
-Owner: P3 — Agents & Models
-
-TODO:
-  - [ ] ollama (MVP): /api/chat, /api/embed, streaming, format=json schema
-  - [ ] openai-compatible (llama.cpp server, vLLM) — one class covers both
-  - [ ] remote (optional, approved only): never used when privacy=restricted
-"""
+__all__ = ["OllamaProvider"]
