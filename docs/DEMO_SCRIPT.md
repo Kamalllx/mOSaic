@@ -53,16 +53,19 @@ For the invalidation demo (last row of the run sheet) start mosaicd with `MOSAIC
 | 16 | 4:10 | Memory consolidated | "It learns from the run." | P2 | No `memory.consolidated` line: open `http://<node>:8080/memory?task_id=<task_id>` (finance/engineering findings with their source documents) |
 | 17 | 4:30 | Final answer + recovery-plan artifact. Read the three root causes aloud: dual-run cloud cost, duplicate-recon-id backfill failure, PayCo certification + emergency contract | "Every root cause is backed by at least two documents." | P3 | Open the artifact from the last rehearsal |
 | + | 5:30 | `ai-kill` a leftover process live; `ai-top` shows GPU load during a run | "The OS metaphor, made visible." | P1/P4 | `ai-kill` fails: use the kill button on the node in the process tree |
-| + | 6:00 | (stretch) Edit a document the finance agent's memory came from → its memories go stale; the console toasts "N memories stale" and names finance-agent. Steps below | "Knowledge changes, so the memories that depended on it are invalidated." | P2/P4 | No toast: open `/memory?task_id=<task_id>` and show `stale: true`; else skip |
+| 18 | 6:00 | **Invalidation:** edit the cloud bill the finance agent cited → its memories go stale; the console toasts "N memories stale" and names finance-agent; the explorer shows the new line. Steps below | "Knowledge changes, so the memories that depended on it are invalidated." | P2/P4 | No toast: open `/memory?task_id=<task_id>` and show `stale: true`; else skip |
 
-### Invalidation demo (stretch step)
+### Invalidation demo (step 18)
 Needs mosaicd started with `MOSAIC_KNOWLEDGE_WATCH=true`, after a completed run (the finance and engineering agents store their findings, derived from the documents they cited).
 1. Check which documents the memories derive from: `curl -s http://<node>:8080/memory?task_id=<task_id> | jq '.[] | {owner, derived_from}'`. `/org/finance/cloud-bill-2026-09` is the usual one for finance-agent; `/org/projects/apollo` often appears for both agents.
 2. On the node, edit that file, e.g. append a line to `data/okf/finance/cloud-bill-2026-09.md`: `Correction (live demo): the September dual-run line was re-billed.`
 3. Within ~1 s the console shows the invalidation toast naming the affected agents; the file is reindexed (the explorer shows the new line without a reload).
 4. Reset afterwards: `git checkout data/okf/finance/cloud-bill-2026-09.md` (the watcher reindexes the original).
 
-Not with the security policy yet: no agent searches `/org/policies`, so no memory derives from `policies/security.md` and copying `data/demo-assets/security-policy-v2.md` over it invalidates nothing (it does reindex; the explorer shows v2). If the team wants the policy story, the finance agent must consult the policies (P3 decision). Reset: `git checkout data/okf/policies/security.md`.
+**Optional: security policy v2.** It only works once agents consult `/org/policies` (a P3 follow-up). Today no agent searches there, so no memory derives from `policies/security.md`, and copying `data/demo-assets/security-policy-v2.md` over it invalidates nothing. It does reindex, and the explorer shows v2. Reset: `git checkout data/okf/policies/security.md`.
+
+### Known limits
+- **Browser sandbox internet on Docker Desktop (Windows/macOS).** With `MOSAIC_SANDBOX_ENDPOINT=port`, the browser sandbox is attached to the default bridge network so that it can publish :3000, which gives it internet access. `browser.open` still checks each URL against the allowlist, but page subresources aren't filtered. The Linux node (`ip` mode) has no egress. Non-browser sandboxes never get internet in either mode. Accepted for the demo; the fix is deferred to P1.
 
 **Closing line:** *"It doesn't just answer questions. It runs your organization's AI, privately, on one box."*
 
