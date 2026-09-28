@@ -130,6 +130,9 @@
         "/org/finance/apollo-budget",
         "/org/decisions/ADR-042",
         "/org/inbox/vendor-email-2026-09-12"
+      ],
+      "flagged": [
+        "/org/inbox/vendor-email-2026-09-12"
       ]
     }
   },

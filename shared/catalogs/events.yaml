@@ -28,7 +28,7 @@ ipc.message:             {producer: P1 (routing P3 messages), consumers: [P2-ui]
 
 knowledge.changed:       {producer: P2, consumers: [P1-events -> P2-memory.invalidate, P2-ui], payload: KnowledgeChange}
 knowledge.reindexed:     {producer: P2, consumers: [P2-ui], payload: {count: int}}
-knowledge.retrieved:     {producer: "P1 (context, after P2 search)", consumers: [P2-ui], payload: {query: str, hits: int, filtered_by_policy: int, paths: "list[str]"}}
+knowledge.retrieved:     {producer: "P1 (context, after P2 search)", consumers: [P2-ui], payload: {query: str, hits: int, filtered_by_policy: int, paths: "list[str]", flagged: "list[str] (paths with firewall_flags)"}}
 memory.invalidated:      {producer: P2, consumers: [P1 (notify affected pids), P2-ui], payload: InvalidationReport}
 memory.consolidated:     {producer: P2, consumers: [P2-ui], payload: {created: int}}
 

@@ -240,7 +240,8 @@ def events() -> list[Event]:
         *[ev(4 + i * 0.2, EventType.PROCESS_SPAWNED, pid, agent=a, ppid=101)
           for i, (pid, a) in enumerate([(102, "finance-agent"), (103, "engineering-agent"), (104, "research-agent")])],
         ev(6, EventType.KNOWLEDGE_RETRIEVED, 102, query="Apollo budget overrun cloud cost", hits=3, filtered_by_policy=1,
-           paths=["/org/finance/apollo-budget", "/org/decisions/ADR-042", "/org/inbox/vendor-email-2026-09-12"]),
+           paths=["/org/finance/apollo-budget", "/org/decisions/ADR-042", "/org/inbox/vendor-email-2026-09-12"],
+           flagged=["/org/inbox/vendor-email-2026-09-12"]),
         ev(6.1, EventType.AGENT_LOG, 102, level="warning",
            message="Context firewall flagged /org/inbox/vendor-email-2026-09-12 (instruction_like) — treated as data"),
         ev(12, EventType.SANDBOX_STARTED, 104, sandbox_id="SB-4c2", image="mosaic/sandbox-base:latest"),
