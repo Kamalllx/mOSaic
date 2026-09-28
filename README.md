@@ -3,12 +3,22 @@
 </p>
 
 <p align="center">
+  <a href="https://drive.google.com/file/d/1cpCgA5vv7mbLdbmAC9HnWPmupHSinxmr/view?usp=sharing"><img alt="Watch the demo video" src="https://img.shields.io/badge/Watch-the_demo_video-E05252?style=for-the-badge&labelColor=0D1117"></a>
+  &nbsp;
   <a href="https://drive.google.com/file/d/1QexndWk7lMKnshtv-0Utz48jL59ye5Rq/view?usp=sharing"><img alt="Watch the explainer video" src="https://img.shields.io/badge/Watch-the_explainer_video-2BB8A3?style=for-the-badge&labelColor=0D1117"></a>
   &nbsp;
   <a href="https://mosaic-os-black.vercel.app"><img alt="Project website" src="https://img.shields.io/badge/Visit-the_project_site-D99A25?style=for-the-badge&labelColor=0D1117"></a>
   &nbsp;
   <a href="docs/DEMO_SCRIPT.md"><img alt="Demo run sheet" src="https://img.shields.io/badge/Read-the_demo_script-4C86D9?style=for-the-badge&labelColor=0D1117"></a>
 </p>
+
+<table align="center">
+<tr>
+<td align="center"><b>Demo video</b><br><a href="https://drive.google.com/file/d/1cpCgA5vv7mbLdbmAC9HnWPmupHSinxmr/view?usp=sharing">mOSaic running live, every screen</a></td>
+<td align="center"><b>Explainer video</b><br><a href="https://drive.google.com/file/d/1QexndWk7lMKnshtv-0Utz48jL59ye5Rq/view?usp=sharing">the idea in a few minutes</a></td>
+<td align="center"><b>Website</b><br><a href="https://mosaic-os-black.vercel.app">mosaic-os-black.vercel.app</a></td>
+</tr>
+</table>
 
 <p align="center">
   <img alt="Python 3.12" src="https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&labelColor=151A21">
@@ -80,7 +90,7 @@ mOSaic answers all three the way operating systems answered them for programs: *
 
 ## See it run
 
-One goal typed into the console. Five agents, one approval, a cited answer, about a minute, no cloud.
+One goal typed into the console. Five agents, one approval, a cited answer, about a minute, no cloud. **[Watch the full run in the demo video.](https://drive.google.com/file/d/1cpCgA5vv7mbLdbmAC9HnWPmupHSinxmr/view?usp=sharing)**
 
 > *"Brief the steering committee on Project Apollo: find what is driving the budget overrun and the six-week slip, check the vendor's own release status for the PayCo SDK v5, and recommend what should change. Update the tracker with the findings."*
 
