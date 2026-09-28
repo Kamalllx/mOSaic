@@ -102,20 +102,18 @@ class OllamaProvider:
             raise MosaicError("MODEL_UNAVAILABLE", f"ollama stream {model}: {e}") from e
 
     async def embed(self, req: EmbedRequest, model: str) -> EmbedResponse:
-        vecs = []
+        """One POST /api/embed for the whole batch (the old /api/embeddings took one prompt per request)."""
+        if not req.texts:
+            return EmbedResponse(model=model, dim=0, vectors=[])
         try:
-            for text in req.texts:
-                r = await self.client.post("/api/embeddings", json={"model": model, "prompt": text})
-                if r.status_code >= 400:
-                    raise MosaicError("MODEL_UNAVAILABLE", f"embed {model}: {r.text[:200]}")
-                data = r.json()
-                vec = data.get("embedding")
-                if not vec:
-                    raise MosaicError("MODEL_UNAVAILABLE", f"ollama embed returned no embeddings for {model}")
-                vecs.append(vec)
+            r = await self.client.post("/api/embed", json={"model": model, "input": req.texts})
         except httpx.HTTPError as e:
             raise MosaicError("MODEL_UNAVAILABLE", f"ollama embed {model}: {e}") from e
-
+        if r.status_code >= 400:
+            raise MosaicError("MODEL_UNAVAILABLE", f"embed {model}: {r.text[:200]}")
+        vecs = r.json().get("embeddings") or []
+        if len(vecs) != len(req.texts) or not all(vecs):
+            raise MosaicError("MODEL_UNAVAILABLE", f"ollama embed returned {len(vecs)} vectors for {len(req.texts)} texts ({model})")
         return EmbedResponse(model=model, dim=len(vecs[0]), vectors=vecs)
 
     async def list_models(self) -> list[ModelInfo]:
