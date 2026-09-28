@@ -44,9 +44,13 @@ class TransactionManager:
                                 error=ErrorInfo(code="TOOL_FAILED", message=f"{type(e).__name__}: {e}", retriable=True))
         await k.emit(EventType.TOOL_COMPLETED, {"tool": req.tool, "operation": req.operation,
                                                "status": result.status.value}, task_id=task_id, pid=pid, correlation_id=sid)
-        await k.journal(task_id, AuditKind.TOOL, f"{req.tool}.{req.operation} → {result.status.value}", pid=pid,
-                        actor="kernel.syscall", refs=[sid, inv.invocation_id, *result.artifacts],
-                        data={"arguments": req.arguments, "output": result.output})
+        summary, data = f"{req.tool}.{req.operation} → {result.status.value}", {"arguments": req.arguments,
+                                                                                "output": result.output}
+        if result.error is not None:
+            summary += f": {result.error.message}"
+            data["error"] = {"code": result.error.code, "message": result.error.message}
+        await k.journal(task_id, AuditKind.TOOL, summary, pid=pid, actor="kernel.syscall",
+                        refs=[sid, inv.invocation_id, *result.artifacts], data=data)
         if result.status != ToolResultStatus.SUCCESS:
             return SyscallResult(syscall_id=sid, status=SyscallStatus.FAILED, decision=decision, tool_result=result,
                                  error=result.error or ErrorInfo(code="TOOL_FAILED", message="tool returned an error"))

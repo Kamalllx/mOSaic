@@ -153,6 +153,33 @@ def test_unanswered_approval_still_expires(make_kernel):
     assert k.approvals.list()[0].status == ApprovalStatus.EXPIRED
 
 
+class _ErroringTool(FakeToolExecutor):
+    async def execute(self, invocation) -> ToolResult:
+        from mosaic_contracts.schema import ErrorInfo, ToolResultStatus
+
+        return ToolResult(invocation_id=invocation.invocation_id, status=ToolResultStatus.ERROR,
+                          error=ErrorInfo(code="TOOL_FAILED", message="jira answered 503: maintenance window"))
+
+
+def test_tool_error_message_reaches_the_audit(make_kernel):
+    results: list = []
+    k = _kernel(make_kernel, results, tools=_ErroringTool())
+
+    async def go():
+        await k.boot()
+        _auto_resolve(k, True)
+        t = await k.tasks.wait_terminal(await start_task(k))
+        tl = await k.audit.timeline(t.task_id)
+        await k.shutdown()
+        return tl
+
+    tl = run(go)
+    assert results[0].status == SyscallStatus.FAILED
+    tool = [e for e in tl.entries if e.kind.value == "tool"][0]
+    assert "maintenance window" in tool.summary
+    assert tool.data["error"] == {"code": "TOOL_FAILED", "message": "jira answered 503: maintenance window"}
+
+
 class _FailingVerify(FakeToolExecutor):
     async def verify(self, invocation, result: ToolResult) -> VerificationResult:
         return VerificationResult(invocation_id=invocation.invocation_id, passed=False)
