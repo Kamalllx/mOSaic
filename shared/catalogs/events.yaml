@@ -17,11 +17,11 @@ agent.log:               {producer: "P1 (on behalf of P3 agents via ctx.log)", c
 syscall.requested:       {producer: P1, consumers: [P2-ui], correlation_id: syscall_id, payload: {capability: str, tool: str, operation: str, risk: Risk}}
 syscall.decided:         {producer: P1, consumers: [P2-ui], correlation_id: syscall_id, payload: {decision: Decision, policy: str, reason: "str?"}}
 syscall.completed:       {producer: P1, consumers: [P2-ui], correlation_id: syscall_id, payload: {status: SyscallStatus}}
-approval.requested:      {producer: P1, consumers: [P2-ui], correlation_id: approval_id, payload: {approval_id: str, capability: str}}
-approval.resolved:       {producer: P1, consumers: [P2-ui], correlation_id: approval_id, payload: {approval_id: str, status: ApprovalStatus, resolved_by: str}}
+approval.requested:      {producer: P1, consumers: [P2-ui], correlation_id: approval_id, payload: {approval_id: str, capability: str, tool: str, operation: str, risk: Risk, policy: str}}
+approval.resolved:       {producer: P1, consumers: [P2-ui], correlation_id: approval_id, payload: {approval_id: str, status: ApprovalStatus, resolved_by: str, comment: "str?"}}
 transaction.committed:   {producer: P1, consumers: [P2-ui, P2-memory], correlation_id: syscall_id, payload: {verified: bool}}
 transaction.rolled_back: {producer: P1, consumers: [P2-ui], correlation_id: syscall_id, payload: {reason: str}}
-policy.updated:          {producer: P1, consumers: [P2-ui], payload: {policies: "list[str]"}}
+policy.updated:          {producer: P1, consumers: [P2-ui], payload: {policies: "list[str] | null", error: "str? (set when a hot-reload was rejected; the previous policies stay active)"}}
 audit.appended:          {producer: P1, consumers: [P2-ui], payload: AuditEntry}
 
 ipc.message:             {producer: P1 (routing P3 messages), consumers: [P2-ui], payload: {message_id: str, sender: str, receiver: str, type: MessageType}}

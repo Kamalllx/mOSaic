@@ -3,6 +3,6 @@
 Owner: P1 — Kernel & Execution
 
 TODO:
-  - [ ] charge usage on every ctx.llm / ctx.syscall / ctx.spawn; raise QUOTA_EXCEEDED
-  - [ ] publish process.usage periodically for ai-top / UI
+  - [x] charge usage on every ctx.llm / ctx.syscall / ctx.spawn; raise QUOTA_EXCEEDED
+  - [x] publish process.usage periodically for ai-top / UI
 """

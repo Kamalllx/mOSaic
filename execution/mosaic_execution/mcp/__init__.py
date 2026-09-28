@@ -3,6 +3,6 @@
 Owner: P1 — Kernel & Execution
 
 TODO:
-  - [ ] discover tools from configured MCP servers (stdio/http) -> ToolSpec(transport=mcp)
-  - [ ] invoke with invocation.constraints enforced; map errors to ToolResult(status=error)
+  - [x] discover tools from configured MCP servers (stdio/http) -> ToolSpec(transport=mcp)
+  - [x] invoke with invocation.constraints enforced; map errors to ToolResult(status=error)
 """

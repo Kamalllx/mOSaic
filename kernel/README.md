@@ -1,11 +1,25 @@
 # kernel/ — P1 Kernel & Execution (`mosaic_kernel`)
-Tasks, process table, scheduler, lifecycle, quotas, `KernelAgentContext` (the agent ABI), policy engine, syscalls, approvals, transactions, event bus, audit log, persistence and recovery, the REST/WS gateway, and the `ai-*` CLI.
+Tasks, process table, scheduler (priorities, GPU admission, preemption, cron), lifecycle (retry, escalation, kill, pause/resume, checkpoints, suspend/resume across restarts), quotas, `KernelAgentContext` (the agent ABI), YAML policy engine (hot reload), syscalls, approvals, transactions, event bus (+ Redis mirror), hash-chained audit log, SQLite state, the REST/WS gateway and the `ai-*` CLI.
 
-- **Brief (load it into your coding agent):** [docs/team/P1-kernel-execution.md](../docs/team/P1-kernel-execution.md)
-- What you provide: [shared/services/P1-kernel-execution.md](../shared/services/P1-kernel-execution.md) · Folder guide: [docs/FOLDER_STRUCTURE.md](../docs/FOLDER_STRUCTURE.md)
-- Build on `mosaic_contracts.testing.fakes.fake_bundle()`. Entry point: `mosaic_kernel/factory.py`. TODOs live in each sub-package's `__init__.py`.
+- Brief: [docs/team/P1-kernel-execution.md](../docs/team/P1-kernel-execution.md) · What it provides, how it's tested, status: [shared/services/P1-kernel-execution.md](../shared/services/P1-kernel-execution.md)
+- Test helpers for scripting agents against a real kernel: `mosaic_kernel.testing`.
 
+## Run it for real (P1 components real, other splits on fakes until they land)
 ```bash
-uv run pytest kernel/tests tests/integration -rs
-uv run mosaicd                      # serves the contract mock until build_kernel_app() exists
+docker build -t mosaic/sandbox-base:latest execution/images/sandbox-base
+docker build -t mosaic/sandbox-browser:latest execution/images/sandbox-browser      # optional: browser tool
+docker compose -f infra/compose/docker-compose.yml up -d --build redis mock-jira vendor-docs
+
+export MOSAIC_MODE_EVENTS=real MOSAIC_MODE_POLICY=real MOSAIC_MODE_AUDIT=real        MOSAIC_MODE_ARTIFACTS=real MOSAIC_MODE_TOOLS=real MOSAIC_MODE_SANDBOX=real
+uv run mosaicd                                   # gateway on :8080, /docs for the API
+
+uv run ai run "Investigate why Project Apollo is over budget, update the tracker"   # prompts for the approval
+uv run ai-ps ; uv run ai-tree ; uv run ai-top ; uv run ai-audit <task-id> ; uv run ai-mount /org/projects
 ```
+If another Redis already listens on `localhost:6379` (e.g. inside WSL), it shadows the compose one. Set `MOSAIC_REDIS_URL`, or `MOSAIC_EVENTS_REDIS=off`.
+
+## Tests
+```bash
+uv run pytest kernel/tests execution/tests tests/integration -rs
+```
+The live suites (Docker hardening, real browser, HTTP Jira, Redis, the full live system) start their own containers and skip when Docker or the images are missing.

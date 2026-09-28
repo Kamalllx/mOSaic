@@ -3,7 +3,8 @@
 Owner: P1 — Kernel & Execution
 
 TODO:
-  - [ ] implement EventBus protocol; pass EventBusContract
-  - [ ] wire knowledge.changed -> MemoryService.invalidate -> notify affected pids (blueprint §21)
-  - [ ] cron.triggered / scheduled agents (stretch)
+  - [x] implement EventBus protocol; pass EventBusContract
+  - [x] mirror to a Redis Stream (mosaic:events); history replayed on boot
+  - [x] wire knowledge.changed -> MemoryService.invalidate -> notify affected pids (blueprint §21)
+  - [x] cron.triggered / scheduled agents (scheduler/cron.py, MOSAIC_KERNEL_SCHEDULES_FILE)
 """

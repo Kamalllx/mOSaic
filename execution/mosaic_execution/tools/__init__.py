@@ -3,6 +3,6 @@
 Owner: P1 — Kernel & Execution
 
 TODO:
-  - [ ] list_tools aggregates all backends; execute/verify/rollback per operation
-  - [ ] enforce invocation.constraints (network_allow, timeout); publish tool.started/tool.completed
+  - [x] list_tools aggregates all backends; execute/verify/rollback per operation
+  - [x] enforce invocation.constraints (network_allow, timeout); publish tool.started/tool.completed
 """

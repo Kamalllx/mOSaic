@@ -3,6 +3,6 @@
 Owner: P1 — Kernel & Execution
 
 TODO:
-  - [ ] mock Jira REST service (docker compose service mock-jira) with seeded APOLLO issues
-  - [ ] jira tool ops get_issue / search_issues / update_issue, same shape as FAKE_TOOL_SPECS; reversible
+  - [x] mock Jira REST service (docker compose service mock-jira) with seeded APOLLO issues
+  - [x] jira tool ops get_issue / search_issues / update_issue, same shape as FAKE_TOOL_SPECS; reversible
 """

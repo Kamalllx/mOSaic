@@ -1,0 +1,109 @@
+"""YAML policy engine over policies/*.yaml (PolicyDocument). Deny by default; most specific document wins."""
+from __future__ import annotations
+
+import logging
+from fnmatch import fnmatch
+from pathlib import Path
+
+import yaml
+from mosaic_contracts.schema import (
+    ApprovalMode,
+    Decision,
+    Event,
+    EventType,
+    PolicyDecision,
+    PolicyDocument,
+    Principal,
+    Risk,
+    SyscallRequest,
+)
+from mosaic_contracts.schema.common import new_id
+from mosaic_contracts.util import capability_matches
+
+log = logging.getLogger("mosaic.kernel.policy")
+
+RISK_ORDER = [Risk.LOW, Risk.MEDIUM, Risk.HIGH, Risk.CRITICAL]
+
+
+def load_policy_documents(directory: Path) -> list[PolicyDocument]:
+    docs = []
+    for f in sorted(Path(directory).glob("*.yaml")):
+        docs.append(PolicyDocument.model_validate(yaml.safe_load(f.read_text(encoding="utf-8"))))
+    return sorted(docs, key=lambda d: (d.priority, d.policy))
+
+
+def max_risk(a: Risk, b: Risk) -> Risk:
+    return a if RISK_ORDER.index(a) >= RISK_ORDER.index(b) else b
+
+
+class YamlPolicyEngine:
+    def __init__(self, policies_dir: Path, event_bus=None) -> None:
+        self.policies_dir = Path(policies_dir)
+        self.bus = event_bus
+        self.docs: list[PolicyDocument] = load_policy_documents(self.policies_dir)
+
+    def documents(self) -> list[PolicyDocument]:
+        return list(self.docs)
+
+    def matching(self, principal: Principal) -> list[PolicyDocument]:
+        name = principal.agent or ""
+        roles = principal.roles or []
+        out = []
+        for d in self.docs:
+            if not any(fnmatch(name, a) for a in d.applies_to.agents):
+                continue
+            if "*" not in d.applies_to.roles and not set(roles) & set(d.applies_to.roles):
+                continue
+            out.append(d)
+        return out
+
+    @staticmethod
+    def _approval_mode(doc: PolicyDocument, capability: str) -> ApprovalMode | None:
+        if capability in doc.approval:
+            return doc.approval[capability]
+        for key, mode in doc.approval.items():
+            if "*" in key and capability_matches(capability, key):
+                return mode
+        return None
+
+    async def evaluate(self, request: SyscallRequest, principal: Principal) -> PolicyDecision:
+        cap = request.capability
+        if not any(capability_matches(cap, g) for g in principal.capabilities):
+            return PolicyDecision(decision=Decision.DENY, policy="kernel", matched_rules=["capability-check"],
+                                  reason=f"capability {cap} not granted to {principal.agent or principal.user_id}")
+        for doc in self.matching(principal):
+            if any(capability_matches(cap, g) for g in doc.tools.deny):
+                return PolicyDecision(decision=Decision.DENY, policy=doc.policy, reason=f"{cap} denied by {doc.policy}",
+                                      matched_rules=[f"tools.deny:{cap}"])
+            mode = self._approval_mode(doc, cap)
+            allowed = any(capability_matches(cap, g) for g in doc.tools.allow)
+            if not allowed and mode is None:
+                continue
+            constraints = {"network_allow": list(doc.network.allow)}
+            if mode == ApprovalMode.NEVER:
+                return PolicyDecision(decision=Decision.DENY, policy=doc.policy, reason=f"{cap} is never allowed",
+                                      matched_rules=[f"approval.{cap}=never"])
+            if mode == ApprovalMode.REQUIRED or request.risk in (Risk.HIGH, Risk.CRITICAL):
+                rule = f"approval.{cap}=required" if mode == ApprovalMode.REQUIRED else f"risk={request.risk.value}"
+                return PolicyDecision(decision=Decision.REQUIRES_APPROVAL, policy=doc.policy, approval_id=new_id("APR"),
+                                      reason=f"{cap} requires human approval ({rule})", matched_rules=[rule],
+                                      constraints=constraints)
+            return PolicyDecision(decision=Decision.ALLOW, policy=doc.policy, reason=f"{cap} allowed by {doc.policy}",
+                                  matched_rules=[f"tools.allow:{cap}" if allowed else f"approval.{cap}=auto"],
+                                  constraints=constraints)
+        return PolicyDecision(decision=Decision.DENY, policy="default-deny", reason=f"no policy allows {cap}",
+                              matched_rules=["default-deny"])
+
+    def knowledge_allow(self, principal: Principal) -> list[str]:
+        """Knowledge globs from the most specific matching policy that sets any (empty = no restriction)."""
+        for doc in self.matching(principal):
+            if doc.knowledge.allow:
+                return list(doc.knowledge.allow)
+        return []
+
+    async def reload(self) -> None:
+        self.docs = load_policy_documents(self.policies_dir)
+        log.info("reloaded %d policies", len(self.docs))
+        if self.bus is not None:
+            await self.bus.publish(Event(type=EventType.POLICY_UPDATED, source="kernel.policy",
+                                         payload={"policies": [d.policy for d in self.docs]}))

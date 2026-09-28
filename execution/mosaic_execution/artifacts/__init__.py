@@ -3,5 +3,5 @@
 Owner: P1 — Kernel & Execution
 
 TODO:
-  - [ ] path-traversal safe; content type sidecar; pass ArtifactStoreContract
+  - [x] path-traversal safe; content type sidecar; pass ArtifactStoreContract
 """

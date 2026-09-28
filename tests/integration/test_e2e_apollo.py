@@ -7,6 +7,8 @@ Skips until P1's build_kernel_app exists. This test is the integration gate: it 
 once the kernel lands.
 """
 import json
+import tempfile
+from pathlib import Path
 
 import pytest
 from mosaic_contracts.wiring import Settings
@@ -19,6 +21,7 @@ def _app():
     from mosaicd.wiring import build_services
 
     settings = Settings.from_env()
+    settings.data_dir = Path(tempfile.mkdtemp(prefix="mosaic-e2e-"))  # fresh kernel state per run
     try:
         return factory.build_kernel_app(settings, build_services(settings))
     except NotImplementedError as e:

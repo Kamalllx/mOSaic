@@ -1,4 +1,7 @@
 """Contract tests for P1. They SKIP until the factory stops raising NotImplementedError, then they gate CI."""
+import tempfile
+from pathlib import Path
+
 import pytest
 from mosaic_contracts.api import route_signatures
 from mosaic_contracts.testing import contracts as c
@@ -7,7 +10,7 @@ from mosaic_kernel import factory
 
 
 def _build(fn):
-    s = Settings()
+    s = Settings(data_dir=Path(tempfile.mkdtemp(prefix="mosaic-test-")))  # isolated state per suite
     try:
         return fn(s, ServiceBundle(settings=s))
     except NotImplementedError as e:
