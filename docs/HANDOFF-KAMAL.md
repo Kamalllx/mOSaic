@@ -64,7 +64,7 @@ docker build -t mosaic/sandbox-browser:latest execution/images/sandbox-browser
 ```
 
 ### 2.5 Models
-`models/models.yaml` routes planning, reasoning and extraction to **`qwen2.5:7b-instruct`**, summarization, classification and latency-critical calls to `llama3.2:3b`, and embeddings to `nomic-embed-text`. Code and vision (`qwen2.5-coder:7b`, `llava:7b`) aren't used by the Apollo demo.
+`models/models.yaml` routes planning, reasoning and extraction to **`qwen2.5:7b-instruct`**, summarization, classification and latency-critical calls to `llama3.2:3b`, and embeddings to `nomic-embed-text`. Code and vision (`qwen2.5-coder:7b`, `llava:7b`) aren't used by the Apollo demo. On an 8 GB GPU, start mosaicd with `MOSAIC_MODELS_CONFIG=./models/models.7b-only.yaml`: it sends summarization, classification and latency-critical calls to the 7B as well, so memory consolidation never evicts the 7B mid-run.
 ```powershell
 ollama pull qwen2.5:7b-instruct
 ollama pull llama3.2:3b
@@ -182,7 +182,7 @@ In priority order for the demo. Each item lists the files to look at and a sugge
   - *Fix:* keep the browser on `mosaic_sandbox` only, and publish :3000 through a small relay container (for example `alpine/socat`) attached to both the bridge and `mosaic_sandbox`. Or run mosaicd inside the sandbox network. `ip` mode on Linux is unaffected.
 - [ ] **The `document` converter's 3 skipped tests** (P4 area). The converter is shipped (`knowledge/mosaic_knowledge/ingestion/converters/document.py`); the tests skip only when the `ingest` extra (markitdown) isn't installed. With `uv sync --all-packages --all-extras`, all 15 converter contract tests pass (checked on `main`: 293/293).
   - *Fix:* make `--all-extras` the documented install (the AGENTS.md "Commands" block), or leave it as is, since the skip is intentional.
-- [ ] **`MOSAIC_MODELS_CONFIG`** (contract change, P3 review should-fix 4). `models/models.yaml` can't be overridden per machine.
+- [x] **`MOSAIC_MODELS_CONFIG`** (contract change, P3 review should-fix 4). Done in contract 0.5.0: `Settings.models_config`, plus `models/models.7b-only.yaml`. Original note: `models/models.yaml` can't be overridden per machine.
   - *Files:* `shared/python/mosaic_contracts/wiring.py` (`Settings`) and `models/mosaic_models/factory.py` (about line 19, `_MODELS_YAML`).
   - *Fix:* add `models_config: Path | None = None`, use it in the factory when set, bump `CONTRACT_VERSION`, run `uv run mosaic-export-contracts` and `npm --prefix shared/ts run generate`, and add it to `.env.example`. This makes the 3B-only setup explicit instead of relying on the fallback.
 - [ ] **nomic-embed-text prefixes** (contract change, P3 review nit). The model retrieves better with `search_query: ` / `search_document: `.

@@ -45,3 +45,20 @@ def test_schema_invalid_json_is_repaired_once():
     provider = Scripted(pulled=["qwen2.5:7b-instruct"], replies=[{"n": "three"}, {"n": 3}])
     resp = asyncio.run(PolicyRouter([provider], CONFIG).generate(req()))
     assert resp.parsed == {"n": 3} and len(provider.calls) == 2
+
+
+def test_factory_reads_the_configured_models_file(tmp_path):
+    import yaml
+    from mosaic_contracts.wiring import REPO_ROOT, ServiceBundle, Settings
+    from mosaic_models.factory import build_model_router
+
+    cfg = tmp_path / "models.yaml"
+    cfg.write_text("default: only-model\nembedding: nomic-embed-text\n", encoding="utf-8")
+    s = Settings(models_config=cfg)
+    assert build_model_router(s, ServiceBundle(settings=s))._config == {"default": "only-model", "embedding": "nomic-embed-text"}
+    assert Settings().models_config == REPO_ROOT / "models" / "models.yaml"
+
+    # The 8 GB profile never routes a chat class to a second chat model, so nothing evicts the 7B mid-run.
+    seven_b = yaml.safe_load((REPO_ROOT / "models" / "models.7b-only.yaml").read_text(encoding="utf-8"))
+    chat = {k: v for k, v in seven_b["by_task_class"].items() if k not in ("code", "vision")}
+    assert set(chat.values()) == {seven_b["default"]} == {seven_b["latency_critical"]} == {"qwen2.5:7b-instruct"}
