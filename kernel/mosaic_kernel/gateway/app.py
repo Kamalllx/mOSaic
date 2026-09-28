@@ -12,8 +12,9 @@ from typing import Any
 
 from fastapi import Body, FastAPI, Header, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from mosaic_contracts import CONTRACT_VERSION
+from mosaic_contracts.api import artifact_headers, artifact_media_type
 from mosaic_contracts.errors import MosaicError
 from mosaic_contracts.schema import (
     TERMINAL_STATES,
@@ -144,6 +145,16 @@ def create_app(kernel: Kernel) -> FastAPI:
     async def task_artifacts(task_id: str) -> list[str]:
         k.tasks.get(task_id)
         return await svc.artifacts.list(task_id) if svc.artifacts else []
+
+    @app.get("/tasks/{task_id}/artifacts/{name:path}", tags=["tasks"], response_class=Response,
+             responses={200: {"content": {"application/octet-stream": {}}, "description": "the artifact bytes"}})
+    async def task_artifact(task_id: str, name: str) -> Response:
+        k.tasks.get(task_id)
+        ref = f"artifact://{task_id}/{name}"
+        if svc.artifacts is None:
+            raise MosaicError("ARTIFACT_NOT_FOUND", ref)
+        data = await svc.artifacts.get(ref)  # the store rejects names that escape the task folder
+        return Response(data, media_type=artifact_media_type(name), headers=artifact_headers(name))
 
     # ------------------------------------------------------------------ processes
     @app.get("/agents", response_model=list[AgentProcess], tags=["agents"])

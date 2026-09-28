@@ -86,6 +86,12 @@ def test_task_lifecycle_routes(client):
     assert t["status"] == "completed" and t["result"]["summary"] == "done: hello"
     assert t["result"]["artifacts"] == [f"artifact://{t['task_id']}/report.md"]
     assert client.get(f"/tasks/{t['task_id']}/artifacts").json() == t["result"]["artifacts"]
+    report = client.get(f"/tasks/{t['task_id']}/artifacts/report.md")
+    assert report.status_code == 200 and report.text == "# report"
+    assert report.headers["content-type"].startswith("text/markdown") and report.headers["x-content-type-options"] == "nosniff"
+    missing = client.get(f"/tasks/{t['task_id']}/artifacts/nope.md")
+    assert missing.status_code == 404 and missing.json()["code"] == "ARTIFACT_NOT_FOUND"
+    assert client.get(f"/tasks/{t['task_id']}/artifacts/..%2F..%2Fsecrets").status_code in (400, 404)
     assert t["task_id"] in [x["task_id"] for x in client.get("/tasks", params={"status": "completed"}).json()]
     err = client.get("/tasks/T-missing")
     assert err.status_code == 404 and err.json() == {"code": "TASK_NOT_FOUND", "message": "T-missing", "retriable": False,
