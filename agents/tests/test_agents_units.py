@@ -146,3 +146,14 @@ def test_synthesized_root_causes_keep_only_retrieved_citations():
     ctx, _ = _planner_ctx(PLAN, synthesis=synthesis, children=CHILDREN)
     result = asyncio.run(PlannerAgent().run("Why is Apollo late and over budget?", ctx))
     assert result.output["root_causes"] == [{"cause": "dual-run cost", "evidence": ["/org/decisions/ADR-042"]}]
+
+
+def test_research_reads_the_vendor_email_as_untrusted_data_and_never_acts_on_it():
+    from mosaic_agents.library.research import VENDOR_DOCS_URL, ResearchAgent
+
+    ctx = ctx_for("research-agent")
+    result = asyncio.run(ResearchAgent().run("Gather evidence from available documents", ctx))  # a generic goal
+    assert "/org/inbox/vendor-email-2026-09-12" in result.evidence
+    prompt = ctx.models.calls[-1].messages[-1].content
+    assert "(/org/inbox/vendor-email-2026-09-12) [UNTRUSTED: instruction_like" in prompt
+    assert [(r.tool, r.operation, r.arguments) for r, _ in ctx.syscalls] == [("browser", "open", {"url": VENDOR_DOCS_URL})]

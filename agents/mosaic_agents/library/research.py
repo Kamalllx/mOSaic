@@ -30,6 +30,9 @@ Rules:
 
 # The allowlisted vendor docs URL for the Apollo scenario
 VENDOR_DOCS_URL = "http://vendor-docs/sdk-v5.html"
+# The planner often hands research a generic goal ("Gather evidence from available documents"), which never reaches
+# the vendor's own messages; this agent owns vendor context, so it always looks for them too.
+VENDOR_QUERY = "vendor SDK release status and delays"
 
 
 class ResearchAgent(MosaicAgent):
@@ -38,8 +41,11 @@ class ResearchAgent(MosaicAgent):
     async def run(self, goal: str, ctx: Any) -> AgentResult:
         await ctx.log("research-agent: starting", data={"goal": goal[:200]})
 
-        # Gather knowledge base evidence (all scopes)
+        # Gather knowledge base evidence (all scopes): the goal, plus the vendor's side of the story
         evidence = await gather_evidence(ctx, goal, scope=["/org"], top_k=8)
+        vendor = await gather_evidence(ctx, VENDOR_QUERY, scope=["/org"], top_k=4)
+        seen = {h.path for h in evidence.hits}
+        evidence = evidence.model_copy(update={"hits": [*evidence.hits, *(h for h in vendor.hits if h.path not in seen)]})
         evidence_text = cite(evidence)
         await ctx.log(f"research-agent: gathered {len(evidence.hits)} evidence hits")
 
