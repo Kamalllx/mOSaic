@@ -44,6 +44,16 @@ log = logging.getLogger("mosaic.models.router")
 _MODEL_LIST_TTL = 60.0  # seconds
 
 
+def _valid(data: Any, schema: dict[str, Any]) -> bool:
+    try:
+        jsonschema.validate(data, schema)
+        return True
+    except jsonschema.ValidationError:
+        return False
+    except jsonschema.SchemaError:
+        return True  # not the model's fault; let the caller validate
+
+
 class PolicyRouter:
     """Policy-driven router over a list of ModelProviders."""
 
@@ -68,10 +78,10 @@ class PolicyRouter:
             for p in self._providers.values():
                 try:
                     models.extend(await p.list_models())
-                except Exception:
-                    pass
+                except Exception as e:
+                    log.warning("listing models from %s failed: %s", p.name, e)
             self._cached_models = models
-            self._cache_ts = now
+            self._cache_ts = now if models else 0.0  # don't remember an empty list: ask again next time
         return self._cached_models
 
     def _is_pulled(self, model_name: str, models: list[ModelInfo]) -> bool:
@@ -134,13 +144,8 @@ class PolicyRouter:
             if p:
                 return best, p, "any_local_chat"
 
-        # 6. use the default model even if not confirmed pulled (optimistic)
-        default = cfg.get("default", "")
-        if default and self._providers:
-            p = next(iter(self._providers.values()))
-            return default, p, "config_default_optimistic"
-
-        raise MosaicError("MODEL_UNAVAILABLE", "No suitable model found for the request")
+        # 6. nothing usable is pulled: say so now, rather than as an HTTP 404 from the provider later
+        raise MosaicError("MODEL_UNAVAILABLE", "no pulled local chat model; `ollama pull` one from models/models.yaml")
 
     # ------------------------------------------------------------------ public API
 
@@ -162,7 +167,7 @@ class PolicyRouter:
         resp = await provider.generate(request, model_name)
 
         # JSON repair: if schema was requested and parsed is None or invalid, retry once
-        if request.json_schema and resp.parsed is None:
+        if request.json_schema and (resp.parsed is None or not _valid(resp.parsed, request.json_schema)):
             try:
                 resp = await self._repair_json(request, model_name, provider, resp)
             except Exception as e:

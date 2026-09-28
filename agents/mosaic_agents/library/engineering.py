@@ -64,7 +64,10 @@ class EngineeringAgent(MosaicAgent):
                 result = await ctx.syscall(req)
                 if result.tool_result and result.tool_result.output:
                     issues = result.tool_result.output.get("issues", [])
-                    jira_context = f"\nJira issues: {issues}"
+                    # key/status/summary only: the raw issue list costs the small local models most of their context
+                    lines = [f"- {i.get('key', '?')} [{i.get('status', '?')}] {str(i.get('summary', ''))[:120]}"
+                             for i in issues[:20] if isinstance(i, dict)]
+                    jira_context = "\nJira issues:\n" + "\n".join(lines)
                     await ctx.log(f"engineering-agent: retrieved {len(issues)} Jira issues")
             except Exception as e:
                 await ctx.log(f"engineering-agent: Jira search failed (non-fatal): {e}", level="warning")
