@@ -30,8 +30,8 @@ from mosaic_contracts.util import estimate_tokens
 from ..indexing.store import PgStore
 
 # A memory with no word in common with the query is recalled only if its cosine similarity reaches this.
-# TODO(T9): retune RECALL_KEYWORD_GATE_COSINE with real embeddings; semantically-related memories with no shared words must still be recalled.
-RECALL_KEYWORD_GATE_COSINE = 0.5
+# Tuned on nomic-embed-text (768-dim): related paraphrases 0.375-0.839 (median 0.51), unrelated pairs 0.320-0.408.
+RECALL_KEYWORD_GATE_COSINE = 0.42
 
 _INVALIDATE_CTE = """
 WITH RECURSIVE dep(id) AS (
