@@ -38,3 +38,6 @@
 /execution/images/sandbox-browser/        @manjunath3155
 /execution/tests/test_browser_contract.py @manjunath3155
 /models/mosaic_models/gpu/                @manjunath3155
+/models/tests/test_probe_contract.py      @manjunath3155
+/apps/mobile/                             @manjunath3155
+/docs/DEMO_SCRIPT.md                      @manjunath3155
