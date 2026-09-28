@@ -4,7 +4,7 @@ title: Security policy
 description: Organization security policy v2 (adds CFO sign-off for emergency vendor spend)
 tags: [security, policy]
 version: 2
-owner: li
+owner: li-wei
 source: policy-register
 updated_at: 2026-09-27T09:00:00Z
 trust: verified
