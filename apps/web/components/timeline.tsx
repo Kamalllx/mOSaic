@@ -42,7 +42,7 @@ export function EvidencePath({ path, flagged }: { path: string; flagged?: boolea
 }
 
 function Row({ e, retrieval }: { e: Event; retrieval?: Retrieval }) {
-  const [open, setOpen] = useState(false);
+  const [openState, setOpen] = useState<boolean | null>(null);
   const line = describeEvent(e);
   const Icon = line.icon;
   const emphasised = EMPHASISED.includes(line.family);
@@ -50,6 +50,7 @@ function Row({ e, retrieval }: { e: Event; retrieval?: Retrieval }) {
   const paths = expandable ? strList(e, "paths") : [];
   const flagged = retrieval?.flagged ?? [];
   const extraFlagged = flagged.filter((p) => !paths.includes(p));
+  const open = openState ?? flagged.length > 0; // a flagged retrieval opens by itself: the demo's firewall moment
 
   return (
     <li
@@ -67,7 +68,7 @@ function Row({ e, retrieval }: { e: Event; retrieval?: Retrieval }) {
       <button
         type="button"
         disabled={!expandable}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => setOpen(!open)}
         className="flex w-full items-start gap-2 text-left disabled:cursor-default"
       >
         <span className="mt-0.5 w-16 shrink-0 font-mono text-[11px] text-muted-foreground">{formatTime(e.ts)}</span>

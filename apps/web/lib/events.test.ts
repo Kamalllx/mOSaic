@@ -117,3 +117,17 @@ describe("describeEvent", () => {
     expect(describeEvent(EVENTS.find((e) => e.type === "agent.log" && e.payload?.level === "warning")!).family).toBe("danger");
   });
 });
+
+describe("knowledge.retrieved flagged (contract 0.4.0)", () => {
+  it("takes flagged paths from the payload", () => {
+    const ev = {
+      event_id: "EV-f1", type: "knowledge.retrieved", ts: "2026-09-28T10:00:00Z", source: "kernel", org_id: "acme",
+      task_id: "T-1", pid: 104, correlation_id: null,
+      payload: { query: "vendor", hits: 2, filtered_by_policy: 0, paths: ["/org/a", "/org/inbox/vendor-email"], flagged: ["/org/inbox/vendor-email"] },
+    } as unknown as Event;
+    const view = buildTaskView({}, [ev]);
+    expect(view.retrieved[0].flagged).toEqual(["/org/inbox/vendor-email"]);
+    expect(view.flaggedPaths).toEqual(["/org/inbox/vendor-email"]);
+    expect(describeEvent(ev).family).toBe("danger");
+  });
+});

@@ -142,7 +142,9 @@ export function describeEvent(e: Event): EventLine {
       return { icon: RefreshCw, family: "knowledge", title: `Knowledge reindexed (${plural(num(e, "count"), "object")})` };
     case "knowledge.retrieved": {
       const hidden = num(e, "filtered_by_policy") ?? 0;
-      return { icon: BookOpenText, family: "knowledge", title: `Retrieved ${plural(num(e, "hits"), "document")}${hidden ? ` · ${hidden} hidden by policy` : ""}`, detail: p("query") };
+      const flagged = strList(e, "flagged").length;
+      const title = `Retrieved ${plural(num(e, "hits"), "document")}${hidden ? ` · ${hidden} hidden by policy` : ""}${flagged ? ` · ${flagged} flagged by the firewall` : ""}`;
+      return { icon: flagged ? ShieldAlert : BookOpenText, family: flagged ? "danger" : "knowledge", title, detail: p("query") };
     }
     case "memory.invalidated": {
       const n = strList(e, "invalidated").length;

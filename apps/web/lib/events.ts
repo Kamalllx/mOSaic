@@ -41,9 +41,8 @@ export function mergeEvents(into: Map<string, Event>, incoming: Event[]): boolea
 
 // --------------------------------------------------------------------------------------------- firewall flags
 
-// P1's AgentContext logs `Context firewall flagged <path>[, <path>…] — treated as data` as an agent.log warning.
-// knowledge.retrieved carries paths only, so this warning is the UI's source for flagged paths
-// (contract proposal: add `flagged: list[str]` to the knowledge.retrieved payload).
+// knowledge.retrieved carries `flagged` (contract 0.4.0). Older gateways only logged
+// `Context firewall flagged <path>[, <path>…] — treated as data` as an agent.log warning; still parsed as a fallback.
 const FLAG_RE = /Context firewall flagged\s+(.+)/i;
 const PATH_RE = /\/org(?:\/[A-Za-z0-9._-]+)+/g;
 
@@ -177,7 +176,8 @@ export function buildTaskView(seed: TaskSeed, events: Event[]): TaskView {
         break;
       }
       case "knowledge.retrieved": {
-        const r: Retrieval = { event: e, flagged: [] };
+        const r: Retrieval = { event: e, flagged: strList(e, "flagged") };
+        r.flagged.forEach((p) => flagged.add(p));
         view.retrieved.push(r);
         if (pid !== null) lastRetrievalByPid.set(pid, r);
         break;
