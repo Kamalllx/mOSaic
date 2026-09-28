@@ -13,6 +13,7 @@ import {
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
+  useStore,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { Hourglass, Pause, Play, Skull } from "lucide-react";
@@ -104,14 +105,22 @@ function NodeButton({ label, onClick, icon, danger }: { label: string; onClick: 
 const nodeTypes = { proc: ProcessNode };
 
 /** Re-fit whenever the set of processes or their parents change: fitView on its own only runs for the first render, and new
- *  nodes need a moment to be measured, so fit once right away and once after they've rendered. */
+ *  nodes need a moment to be measured, so fit once right away and once after they've rendered. Also re-fit when the pane
+ *  is resized (window resize, projector switch, drawer opening), debounced so a drag doesn't animate on every frame. */
 function FitOnGrowth({ pids }: { pids: string }) {
   const { fitView } = useReactFlow();
+  const width = useStore((s) => s.width);
+  const height = useStore((s) => s.height);
   useEffect(() => {
     const fit = () => void fitView({ padding: 0.08, maxZoom: 1.25, duration: 250 });
     const timers = [setTimeout(fit, 60), setTimeout(fit, 450)];
     return () => timers.forEach(clearTimeout);
   }, [pids, fitView]);
+  useEffect(() => {
+    if (!width || !height) return;
+    const timer = setTimeout(() => void fitView({ padding: 0.08, maxZoom: 1.25, duration: 150 }), 150);
+    return () => clearTimeout(timer);
+  }, [width, height, fitView]);
   return null;
 }
 
