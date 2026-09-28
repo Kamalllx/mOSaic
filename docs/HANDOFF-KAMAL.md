@@ -161,7 +161,7 @@ Everything is in [`docs/DEMO_SCRIPT.md`](DEMO_SCRIPT.md). On your laptop, the la
      docker exec mosaic-postgres-dev psql -U mosaic -d mosaic -c "TRUNCATE memories, working_sets;"
      # compose Postgres: docker compose -f infra/compose/docker-compose.yml exec postgres psql -U mosaic -d mosaic -c "TRUNCATE memories, working_sets;"
      ```
-- **Talk track, step 17:** runs currently list **between 3 and 6** root causes, so say **"the three main root causes"** and read out the three in step 17: dual-run cloud cost, the duplicate-recon-id backfill failure, and PayCo certification + emergency contract. Keep this wording until the top-3 cap in §4 is done.
+- **Talk track, step 17:** the planner keeps at most three root causes (§4, done), so say **"the three root causes"** and read out the three in step 17: dual-run cloud cost, the duplicate-recon-id backfill failure, and PayCo certification + emergency contract.
 - **Invalidation demo (step 18, the main one):** after a completed run, append the line to `data/okf/finance/cloud-bill-2026-09.md`. The toast names finance-agent, and the explorer updates. Reset with `git checkout data/okf/finance/cloud-bill-2026-09.md`. The security-policy-v2 swap is **optional** and currently invalidates nothing (see §4).
 - **Fallbacks:** each run-sheet row has one. The universal one is the mock gateway replay.
 
@@ -169,7 +169,7 @@ Everything is in [`docs/DEMO_SCRIPT.md`](DEMO_SCRIPT.md). On your laptop, the la
 
 In priority order for the demo. Each item lists the files to look at and a suggested fix.
 
-- [ ] **Cap the root causes at the top 3** (P3 area). Runs list 3–6, some overlapping (for example "Legacy pipeline not switched off" alongside the dual-run cost), and some cite only `/org/projects/apollo`.
+- [x] **Cap the root causes at the top 3** (P3 area). Done: `_top_root_causes()` in `planner.py` drops restated symptoms, merges near-duplicates and keeps three; `recovery_plan` is now a list (the 7B's `:[`), and a heading-only summary falls back to the root causes. Original note: runs list 3–6, some overlapping (for example "Legacy pipeline not switched off" alongside the dual-run cost), and some cite only `/org/projects/apollo`.
   - *Files:* `agents/mosaic_agents/library/planner.py`: synthesis around lines 150–175, `_backed()` at about line 239, and `_root_causes_from_findings()`.
   - *Fix:* after `_backed()`, merge causes whose evidence sets are equal or a subset of another's. Rank the rest by the number of distinct retrieved documents, preferring finance/engineering citations, then slice `[:3]`, and build `recovery_plan` from the kept three. Add a unit test next to the messy-plan test from `033a943`. After that, change the talk track back to "the three root causes".
 - [ ] **Rehearse 3× and record a backup video** (P4 area). Do this on your laptop, with the 7B if it fits. Record one clean full run and keep it local, not streamed. Tick DEMO_SCRIPT's QA checklist each time.

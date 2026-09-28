@@ -16,6 +16,7 @@ Flow:
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from mosaic_contracts.schema import AgentResult, AgentResultStatus
@@ -50,11 +51,39 @@ Rules:
 
 SYNTHESIS_SYSTEM = """You are the Planner synthesizing findings from specialist agents.
 Produce:
-1. A list of root causes, each citing at least one /org path from the evidence.
-2. A numbered recovery plan referencing the root causes.
+1. The three most important root causes (at most three), each citing at least one /org path from the evidence.
+   Each must be a distinct cause, not a restatement of the symptoms in the goal (being over budget or late).
+2. A recovery plan: a list of concrete steps, each addressing one of the root causes.
+3. A summary of two or three sentences.
 
 NEVER fabricate citations. Only cite /org paths that actually appeared in the evidence.
 """
+
+MAX_ROOT_CAUSES = 3
+PREFERRED_SOURCES = ("/org/finance/", "/org/engineering/")  # primary records; overviews like /org/projects/* rank lower
+_CAUSAL = re.compile(r"\b(due|because|caus\w*|fail\w*|block\w*|driv\w*|result\w*|lead\w*|led)\b", re.I)
+_STOP = frozenset("the and for with that this from are was were has have been its into over under why how what".split())
+
+
+def _words(text: str) -> set[str]:
+    return {w for w in re.findall(r"[a-z0-9]+", text.lower()) if len(w) > 2 and w not in _STOP}
+
+
+def _overlap(a: set[str], b: set[str]) -> float:
+    return len(a & b) / max(1, len(a | b))
+
+
+def _gain(rc: dict[str, Any], picked: list[dict[str, Any]]) -> tuple[int, int, float, int, int]:
+    """How much a root cause adds to those already picked: new primary documents, new documents, then dissimilarity."""
+    covered = {p for k in picked for p in k["evidence"]}
+    new = [p for p in rc["evidence"] if p not in covered]
+    similar = max((_overlap(_words(rc["cause"]), _words(k["cause"])) for k in picked), default=0.0)
+    primary = sum(p.startswith(PREFERRED_SOURCES) for p in rc["evidence"])
+    return sum(p.startswith(PREFERRED_SOURCES) for p in new), len(new), -similar, primary, len(rc["evidence"])
+
+
+def _usable_text(text: str, min_words: int) -> bool:
+    return len(re.findall(r"[A-Za-z]{3,}", text)) >= min_words
 
 
 class PlannerAgent(MosaicAgent):
@@ -149,8 +178,8 @@ class PlannerAgent(MosaicAgent):
             f"Goal: {goal}\n\n"
             f"Evidence from knowledge base:\n{evidence_text}\n\n"
             f"Specialist findings:\n{self._format_upstream(upstream)}\n\n"
-            "Synthesize into: root_causes (list of {cause, evidence: [/org paths]}), "
-            "recovery_plan (numbered steps), summary (brief)."
+            "Synthesize into: root_causes (at most three, list of {cause, evidence: [/org paths]}), "
+            "recovery_plan (list of steps), summary (two or three sentences)."
         )
 
         synthesis = await ask_json(ctx, SYNTHESIS_SYSTEM, synthesis_prompt, SynthesisOut, max_tokens=2000)
@@ -168,8 +197,20 @@ class PlannerAgent(MosaicAgent):
         if not synthesis.root_causes:
             await ctx.log("planner: building root causes from the specialists' structured findings", level="warning")
             synthesis.root_causes = self._root_causes_from_findings(upstream)
-        if not synthesis.recovery_plan:
-            synthesis.recovery_plan = "\n".join(f"{i}. Address: {rc['cause']}" for i, rc in enumerate(synthesis.root_causes, 1))
+        found = len(synthesis.root_causes)
+        synthesis.root_causes = self._top_root_causes(goal, synthesis.root_causes)
+        if len(synthesis.root_causes) < found:
+            await ctx.log(f"planner: kept the top {len(synthesis.root_causes)} of {found} root causes")
+        steps = [s.strip() for s in synthesis.recovery_plan if _usable_text(s, 2)]
+        if not steps:
+            if synthesis.recovery_plan:
+                await ctx.log("planner: the recovery plan was unusable; building it from the root causes", level="warning")
+            steps = [f"Address: {rc['cause']}" for rc in synthesis.root_causes]
+        synthesis.recovery_plan = steps
+        if not self._usable_summary(synthesis.summary):
+            synthesis.summary = (
+                f"{len(synthesis.root_causes)} root causes: " + "; ".join(rc["cause"] for rc in synthesis.root_causes)
+                if synthesis.root_causes else f"Investigation complete for: {goal[:100]}")
         await ctx.log(f"planner: synthesis complete ({len(synthesis.root_causes)} root causes)")
 
         # 8. Write artifact
@@ -179,10 +220,8 @@ class PlannerAgent(MosaicAgent):
 
         # 9. Return result
         root_causes = synthesis.root_causes
-        recovery_text = synthesis.recovery_plan
-        summary = synthesis.summary or (
-            f"{len(root_causes)} root causes: " + "; ".join(rc["cause"] for rc in root_causes) if root_causes
-            else f"Investigation complete for: {goal[:100]}")
+        recovery_text = self._numbered(synthesis.recovery_plan)
+        summary = synthesis.summary
 
         all_evidence = [h.path for h in evidence.hits]
         for out in upstream.values():
@@ -247,6 +286,51 @@ class PlannerAgent(MosaicAgent):
         return backed
 
     @staticmethod
+    def _top_root_causes(goal: str, root_causes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """At most MAX_ROOT_CAUSES distinct causes, kept in the model's order. Drops restatements of the goal's symptoms
+        ("31% over budget and six weeks late") and merges near-duplicates, then picks greedily: the cause that adds the
+        most primary (finance/engineering) documents not already cited, ties going to the one least like those picked."""
+        goal_words = _words(goal)
+        causes = [{**rc, "evidence": list(dict.fromkeys(rc.get("evidence", [])))} for rc in root_causes]
+
+        def restates_goal(rc: dict[str, Any]) -> bool:
+            words = _words(rc["cause"])
+            return bool(words) and len(words & goal_words) / len(words) >= 0.5 and not _CAUSAL.search(rc["cause"])
+
+        if any(not restates_goal(rc) for rc in causes):
+            causes = [rc for rc in causes if not restates_goal(rc)]
+
+        kept: list[dict[str, Any]] = []
+        for rc in causes:
+            words, ev = _words(rc["cause"]), set(rc["evidence"])
+            twin = next((k for k in kept if _overlap(words, _words(k["cause"])) >= 0.5
+                         and (ev <= set(k["evidence"]) or set(k["evidence"]) <= ev)), None)
+            if twin is None:
+                kept.append(rc)
+            else:
+                if len(ev) > len(twin["evidence"]):
+                    twin["cause"] = rc["cause"]
+                twin["evidence"] = list(dict.fromkeys([*twin["evidence"], *rc["evidence"]]))
+
+        picked: list[dict[str, Any]] = []
+        pool = list(kept)
+        while pool and len(picked) < MAX_ROOT_CAUSES:
+            best = max(pool, key=lambda rc: _gain(rc, picked))  # ties go to the earlier cause
+            picked.append(best)
+            pool.remove(best)
+        return [rc for rc in kept if any(rc is p for p in picked)]
+
+    @staticmethod
+    def _usable_summary(summary: str) -> bool:
+        """A summary, not a heading: "Recovery Plan for Project Apollo" came back from the 7B once."""
+        s = summary.strip()
+        return not s.startswith("#") and _usable_text(s, 8)
+
+    @staticmethod
+    def _numbered(steps: list[str]) -> str:
+        return "\n".join(f"{i}. {s}" for i, s in enumerate(steps, 1))
+
+    @staticmethod
     def _specialist_items(upstream: dict[str, Any]) -> list[tuple[str, list[str]]]:
         """(cause, evidence) from the specialists' structured outputs; their citations are already checked."""
         items: list[tuple[str, list[str]]] = []
@@ -291,7 +375,7 @@ class PlannerAgent(MosaicAgent):
             parts.append("No root cause could be backed by a retrieved document; see the specialist findings below.")
 
         if synthesis and synthesis.recovery_plan:
-            parts.append(f"\n## Recovery Steps\n\n{synthesis.recovery_plan}")
+            parts.append(f"\n## Recovery Steps\n\n{self._numbered(synthesis.recovery_plan)}")
 
         parts.append("\n## Specialist Findings Summary\n")
         for step_id, out in upstream.items():

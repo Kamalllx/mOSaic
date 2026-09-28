@@ -148,6 +148,62 @@ def test_synthesized_root_causes_keep_only_retrieved_citations():
     assert result.output["root_causes"] == [{"cause": "dual-run cost", "evidence": ["/org/decisions/ADR-042"]}]
 
 
+APOLLO_GOAL = ("Investigate why Project Apollo is over budget and six weeks behind schedule. "
+               "Identify root causes, update the tracker, and prepare a recovery plan.")
+
+
+def test_root_causes_are_capped_at_three_distinct_causes():
+    from mosaic_agents.library.planner import PlannerAgent
+
+    # The five causes qwen2.5:7b gave in a real run (T-b686e9e866): a restated symptom, two overlapping cost causes.
+    causes = [
+        {"cause": "Project Apollo is 31% over budget and six weeks late.",
+         "evidence": ["/org/projects/apollo", "/org/finance/apollo-budget"]},
+        {"cause": "The cloud cost overrun is 6.2 lakh (31%) due to running the old and new reconciliation pipelines "
+                  "in parallel for 7 weeks.", "evidence": ["/org/finance/apollo-budget"]},
+        {"cause": "The dual-run cloud cost, migration rework, and the PayCo emergency support contract are drivers of "
+                  "the budget overrun.", "evidence": ["/org/meetings/steering-2026-09-18", "/org/finance/apollo-budget"]},
+        {"cause": "The database migration (APOLLO-12) failed due to duplicate reconciliation IDs and required a full "
+                  "backfill.", "evidence": ["/org/engineering/apollo-status-w37", "/org/engineering/apollo-status",
+                                            "/org/engineering/postmortem-backfill-failure"]},
+        {"cause": "The vendor SDK v5 upgrade (APOLLO-31) is blocked on PayCo, delaying the upgrade by three weeks.",
+         "evidence": ["/org/engineering/apollo-status-w37"]},
+    ]
+    top = PlannerAgent._top_root_causes(APOLLO_GOAL, causes)
+    assert [rc["cause"][:20] for rc in top] == ["The dual-run cloud c", "The database migrati", "The vendor SDK v5 up"]
+
+    twins = [{"cause": "Backfill failed on duplicate reconciliation ids", "evidence": ["/org/engineering/apollo-status"]},
+             {"cause": "The backfill failed on duplicate reconciliation ids (APOLLO-12)",
+              "evidence": ["/org/engineering/apollo-status", "/org/engineering/postmortem-backfill-failure"]}]
+    [merged] = PlannerAgent._top_root_causes(APOLLO_GOAL, twins)
+    assert merged["cause"].endswith("(APOLLO-12)") and len(merged["evidence"]) == 2
+    only_symptom = [{"cause": "Apollo is over budget and six weeks behind schedule", "evidence": ["/org/projects/apollo"]}]
+    assert PlannerAgent._top_root_causes(APOLLO_GOAL, only_symptom) == only_symptom, "never left with nothing"
+
+
+def test_a_broken_recovery_plan_and_heading_summary_fall_back_to_the_root_causes():
+    from mosaic_agents.library.planner import PlannerAgent
+
+    # What qwen2.5:7b returned in real runs: a plan cut off at ":[" and a heading instead of a summary.
+    synthesis = {"summary": "Recovery Plan for Project Apollo", "recovery_plan": ":[", "root_causes": [
+        {"cause": "Dual-run of the old and new stacks doubled cloud cost", "evidence": ["/org/decisions/ADR-042"]},
+        {"cause": "Backfill failed on duplicate reconciliation ids", "evidence": ["/org/engineering/apollo-status"]}]}
+    ctx, _ = _planner_ctx(PLAN, synthesis=synthesis, children=CHILDREN)
+    result = asyncio.run(PlannerAgent().run(APOLLO_GOAL, ctx))
+    assert result.output["recovery_plan"] == ("1. Address: Dual-run of the old and new stacks doubled cloud cost\n"
+                                              "2. Address: Backfill failed on duplicate reconciliation ids")
+    assert result.summary.startswith("2 root causes: Dual-run of the old and new stacks")
+    md = _plan_md(ctx)
+    assert "## Recovery Steps\n\n1. Address: Dual-run" in md and ":[" not in md
+
+    listed = {**synthesis, "summary": "Apollo overran because both reconciliation stacks ran for seven weeks.",
+              "recovery_plan": ["Switch off the legacy pipeline", "Re-run the backfill with de-duplicated ids"]}
+    ctx, _ = _planner_ctx(PLAN, synthesis=listed, children=CHILDREN)
+    result = asyncio.run(PlannerAgent().run(APOLLO_GOAL, ctx))
+    assert result.output["recovery_plan"] == "1. Switch off the legacy pipeline\n2. Re-run the backfill with de-duplicated ids"
+    assert result.summary == listed["summary"]
+
+
 def test_research_reads_the_vendor_email_as_untrusted_data_and_never_acts_on_it():
     from mosaic_agents.library.research import VENDOR_DOCS_URL, ResearchAgent
 

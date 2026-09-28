@@ -7,9 +7,10 @@ Owner: P3 — Agents & Models
 """
 from __future__ import annotations
 
+import re
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class PlanStep(BaseModel):
@@ -46,11 +47,20 @@ class SynthesisOut(BaseModel):
         default_factory=list,
         description="Each: {cause: str, evidence: [/org paths]}",
     )
-    recovery_plan: str = Field(
-        default="",
-        description="Numbered recovery steps referencing the root causes",
+    # A list, not one string: asked for "numbered steps" under a string schema, qwen2.5:7b starts a JSON array inside the
+    # string and the grammar closes it straight away, leaving ":[" as the whole plan.
+    recovery_plan: list[str] = Field(
+        default_factory=list,
+        description="Recovery steps, one per item, each referencing a root cause",
     )
     summary: str = ""
+
+    @field_validator("recovery_plan", mode="before")
+    @classmethod
+    def _steps_from_text(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            return [re.sub(r"^\s*(?:\d+[.)]|[-*])\s*", "", line).strip() for line in v.splitlines() if line.strip()]
+        return v
 
 
 class FinanceOut(BaseModel):
