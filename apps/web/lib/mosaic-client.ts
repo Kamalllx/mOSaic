@@ -32,6 +32,14 @@ export type StreamStatus = "connecting" | "open" | "reconnecting" | "closed";
 
 export const DEFAULT_BASE_URL = process.env.NEXT_PUBLIC_MOSAIC_URL ?? "http://localhost:8080";
 
+/** artifact://<task_id>/<name> → <baseUrl>/tasks/<task_id>/artifacts/<name> (each segment URL-encoded). */
+export function artifactUrl(baseUrl: string, ref: string): string | null {
+  const m = /^artifact:\/\/([^/]+)\/(.+)$/.exec(ref);
+  if (!m) return null;
+  const name = m[2].split("/").map(encodeURIComponent).join("/");
+  return `${baseUrl}/tasks/${encodeURIComponent(m[1])}/artifacts/${name}`;
+}
+
 export function createMosaicClient(baseUrl = DEFAULT_BASE_URL, user = "alice", org = "acme") {
   const headers = { "Content-Type": "application/json", [USER_HEADER]: user, [ORG_HEADER]: org };
 
@@ -56,6 +64,18 @@ export function createMosaicClient(baseUrl = DEFAULT_BASE_URL, user = "alice", o
     getTask: (id: string) => call<Task>("GET", `/tasks/${id}`),
     cancelTask: (id: string) => call<Task>("POST", `/tasks/${id}/cancel`),
     taskArtifacts: (id: string) => call<string[]>("GET", `/tasks/${id}/artifacts`),
+    /** URL of an artifact's bytes (for <img src>, links); null if `ref` isn't artifact://<task>/<name>. */
+    artifactUrl: (ref: string) => artifactUrl(baseUrl, ref),
+    artifactText: async (ref: string) => {
+      const url = artifactUrl(baseUrl, ref);
+      if (!url) throw new MosaicError(400, "BAD_REQUEST", `not an artifact ref: ${ref}`);
+      const res = await fetch(url, { headers });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ code: "INTERNAL", message: res.statusText }));
+        throw new MosaicError(res.status, err.code ?? "INTERNAL", err.message ?? res.statusText);
+      }
+      return res.text();
+    },
     // processes
     listProcesses: (taskId?: string) => call<AgentProcess[]>("GET", `/agents${q({ task_id: taskId })}`),
     processTree: (taskId?: string) => call<ProcessTreeNode[]>("GET", `/agents/tree${q({ task_id: taskId })}`),
