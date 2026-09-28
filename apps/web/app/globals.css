@@ -2,90 +2,159 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-@custom-variant dark (&:is(.dark *));
+/* Themes are chosen by next-themes on <html data-theme>. */
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
 
-/* Local font stacks only: the demo box may have no internet at build time. */
+/* Fonts are bundled from npm (geist, @fontsource-variable/jetbrains-mono) via next/font/local: the demo box may have
+   no internet at build time. */
 @theme inline {
-  --font-sans: ui-sans-serif, "Segoe UI", "Inter", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
-  --font-mono: ui-monospace, "Cascadia Mono", "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --font-sans: var(--font-geist-sans), ui-sans-serif, "Segoe UI", system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, "Cascadia Mono", Consolas, monospace;
   --font-heading: var(--font-sans);
 
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-  --color-sidebar: var(--card);
-  --color-sidebar-foreground: var(--foreground);
-  --color-sidebar-primary: var(--primary);
-  --color-sidebar-primary-foreground: var(--primary-foreground);
-  --color-sidebar-accent: var(--accent);
-  --color-sidebar-accent-foreground: var(--accent-foreground);
-  --color-sidebar-border: var(--border);
-  --color-sidebar-ring: var(--ring);
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
+  --color-card: var(--surface-1);
+  --color-card-foreground: var(--text);
+  --color-popover: var(--surface-2);
+  --color-popover-foreground: var(--text);
+  --color-primary: var(--brand);
+  --color-primary-foreground: var(--on-brand);
+  --color-secondary: var(--surface-2);
+  --color-secondary-foreground: var(--text);
+  --color-muted: var(--surface-2);
+  --color-muted-foreground: var(--text-muted);
+  --color-accent: var(--surface-3);
+  --color-accent-foreground: var(--text);
+  --color-destructive: var(--st-failed);
+  --color-border: var(--line);
+  --color-input: var(--line-strong);
+  --color-ring: var(--brand);
+  --color-sidebar: var(--surface-1);
+  --color-sidebar-foreground: var(--text);
+  --color-sidebar-primary: var(--brand);
+  --color-sidebar-primary-foreground: var(--on-brand);
+  --color-sidebar-accent: var(--surface-3);
+  --color-sidebar-accent-foreground: var(--text);
+  --color-sidebar-border: var(--line);
+  --color-sidebar-ring: var(--brand);
 
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-text-2: var(--text-2);
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-subtle: var(--brand-subtle);
 
-  /* One palette for process/task state everywhere (brief §7): RUNNING green, WAITING amber, FAILED red,
-     COMPLETED grey, PAUSED blue; the remaining ALLOWED_TRANSITIONS states get their own muted tones. */
-  --color-st-running: #3fb950;
-  --color-st-waiting: #e3b341;
-  --color-st-failed: #f85149;
-  --color-st-completed: #8b949e;
-  --color-st-paused: #58a6ff;
-  --color-st-checkpoint: #bc8cff;
-  --color-st-retrying: #f0883e;
-  --color-st-terminated: #da3633;
-  --color-st-idle: #6e7681;
+  /* One palette for process/task state everywhere: RUNNING green, WAITING amber, PAUSED blue, FAILED red,
+     COMPLETED grey, TERMINATED dark grey (a filled chip, so its light text keeps contrast). */
+  --color-st-running: var(--st-running);
+  --color-st-waiting: var(--st-waiting);
+  --color-st-paused: var(--st-paused);
+  --color-st-failed: var(--st-failed);
+  --color-st-completed: var(--st-completed);
+  --color-st-terminated: var(--st-terminated);
+  --color-st-terminated-fg: var(--st-terminated-fg);
+  --color-st-checkpoint: var(--st-paused);
+  --color-st-retrying: var(--risk-high);
+  --color-st-idle: var(--text-muted);
 
-  /* Event families in the timeline. */
-  --color-ev-knowledge: #39c5cf;
-  --color-ev-syscall: #a371f7;
-  --color-ev-policy: #d2a8ff;
-  --color-ev-approval: #e3b341;
-  --color-ev-tool: #79c0ff;
-  --color-ev-memory: #56d364;
-  --color-ev-danger: #ff7b72;
+  --color-risk-low: var(--risk-low);
+  --color-risk-medium: var(--risk-medium);
+  --color-risk-high: var(--risk-high);
+  --color-risk-critical: var(--risk-critical);
+  --color-untrusted: var(--untrusted-fg);
+  --color-untrusted-bg: var(--untrusted-bg);
+
+  /* Event families in the timeline and audit journal. */
+  --color-ev-knowledge: var(--ev-knowledge);
+  --color-ev-syscall: var(--brand);
+  --color-ev-policy: var(--brand);
+  --color-ev-approval: var(--st-waiting);
+  --color-ev-tool: var(--ev-tool);
+  --color-ev-memory: var(--text-2);
+  --color-ev-danger: var(--st-failed);
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+
+  --shadow-panel: var(--shadow);
+  --ease-out-soft: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-/* The console is always dark ("OS console" look, readable on a projector). */
-:root {
-  --radius: 0.5rem;
-  --background: #0a0e13;
-  --foreground: #e6edf3;
-  --card: #10161e;
-  --card-foreground: #e6edf3;
-  --popover: #121a23;
-  --popover-foreground: #e6edf3;
-  --primary: #39c5cf;
-  --primary-foreground: #04161a;
-  --secondary: #1a232e;
-  --secondary-foreground: #e6edf3;
-  --muted: #161e28;
-  --muted-foreground: #9aa7b4;
-  --accent: #1c2733;
-  --accent-foreground: #e6edf3;
-  --destructive: #f85149;
-  --border: #243140;
-  --input: #2b3a4b;
-  --ring: #39c5cf;
+/* Dark is the default (operator console); every foreground/background pair is AA-checked in lib/tokens.test.ts. */
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+  --radius: 10px;
+  --bg: #0d1117;
+  --surface-1: #151a21;
+  --surface-2: #1b222b;
+  --surface-3: #222a34;
+  --line: #2d3743;
+  --line-strong: #3b4653;
+  --text: #f1f5f9;
+  --text-2: #a9b3bf;
+  --text-muted: #8a95a3;
+  --brand: #2bb8a3;
+  --brand-hover: #36cdb6;
+  --brand-subtle: #103a35;
+  --on-brand: #04211d;
+  --st-running: #2fb344;
+  --st-waiting: #d99a25;
+  --st-paused: #6a9be3;
+  --st-failed: #eb6a6a;
+  --st-completed: #8a949f;
+  --st-terminated: #4a525b;
+  --st-terminated-fg: #e8ecf0;
+  --risk-low: #8a95a3;
+  --risk-medium: #d99a25;
+  --risk-high: #e87921;
+  --risk-critical: #eb6a6a;
+  --untrusted-bg: #4a1518;
+  --untrusted-fg: #f06a6a;
+  --ev-knowledge: #5b9bd5;
+  --ev-tool: #8aa4c2;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 16px rgb(0 0 0 / 0.25);
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f6f7f9;
+  --surface-1: #ffffff;
+  --surface-2: #f1f3f6;
+  --surface-3: #e8ecf1;
+  --line: #d5dbe3;
+  --line-strong: #b8c1cc;
+  --text: #0f172a;
+  --text-2: #475569;
+  --text-muted: #5b6675;
+  --brand: #0b6b60;
+  --brand-hover: #0f7f71;
+  --brand-subtle: #ddf3ef;
+  --on-brand: #ffffff;
+  --st-running: #17702b;
+  --st-waiting: #8f5f00;
+  --st-paused: #2d62b3;
+  --st-failed: #b42f2f;
+  --st-completed: #5e6873;
+  --st-terminated: #3e454d;
+  --st-terminated-fg: #e8ecf0;
+  --risk-low: #5b6675;
+  --risk-medium: #8f5f00;
+  --risk-high: #9e4a00;
+  --risk-critical: #b42f2f;
+  --untrusted-bg: #fdecec;
+  --untrusted-fg: #b42323;
+  --ev-knowledge: #2b63a0;
+  --ev-tool: #4a6784;
+  --shadow: 0 1px 2px rgb(15 23 42 / 0.06), 0 4px 16px rgb(15 23 42 / 0.06);
 }
 
 @layer base {
@@ -94,21 +163,45 @@
   }
   html {
     @apply font-sans;
-    font-size: 15px;
+    font-size: 16px; /* text-sm = 14px, the smallest body size (projector) */
   }
   body {
     @apply bg-background text-foreground antialiased;
+    font-feature-settings: "tnum" 1;
+  }
+  :focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
   }
 }
 
-@keyframes attention {
-  0%, 100% { box-shadow: 0 0 0 0 rgb(227 179 65 / 0.55); }
-  50% { box-shadow: 0 0 0 10px rgb(227 179 65 / 0); }
-}
-.attention {
-  animation: attention 1.6s ease-in-out infinite;
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
-/* React Flow on the dark theme */
+@keyframes row-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+.row-in {
+  animation: row-in 200ms var(--ease-out-soft);
+}
+
+@keyframes activity {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.activity-dot {
+  animation: activity 1.6s ease-in-out infinite;
+}
+
+/* React Flow follows the theme */
 .react-flow__attribution { display: none; }
-.react-flow__edge-path { stroke: #3a4a5c; }
+.react-flow__edge-path { stroke: var(--line-strong); }

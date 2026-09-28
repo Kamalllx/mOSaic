@@ -1,8 +1,9 @@
 "use client";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ThemeProvider } from "next-themes";
 import { createContext, useContext, useState } from "react";
-import { KnowledgeEvents } from "@/components/knowledge-events";
+import { GlobalEvents } from "@/components/global-events";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { createMosaicClient, type MosaicClient } from "@/lib/mosaic-client";
@@ -21,14 +22,16 @@ export function Providers({ children }: { children: React.ReactNode }) {
   );
   const [client] = useState(() => createMosaicClient());
   return (
-    <ClientContext.Provider value={client}>
-      <QueryClientProvider client={queryClient}>
-        <TooltipProvider delayDuration={200}>
-          {children}
-          <KnowledgeEvents />
-          <Toaster theme="dark" position="bottom-right" richColors closeButton expand visibleToasts={4} />
-        </TooltipProvider>
-      </QueryClientProvider>
-    </ClientContext.Provider>
+    <ThemeProvider attribute="data-theme" defaultTheme="system" enableSystem storageKey="theme" disableTransitionOnChange>
+      <ClientContext.Provider value={client}>
+        <QueryClientProvider client={queryClient}>
+          <TooltipProvider delayDuration={200}>
+            {children}
+            <GlobalEvents />
+            <Toaster position="bottom-right" closeButton expand visibleToasts={4} duration={4_000} />
+          </TooltipProvider>
+        </QueryClientProvider>
+      </ClientContext.Provider>
+    </ThemeProvider>
   );
 }

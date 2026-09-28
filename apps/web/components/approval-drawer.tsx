@@ -37,7 +37,7 @@ export function ApprovalDrawer({ view }: { view: TaskView }) {
         <button
           type="button"
           onClick={() => setManualOpen(true)}
-          className="attention flex items-center gap-2 rounded-lg border-2 border-st-waiting bg-st-waiting/15 px-4 py-2 font-semibold text-st-waiting"
+          className="flex items-center gap-2 rounded-lg border-2 border-st-waiting bg-st-waiting/15 px-4 py-2 font-semibold text-st-waiting"
         >
           <BellRing className="size-5 animate-bounce" />
           {pending.length === 1 ? "1 approval waiting for you" : `${pending.length} approvals waiting for you`}

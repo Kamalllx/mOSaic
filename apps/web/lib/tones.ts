@@ -1,25 +1,26 @@
-// One state→colour map for the whole console (brief §7). Colours are the --color-st-* tokens in globals.css.
-import type { AgentState, TaskStatus } from "@mosaic/contracts";
+// One state/risk/trust → colour map for the whole console. Colours are the tokens in globals.css (both themes).
+import type { AgentState, Risk, TaskStatus } from "@mosaic/contracts";
 
 export interface Tone {
   text: string;
   bg: string;
   border: string;
   dot: string;
-  hex: string;
+  /** CSS colour for SVG strokes (React Flow edges); follows the theme. */
+  stroke: string;
 }
 
 // Literal class names so Tailwind's scanner sees them.
 export const TONES = {
-  running: { text: "text-st-running", bg: "bg-st-running/15", border: "border-st-running/50", dot: "bg-st-running", hex: "#3fb950" },
-  waiting: { text: "text-st-waiting", bg: "bg-st-waiting/15", border: "border-st-waiting/50", dot: "bg-st-waiting", hex: "#e3b341" },
-  failed: { text: "text-st-failed", bg: "bg-st-failed/15", border: "border-st-failed/50", dot: "bg-st-failed", hex: "#f85149" },
-  completed: { text: "text-st-completed", bg: "bg-st-completed/15", border: "border-st-completed/50", dot: "bg-st-completed", hex: "#8b949e" },
-  paused: { text: "text-st-paused", bg: "bg-st-paused/15", border: "border-st-paused/50", dot: "bg-st-paused", hex: "#58a6ff" },
-  checkpoint: { text: "text-st-checkpoint", bg: "bg-st-checkpoint/15", border: "border-st-checkpoint/50", dot: "bg-st-checkpoint", hex: "#bc8cff" },
-  retrying: { text: "text-st-retrying", bg: "bg-st-retrying/15", border: "border-st-retrying/50", dot: "bg-st-retrying", hex: "#f0883e" },
-  terminated: { text: "text-st-terminated", bg: "bg-st-terminated/15", border: "border-st-terminated/50", dot: "bg-st-terminated", hex: "#da3633" },
-  idle: { text: "text-st-idle", bg: "bg-st-idle/15", border: "border-st-idle/50", dot: "bg-st-idle", hex: "#6e7681" },
+  running: { text: "text-st-running", bg: "bg-st-running/12", border: "border-st-running/45", dot: "bg-st-running", stroke: "var(--st-running)" },
+  waiting: { text: "text-st-waiting", bg: "bg-st-waiting/12", border: "border-st-waiting/50", dot: "bg-st-waiting", stroke: "var(--st-waiting)" },
+  paused: { text: "text-st-paused", bg: "bg-st-paused/12", border: "border-st-paused/45", dot: "bg-st-paused", stroke: "var(--st-paused)" },
+  failed: { text: "text-st-failed", bg: "bg-st-failed/12", border: "border-st-failed/50", dot: "bg-st-failed", stroke: "var(--st-failed)" },
+  completed: { text: "text-st-completed", bg: "bg-st-completed/10", border: "border-st-completed/40", dot: "bg-st-completed", stroke: "var(--st-completed)" },
+  terminated: { text: "text-st-terminated-fg", bg: "bg-st-terminated", border: "border-st-terminated", dot: "bg-st-terminated-fg", stroke: "var(--st-terminated)" },
+  checkpoint: { text: "text-st-paused", bg: "bg-st-paused/12", border: "border-st-paused/45", dot: "bg-st-paused", stroke: "var(--st-paused)" },
+  retrying: { text: "text-st-retrying", bg: "bg-st-retrying/12", border: "border-st-retrying/50", dot: "bg-st-retrying", stroke: "var(--risk-high)" },
+  idle: { text: "text-muted-foreground", bg: "bg-surface-3", border: "border-line", dot: "bg-st-idle", stroke: "var(--line-strong)" },
 } satisfies Record<string, Tone>;
 
 export const AGENT_STATE_TONE: Record<AgentState, Tone> = {
@@ -47,5 +48,15 @@ export const TASK_STATUS_TONE: Record<TaskStatus, Tone> = {
   cancelled: TONES.terminated,
 };
 
+export const RISK_TONE: Record<Risk, string> = {
+  low: "text-risk-low border-risk-low/50 bg-risk-low/10",
+  medium: "text-risk-medium border-risk-medium/50 bg-risk-medium/12",
+  high: "text-risk-high border-risk-high/50 bg-risk-high/12",
+  critical: "text-risk-critical border-risk-critical/60 bg-risk-critical/15",
+};
+
+export const UNTRUSTED_TONE = "text-untrusted bg-untrusted-bg border-untrusted/60";
+
 export const agentTone = (s?: string | null): Tone => AGENT_STATE_TONE[(s ?? "") as AgentState] ?? TONES.idle;
 export const taskTone = (s?: string | null): Tone => TASK_STATUS_TONE[(s ?? "") as TaskStatus] ?? TONES.idle;
+export const riskTone = (r?: string | null): string => RISK_TONE[(r ?? "") as Risk] ?? RISK_TONE.low;

@@ -52,7 +52,7 @@ function ProcessNode({ data }: NodeProps<ProcNode>) {
   const busy = p.state === "RUNNING";
   return (
     <div
-      className={cn("rounded-lg border-2 bg-card px-3 py-2 shadow-lg", tone.border, p.state === "WAITING" && "attention")}
+      className={cn("rounded-lg border-2 bg-card px-3 py-2 shadow-lg", tone.border, p.state === "WAITING" && "ring-2 ring-st-waiting/40")}
       style={{ width: NODE_W, minHeight: NODE_H }}
     >
       <Handle type="target" position={Position.Top} className="!bg-transparent !border-0" />
@@ -184,7 +184,7 @@ export function ProcessTree({ processes }: { processes: Record<number, AgentProc
         source: String(a),
         target: String(b),
         animated: child?.state === "RUNNING",
-        style: { stroke: agentTone(child?.state).hex, strokeWidth: 2, opacity: 0.7 },
+        style: { stroke: agentTone(child?.state).stroke, strokeWidth: 2, opacity: 0.7 },
       };
     });
     return { nodes, edges };

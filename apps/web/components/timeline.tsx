@@ -1,13 +1,12 @@
 "use client";
 
 import type { Event } from "@mosaic/contracts";
-import { ChevronRight, ShieldAlert } from "lucide-react";
-import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { EMPHASISED, FAMILY_TEXT, describeEvent } from "@/lib/describe";
 import { type Retrieval, strList } from "@/lib/events";
 import { cn } from "@/lib/utils";
-import { PidChip, formatTime } from "./status";
+import { EvidenceChip, PidChip, UntrustedBadge, formatTime } from "./status";
 
 // Chatty events that add little on a projector; one click shows them.
 const NOISE = new Set(["process.usage", "audit.appended", "tool.started", "syscall.completed", "system.health"]);
@@ -18,28 +17,9 @@ const isNoise = (e: Event) =>
   (e.type === "process.state_changed" &&
     (BOOT.has(String(e.payload?.new)) || (e.payload?.old === "READY" && e.payload?.new === "RUNNING")));
 
-export function FlagBadge() {
-  return (
-    <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded bg-st-failed/20 px-1.5 py-0.5 font-mono text-[11px] font-bold uppercase tracking-wide text-st-failed">
-      <ShieldAlert className="size-3" /> instruction-like
-    </span>
-  );
-}
-
-export function EvidencePath({ path, flagged }: { path: string; flagged?: boolean }) {
-  return (
-    <Link
-      href={`/knowledge?path=${encodeURIComponent(path)}`}
-      className={cn(
-        "flex items-center gap-2 rounded px-1.5 py-0.5 font-mono text-xs hover:bg-accent",
-        flagged ? "text-st-failed" : "text-ev-knowledge",
-      )}
-    >
-      <span className="truncate">{path}</span>
-      {flagged && <FlagBadge />}
-    </Link>
-  );
-}
+/** Kept for existing imports; the chips live in ./status. */
+export const FlagBadge = UntrustedBadge;
+export const EvidencePath = EvidenceChip;
 
 function Row({ e, retrieval }: { e: Event; retrieval?: Retrieval }) {
   const [openState, setOpen] = useState<boolean | null>(null);
