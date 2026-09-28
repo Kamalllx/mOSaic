@@ -9,8 +9,9 @@ from dataclasses import dataclass, fields
 class KernelConfig:
     max_concurrent_tasks: int = 2
     """Tasks whose agents run at the same time; more are queued (by priority)."""
-    approval_timeout_s: float = 600.0
-    """How long a privileged syscall waits for a human before it is rejected (approval → EXPIRED)."""
+    approval_timeout_s: float = 1800.0
+    """How long a privileged syscall waits for a human before it is rejected (approval → EXPIRED). Any human decision
+    in the same task restarts the clock of the task's other pending approvals."""
     escalation_timeout_s: float = 0.0
     """>0: after an agent exhausts its retries, ask a human (approval center) whether to retry once more. 0 = off."""
     max_restarts: int = 2

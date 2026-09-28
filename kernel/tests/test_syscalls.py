@@ -105,6 +105,54 @@ def test_waiting_for_approval_is_visible_in_task_status(make_kernel):
     assert run(go).status == TaskStatus.COMPLETED
 
 
+def test_parallel_approvals_do_not_expire_while_a_human_works_through_them(make_kernel):
+    """Three approvals arrive at once; a human decides one every 0.6 s. With a 1 s timeout, the third would expire
+    at 1 s if each clock ran from its request; a decision in the same task restarts the others' clocks."""
+    import asyncio
+
+    from mosaic_kernel.config import KernelConfig
+
+    results: list = []
+
+    async def actor(goal, ctx):
+        results.extend(await asyncio.gather(*(ctx.syscall(update_issue(ctx)) for _ in range(3))))
+        return done(ctx)
+
+    k = make_kernel({"planner-agent": actor}, [manifest("planner-agent", tools=["jira.read", "jira.write"])],
+                    config=KernelConfig(policy_watch_interval_s=0, approval_timeout_s=1.0))
+
+    async def go():
+        await k.boot()
+        tid = await start_task(k)
+        from mosaic_kernel.testing import eventually
+
+        await eventually(lambda: len(k.approvals.list(ApprovalStatus.PENDING)) == 3)
+        for a in k.approvals.list(ApprovalStatus.PENDING):
+            await asyncio.sleep(0.6)
+            await k.approvals.resolve(a.approval_id, True, "alice")
+        await k.tasks.wait_terminal(tid)
+        await k.shutdown()
+
+    run(go)
+    assert [r.status for r in results] == [SyscallStatus.COMPLETED] * 3
+
+
+def test_unanswered_approval_still_expires(make_kernel):
+    from mosaic_kernel.config import KernelConfig
+
+    results: list = []
+    k = _kernel(make_kernel, results, config=KernelConfig(policy_watch_interval_s=0, approval_timeout_s=0.3))
+
+    async def go():
+        await k.boot()
+        await k.tasks.wait_terminal(await start_task(k))
+        await k.shutdown()
+
+    run(go)
+    assert results[0].status == SyscallStatus.REJECTED
+    assert k.approvals.list()[0].status == ApprovalStatus.EXPIRED
+
+
 class _FailingVerify(FakeToolExecutor):
     async def verify(self, invocation, result: ToolResult) -> VerificationResult:
         return VerificationResult(invocation_id=invocation.invocation_id, passed=False)

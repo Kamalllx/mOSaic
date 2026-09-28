@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import TYPE_CHECKING
 
 from mosaic_contracts.errors import MosaicError
@@ -17,6 +18,7 @@ class ApprovalQueue:
         self.k = kernel
         self._approvals: dict[str, Approval] = {}
         self._futures: dict[str, asyncio.Future[ApprovalStatus]] = {}
+        self._last_decision: dict[str, float] = {}  # task_id -> monotonic time of the last human decision
 
     def load(self, approvals: list[Approval]) -> None:
         for a in approvals:
@@ -31,6 +33,9 @@ class ApprovalQueue:
     def list(self, status: ApprovalStatus | None = None, task_id: str | None = None) -> list[Approval]:
         return [a for a in sorted(self._approvals.values(), key=lambda a: a.requested_at)
                 if (status is None or a.status == status) and (task_id is None or a.task_id == task_id)]
+
+    def last_decision(self, task_id: str) -> float:
+        return self._last_decision.get(task_id, 0.0)
 
     def _save(self, a: Approval) -> Approval:
         self._approvals[a.approval_id] = a
@@ -53,6 +58,7 @@ class ApprovalQueue:
         if a.status != ApprovalStatus.PENDING:
             raise MosaicError("APPROVAL_ALREADY_RESOLVED", f"{approval_id} is {a.status.value}")
         status = ApprovalStatus.APPROVED if approved else ApprovalStatus.REJECTED
+        self._last_decision[a.task_id] = time.monotonic()
         return await self._close(a, status, by, comment)
 
     async def expire(self, approval_id: str, reason: str = "expired") -> None:

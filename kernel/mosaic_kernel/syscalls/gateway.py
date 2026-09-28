@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import TYPE_CHECKING
 
 from mosaic_contracts.schema import (
@@ -27,7 +28,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("mosaic.kernel.syscalls")
 
-APPROVAL_TIMEOUT_S = 600.0
+APPROVAL_TIMEOUT_S = 1800.0
 
 
 class SyscallGateway:
@@ -93,7 +94,7 @@ class SyscallGateway:
         fut = await self.k.approvals.create(approval)
         try:
             async with ctx.waiting(f"approval:{approval.approval_id}"):
-                status = await asyncio.wait_for(asyncio.shield(fut), self.approval_timeout)
+                status = await self._wait_for_decision(fut, req.task_id)
         except TimeoutError:
             await self.k.approvals.expire(approval.approval_id, "approval timed out")
             return False
@@ -101,3 +102,17 @@ class SyscallGateway:
             await self.k.approvals.expire(approval.approval_id, "process terminated")
             raise
         return status == ApprovalStatus.APPROVED
+
+    async def _wait_for_decision(self, fut: asyncio.Future[ApprovalStatus], task_id: str) -> ApprovalStatus:
+        # Parallel approvals of one task are decided one after another; each decision restarts the others' clocks,
+        # so the last card in the queue doesn't expire while the human is still working through the earlier ones.
+        deadline = time.monotonic() + self.approval_timeout
+        while True:
+            deadline = max(deadline, self.k.approvals.last_decision(task_id) + self.approval_timeout)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError
+            try:
+                return await asyncio.wait_for(asyncio.shield(fut), remaining)
+            except TimeoutError:
+                continue
