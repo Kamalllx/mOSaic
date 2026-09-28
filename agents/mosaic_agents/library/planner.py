@@ -25,8 +25,6 @@ from mosaic_agents.sdk import MosaicAgent, ask_json, cite, gather_evidence, keep
 
 log = logging.getLogger("mosaic.agents.planner")
 
-ALLOWED_AGENTS = ["finance-agent", "engineering-agent", "research-agent", "action-agent"]
-
 DEFAULT_PLAN = [
     PlanStep(step_id="s1", agent="finance-agent", goal="Explain the Apollo budget variance with evidence"),
     PlanStep(step_id="s2", agent="engineering-agent", goal="Identify engineering causes of the schedule slip"),
@@ -74,7 +72,7 @@ class PlannerAgent(MosaicAgent):
             return self.result(ctx, "cancelled before planning", status=AgentResultStatus.CANCELLED)
 
         # 2. Build plan via LLM
-        allowed = list(ctx.manifest.capabilities.agents) or ALLOWED_AGENTS
+        allowed = list(ctx.manifest.capabilities.agents)  # the kernel would refuse any other spawn anyway
         agent_list = "\n".join(f"- {a}" for a in allowed)
         user_prompt = (
             f"Goal: {goal}\n\n"
@@ -89,12 +87,12 @@ class PlannerAgent(MosaicAgent):
         await ctx.log("planner: plan generated", data={"steps": len(plan_out.steps) if plan_out else 0})
 
         # 3. Validate plan steps
-        steps = self._validate_steps(plan_out, allowed)
+        steps = await self._validate_steps(ctx, plan_out.steps if plan_out else [], allowed)
 
         # 4. Fallback plan
         if not steps:
             await ctx.log("planner: using fallback plan (LLM output unusable)")
-            steps = [s for s in DEFAULT_PLAN if s.agent in allowed]
+            steps = await self._validate_steps(ctx, [s.model_copy(deep=True) for s in DEFAULT_PLAN], allowed)
 
         await ctx.log(f"planner: executing {len(steps)} steps")
 
@@ -200,17 +198,32 @@ class PlannerAgent(MosaicAgent):
             artifacts=[artifact_ref],
         )
 
-    def _validate_steps(self, plan_out: PlanOut | None, allowed: list[str]) -> list[PlanStep]:
-        """Filter plan steps to only those using allowed agents."""
-        if not plan_out or not plan_out.steps:
-            return []
-        valid = []
-        for s in plan_out.steps:
+    async def _validate_steps(self, ctx: Any, planned: list[PlanStep], allowed: list[str]) -> list[PlanStep]:
+        """Make the LLM's plan executable: allowed agents only, unique step ids, exactly one action-agent step (one
+        governed change, so one approval), and dependencies that exist. The action step runs after every specialist,
+        whose findings it acts on."""
+        steps: list[PlanStep] = []
+        seen: set[str] = set()
+        action: PlanStep | None = None
+        for s in planned:
             if s.agent not in allowed:
-                log.warning("dropping step %s: agent %s not in allowed list", s.step_id, s.agent)
-                continue
-            valid.append(s)
-        return valid
+                await ctx.log(f"planner: dropping step {s.step_id}: agent {s.agent} is not allowed", level="warning")
+            elif s.step_id in seen:
+                await ctx.log(f"planner: dropping step {s.step_id}: duplicate step id", level="warning")
+            elif s.agent == "action-agent" and action is not None:
+                await ctx.log(f"planner: dropping step {s.step_id}: only one action-agent step per plan", level="warning")
+            else:
+                seen.add(s.step_id)
+                steps.append(s)
+                action = s if s.agent == "action-agent" else action
+        earlier: set[str] = set()  # depending only on earlier specialist steps keeps the plan acyclic
+        for s in steps:
+            if s is action:
+                s.depends_on = [x.step_id for x in steps if x is not action]
+            else:
+                s.depends_on = [d for d in dict.fromkeys(s.depends_on) if d in earlier]
+                earlier.add(s.step_id)
+        return steps
 
     def _format_upstream(self, upstream: dict[str, Any]) -> str:
         lines = []

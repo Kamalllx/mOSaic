@@ -53,3 +53,39 @@ def test_research_keeps_only_findings_from_retrieved_sources():
     result = asyncio.run(ResearchAgent().run("vendor SDK v5 email", ctx))
     assert [f["source"] for f in result.output["findings"]] == ["/org/inbox/vendor-email-2026-09-12"]
     assert "http://evil.example/" not in result.output["urls_opened"]
+
+
+def _planner_ctx(plan: dict, synthesis: dict | None = None, children: dict | None = None):
+    from mosaic_contracts.schema import AgentResult, AgentResultStatus
+
+    spawned: list[tuple[str, dict]] = []
+
+    async def child(agent, goal, inputs):
+        spawned.append((agent, inputs))
+        out, ev = (children or {}).get(agent, ({}, []))
+        return AgentResult(pid=0, agent=agent, status=AgentResultStatus.COMPLETED, summary=f"{agent} done", output=out,
+                           evidence=ev)
+
+    responses = {"produce a plan": plan}
+    if synthesis is not None:
+        responses["synthesize into"] = synthesis
+    return ctx_for("planner-agent", responses, child_runner=child), spawned
+
+
+def test_planner_runs_exactly_one_action_agent_last():
+    from mosaic_agents.library.planner import PlannerAgent
+
+    plan = {"rationale": "r", "steps": [
+        {"step_id": "a1", "agent": "action-agent", "goal": "update APOLLO-12", "depends_on": ["f"]},
+        {"step_id": "f", "agent": "finance-agent", "goal": "budget", "depends_on": ["e"]},
+        {"step_id": "e", "agent": "engineering-agent", "goal": "slip", "depends_on": ["f", "nope"]},
+        {"step_id": "a2", "agent": "action-agent", "goal": "update APOLLO-31", "depends_on": []},
+        {"step_id": "x", "agent": "hr-agent", "goal": "?", "depends_on": []},
+        {"step_id": "a3", "agent": "action-agent", "goal": "update APOLLO-40", "depends_on": ["a1"]},
+    ]}
+    ctx, spawned = _planner_ctx(plan)
+    asyncio.run(PlannerAgent().run("Why is Apollo late?", ctx))
+    agents = [a for a, _ in spawned]
+    assert agents.count("action-agent") == 1 and agents[-1] == "action-agent", agents
+    assert sorted(agents[:-1]) == ["engineering-agent", "finance-agent"]
+    assert set(spawned[-1][1]["upstream"]) == {"f", "e"}, "the action step gets every specialist's output"
