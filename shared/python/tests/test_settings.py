@@ -13,3 +13,9 @@ def test_knowledge_watch_from_env(monkeypatch):
     assert Settings.from_env(dotenv=None).knowledge_watch is True
     monkeypatch.setenv("MOSAIC_KNOWLEDGE_WATCH", "false")
     assert Settings.from_env(dotenv=None).knowledge_watch is False
+
+
+def test_redis_default_is_ipv4_loopback(monkeypatch):
+    # "localhost" resolves to ::1 first on Windows, and the Redis client times out instead of falling back
+    monkeypatch.delenv("MOSAIC_REDIS_URL", raising=False)
+    assert Settings.from_env(dotenv=None).redis_url.startswith("redis://127.0.0.1:")

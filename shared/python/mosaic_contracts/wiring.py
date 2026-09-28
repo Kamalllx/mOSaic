@@ -64,7 +64,7 @@ class Settings(BaseModel):
     policies_dir: Path = REPO_ROOT / "policies"
     manifests_dir: Path = REPO_ROOT / "agents" / "manifests"
     database_url: str = "postgresql+psycopg://mosaic:mosaic@localhost:5432/mosaic"
-    redis_url: str = "redis://localhost:6379/0"
+    redis_url: str = "redis://127.0.0.1:6379/0"     # not localhost: on Windows it resolves to ::1 first and times out
     ollama_url: str = "http://localhost:11434"
     jira_url: str = "http://localhost:8090"          # mock-jira (P1)
     default_chat_model: str = "qwen2.5:7b-instruct"
