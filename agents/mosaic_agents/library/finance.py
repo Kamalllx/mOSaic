@@ -15,7 +15,7 @@ from mosaic_contracts.schema.common import new_id
 from mosaic_contracts.schema.ipc import A2AMessage
 
 from mosaic_agents.prompts import FinanceOut
-from mosaic_agents.sdk import MosaicAgent, ask_json, cite, gather_evidence
+from mosaic_agents.sdk import MosaicAgent, ask_json, cite, gather_evidence, remember_finding
 
 log = logging.getLogger("mosaic.agents.finance")
 
@@ -100,6 +100,11 @@ class FinanceAgent(MosaicAgent):
             "drivers": finance_out.drivers,
             "summary": finance_out.summary,
         }
+
+        # Remember the finding, derived from the documents it rests on (they going stale invalidates it)
+        retrieved = {h.path for h in evidence.hits}
+        cited = sorted({q for d in finance_out.drivers if isinstance(d, dict) for q in d.get("evidence", [])} & retrieved)
+        await remember_finding(ctx, finance_out.summary or "finance finding", cited or sorted(retrieved)[:5], tags=["finance", "apollo"])
 
         return AgentResult(
             pid=ctx.pid,

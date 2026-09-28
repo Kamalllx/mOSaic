@@ -12,7 +12,7 @@ from mosaic_contracts.schema.common import new_id
 from mosaic_contracts.schema.ipc import A2AMessage
 
 from mosaic_agents.prompts import EngOut
-from mosaic_agents.sdk import MosaicAgent, ask_json, cite, gather_evidence
+from mosaic_agents.sdk import MosaicAgent, ask_json, cite, gather_evidence, remember_finding
 
 log = logging.getLogger("mosaic.agents.engineering")
 
@@ -119,6 +119,11 @@ class EngineeringAgent(MosaicAgent):
             "blockers": eng_out.blockers,
             "summary": eng_out.summary,
         }
+
+        # Remember the finding, derived from the documents it rests on (they going stale invalidates it)
+        retrieved = {h.path for h in evidence.hits}
+        cited = sorted({q for d in eng_out.blockers if isinstance(d, dict) for q in d.get("evidence", [])} & retrieved)
+        await remember_finding(ctx, eng_out.summary or "engineering finding", cited or sorted(retrieved)[:5], tags=["engineering", "apollo"])
 
         return AgentResult(
             pid=ctx.pid,

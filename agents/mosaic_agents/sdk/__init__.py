@@ -19,6 +19,9 @@ from mosaic_contracts.schema import (
     AgentResultStatus,
     ChatMessage,
     EvidenceSet,
+    MemoryKind,
+    MemoryRecord,
+    MemoryScope,
     ModelRequest,
     Risk,
     Role,
@@ -158,6 +161,20 @@ def propose_action(
     )
 
 
+async def remember_finding(ctx: Any, content: str, derived_from: list[str], importance: float = 0.7,
+                           tags: list[str] | None = None) -> None:
+    """Store this run's finding as an episodic memory. derived_from = the documents it rests on, so the memory goes
+    stale when one of them changes; importance >= 0.5 makes the kernel's end-of-task consolidation keep it.
+    Best-effort: a memory failure never fails the task."""
+    try:
+        await ctx.remember(MemoryRecord(memory_id=new_id("MEM"), kind=MemoryKind.EPISODIC, scope=MemoryScope.AGENT,
+                                        org_id="", owner=ctx.manifest.name,  # the kernel fills org_id and task_id
+                                        content=content[:1000], derived_from=derived_from, importance=importance,
+                                        tags=tags or []))
+    except Exception as e:
+        await ctx.log(f"{ctx.manifest.name}: could not store memory: {e}", level="warning")
+
+
 __all__ = [
     "MosaicAgent",
     "SYSTEM_RULES",
@@ -165,4 +182,5 @@ __all__ = [
     "cite",
     "gather_evidence",
     "propose_action",
+    "remember_finding",
 ]
