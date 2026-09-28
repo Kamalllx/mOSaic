@@ -83,5 +83,6 @@ Needs mosaicd started with `MOSAIC_KNOWLEDGE_WATCH=true`, after a completed run 
 - [ ] `uv run python scripts/check_okf.py` OK, and `data/okf` has been reindexed after its last edit (`POST /knowledge/reindex`)
 - [ ] One throwaway task run end to end (warms caches; clears first-run surprises)
 - [ ] Mock-Jira reset to the seed state (restart `mock-jira`)
+- [ ] Memories reset **after the throwaway run** (otherwise the step-18 toast counts memories from every earlier run): `docker compose -f infra/compose/docker-compose.yml exec postgres psql -U mosaic -d mosaic -c "TRUNCATE memories, working_sets;"`. For a different database, change `-d` (or run the same SQL against the database in `MOSAIC_DATABASE_URL`). No task should be running, since working sets are what a restarted task resumes from
 - [ ] Phone and projector laptop logged into Tailscale; console and app open
 - [ ] Backup video file present locally (not streamed)
