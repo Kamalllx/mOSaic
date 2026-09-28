@@ -1,7 +1,7 @@
 "use client";
 
 import { BellRing } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import type { TaskView } from "@/lib/events";
 import { ApprovalCard } from "./approval-card";
@@ -12,11 +12,23 @@ export function ApprovalDrawer({ view }: { view: TaskView }) {
   const [seen, setSeen] = useState<string[]>([]);
   const [manualOpen, setManualOpen] = useState(false);
   const unseen = pending.some((a) => !seen.includes(a.approval_id));
-  const open = pending.length > 0 && (manualOpen || unseen);
+  // After a decision, stay open briefly: the next action agent often asks within a second, and closing then
+  // reopening mid-animation flickers (and left the closing sheet's overlay over the new card).
+  const [lingering, setLingering] = useState(false);
+  const onResolved = useCallback(() => {
+    setLingering(true);
+    setTimeout(() => setLingering(false), 2000);
+  }, []);
+  const open = (pending.length > 0 && (manualOpen || unseen)) || (lingering && (manualOpen || pending.length === 0));
 
+  // Only approvals whose card actually rendered count as seen: one that arrives while the drawer is closing
+  // (the next action agent often asks within a second) must still open the drawer by itself.
+  const [rendered, setRendered] = useState<string[]>([]);
+  const onShown = useCallback((id: string) => setRendered((r) => (r.includes(id) ? r : [...r, id])), []);
   const close = () => {
-    setSeen((s) => [...new Set([...s, ...pending.map((a) => a.approval_id)])]);
+    setSeen((s) => [...new Set([...s, ...pending.map((a) => a.approval_id).filter((id) => rendered.includes(id))])]);
     setManualOpen(false);
+    setLingering(false);
   };
 
   return (
@@ -43,9 +55,9 @@ export function ApprovalDrawer({ view }: { view: TaskView }) {
           </SheetHeader>
           <div className="space-y-4 px-4 pb-6">
             {pending.map((a) => (
-              <ApprovalCard key={a.approval_id} approval={a} flaggedPaths={view.flaggedPaths} compact />
+              <ApprovalCard key={a.approval_id} approval={a} flaggedPaths={view.flaggedPaths} compact onShown={onShown} onResolved={onResolved} />
             ))}
-            {pending.length === 0 && <p className="text-sm text-muted-foreground">Nothing pending.</p>}
+            {pending.length === 0 && <p className="text-sm text-muted-foreground">All caught up. Nothing is waiting for approval.</p>}
           </div>
         </SheetContent>
       </Sheet>

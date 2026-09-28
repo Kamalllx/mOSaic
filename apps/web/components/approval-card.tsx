@@ -3,7 +3,7 @@
 import type { Approval, Risk } from "@mosaic/contracts";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, FileSearch, Gavel, KeyRound, Loader2, ShieldAlert, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useClient } from "@/app/providers";
 import { Button } from "@/components/ui/button";
@@ -36,17 +36,31 @@ function JsonView({ value }: { value: unknown }) {
   );
 }
 
-export function ApprovalCard({ approval, flaggedPaths = [], compact }: { approval: Approval; flaggedPaths?: string[]; compact?: boolean }) {
+export function ApprovalCard({
+  approval,
+  flaggedPaths = [],
+  compact,
+  onShown,
+  onResolved,
+}: {
+  approval: Approval;
+  flaggedPaths?: string[];
+  compact?: boolean;
+  onShown?: (approvalId: string) => void;
+  onResolved?: (approvalId: string) => void;
+}) {
   const client = useClient();
   const qc = useQueryClient();
   const [comment, setComment] = useState("");
   const sc = approval.syscall;
   const pending = (approval.status ?? "pending") === "pending";
+  useEffect(() => onShown?.(approval.approval_id), [onShown, approval.approval_id]);
 
   const resolve = useMutation({
     mutationFn: (approve: boolean) =>
       approve ? client.approve(approval.approval_id, comment || undefined) : client.reject(approval.approval_id, comment || undefined),
     onSuccess: (a) => {
+      onResolved?.(a.approval_id);
       if (a.status === "approved") toast.success(`Approved ${a.approval_id}`, { description: `${sc.capability} runs now; the task continues.` });
       else toast(`Rejected ${a.approval_id}`, { description: "The syscall is refused; the agent is told why." });
     },
