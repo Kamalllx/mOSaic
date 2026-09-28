@@ -113,10 +113,11 @@ class KernelAgentContext:
         await self._enter("knowledge.search")
         ev = await self.k.services.require("knowledge").search(query, self.principal)  # P2 screens with the firewall
         paths = [h.path for h in ev.hits]
-        await self.k.emit(EventType.KNOWLEDGE_RETRIEVED, {"query": query.text, "hits": len(ev.hits),
-                                                         "filtered_by_policy": ev.filtered_by_policy, "paths": paths},
-                          task_id=self.task_id, pid=self.pid)
         flagged = [h.path for h in ev.hits if h.firewall_flags]
+        await self.k.emit(EventType.KNOWLEDGE_RETRIEVED, {"query": query.text, "hits": len(ev.hits),
+                                                         "filtered_by_policy": ev.filtered_by_policy, "paths": paths,
+                                                         "flagged": flagged},
+                          task_id=self.task_id, pid=self.pid)
         await self.k.journal(self.task_id, AuditKind.KNOWLEDGE,
                              f"Retrieved {len(paths)} objects ({ev.filtered_by_policy} filtered by policy)", pid=self.pid,
                              actor=self._actor(), refs=paths, data={"query": query.text, "flagged": flagged})

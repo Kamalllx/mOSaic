@@ -229,3 +229,21 @@ def test_ipc_between_siblings_rewrites_sender(make_kernel):
     t = run(go)
     worker_pid = k.procs.list(t.task_id)[1].pid
     assert t.result.summary == f"worker#{worker_pid}->planner-agent"
+
+
+def test_knowledge_retrieved_lists_flagged_paths(make_kernel):
+    async def searcher(goal, ctx):
+        await ctx.search(SearchQuery(text="vendor email SDK v5 delayed", scope=["/org"], top_k=8))
+        return done(ctx)
+
+    k = make_kernel({"planner-agent": searcher}, [manifest("planner-agent")])
+
+    async def go():
+        await k.boot()
+        await k.tasks.wait_terminal(await start_task(k))
+        await k.shutdown()
+
+    run(go)
+    ev = k.services.event_bus.of_type("knowledge.retrieved")[0]
+    assert "/org/inbox/vendor-email-2026-09-12" in ev.payload["flagged"]
+    assert set(ev.payload["flagged"]) <= set(ev.payload["paths"])
