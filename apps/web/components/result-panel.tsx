@@ -1,15 +1,52 @@
 "use client";
 
+import type { Event } from "@mosaic/contracts";
 import { useQuery } from "@tanstack/react-query";
-import { Box, Brain, Camera, CircleCheck, CircleX, FileText, Paperclip } from "lucide-react";
+import { Box, Brain, Camera, CircleCheck, CircleX, FileText, Undo2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useClient } from "@/app/providers";
 import { str, strList, type TaskView } from "@/lib/events";
 import { cn } from "@/lib/utils";
 import { ArtifactImage, ArtifactMarkdown, artifactName, isImage } from "./artifacts";
-import { PidChip } from "./status";
-import { EvidencePath } from "./timeline";
+import { EvidenceChip, PidChip } from "./status";
+
+interface ActionLine {
+  id: string;
+  capability?: string;
+  outcome: "committed" | "verified" | "rolled back" | "pending";
+  change?: string;
+}
+
+/** Each committed action from its syscall events; for a tracker update, the field change from the approved arguments. */
+export function committedActions(ids: string[], events: Event[], view: TaskView): ActionLine[] {
+  return ids.map((id) => {
+    const mine = events.filter((e) => e.correlation_id === id);
+    const req = mine.find((e) => e.type === "syscall.requested");
+    const commit = mine.find((e) => e.type === "transaction.committed");
+    const rollback = mine.find((e) => e.type === "transaction.rolled_back");
+    const approval = Object.values(view.approvals).find((a) => a.syscall.syscall_id === id);
+    const args = approval?.syscall.arguments as { key?: string; fields?: Record<string, unknown> } | undefined;
+    const change = args?.key && args.fields ? `${args.key}: ${Object.entries(args.fields).map(([k, v]) => `${k} → ${String(v)}`).join(", ")}` : undefined;
+    return {
+      id,
+      capability: req ? str(req, "capability") : approval?.syscall.capability,
+      outcome: rollback ? "rolled back" : commit ? (commit.payload?.verified ? "verified" : "committed") : "pending",
+      change,
+    };
+  });
+}
+
+function Side({ title, icon: Icon, children }: { title: string; icon: typeof Box; children: React.ReactNode }) {
+  return (
+    <section className="rounded-xl border border-line bg-surface-1 p-4 shadow-panel">
+      <h3 className="mb-2.5 flex items-center gap-2 text-sm font-semibold">
+        <Icon className="size-4 text-text-2" aria-hidden /> {title}
+      </h3>
+      {children}
+    </section>
+  );
+}
 
 export function ResultPanel({ taskId, view }: { taskId: string; view: TaskView }) {
   const client = useClient();
@@ -22,55 +59,92 @@ export function ResultPanel({ taskId, view }: { taskId: string; view: TaskView }
   const refs = artifacts.data ?? [];
   const plan = refs.find((a) => a.endsWith("/recovery-plan.md"));
   const shots = refs.filter(isImage);
+  const actions = committedActions(r?.actions ?? [], view.timeline, view);
 
   return (
-    <div className={cn("rounded-lg border-2 bg-card p-4", failed ? "border-st-failed/60" : "border-st-running/50")}>
-      <h2 className={cn("flex items-center gap-2 text-sm font-semibold uppercase tracking-wider", failed ? "text-st-failed" : "text-st-running")}>
-        {failed ? <CircleX className="size-4" /> : <CircleCheck className="size-4" />} {failed ? `Task ${view.status}` : "Result"}
-      </h2>
-      <div className="mt-2 space-y-2 text-[15px] leading-relaxed [&_li]:ml-5 [&_ol]:list-decimal [&_ul]:list-disc">
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{(failed ? view.failure : view.summary) ?? r?.summary ?? ""}</ReactMarkdown>
-      </div>
-      {!!artifacts.data?.length && (
-        <section className="mt-3">
-          <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground"><Paperclip className="size-3.5" /> Artifacts</h3>
-          <ul className="mt-1 space-y-0.5 font-mono text-xs">
-            {artifacts.data.map((a) => (
-              <li key={a}>
-                <a href={client.artifactUrl(a) ?? undefined} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-ev-tool hover:underline">
-                  {isImage(a) ? <Camera className="size-3.5" /> : <FileText className="size-3.5" />}
-                  {artifactName(a)}
-                </a>
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <article className="min-w-0 space-y-4">
+        <section className={cn("rounded-xl border bg-surface-1 p-5 shadow-panel", failed ? "border-st-failed/60" : "border-line")}>
+          <h2 className={cn("flex items-center gap-2 text-sm font-semibold uppercase tracking-wider", failed ? "text-st-failed" : "text-st-running")}>
+            {failed ? <CircleX className="size-4" aria-hidden /> : <CircleCheck className="size-4" aria-hidden />}
+            {failed ? `Task ${view.status}` : "Summary"}
+          </h2>
+          <div className="mt-2 text-base leading-relaxed [&_li]:ml-5 [&_ol]:list-decimal [&_ul]:list-disc">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{(failed ? view.failure : view.summary) ?? r?.summary ?? ""}</ReactMarkdown>
+          </div>
+        </section>
+        {plan && (
+          <section className="rounded-xl border border-line bg-surface-1 p-6 shadow-panel" data-testid="recovery-plan">
+            <ArtifactMarkdown artifact={plan} />
+          </section>
+        )}
+      </article>
+
+      <aside className="space-y-4">
+        <Side title={`Actions committed (${actions.length})`} icon={CircleCheck}>
+          <ul className="space-y-2.5">
+            {actions.length === 0 && <li className="text-sm text-text-2">No world-changing actions.</li>}
+            {actions.map((a) => (
+              <li key={a.id} className="text-sm">
+                <p className="flex flex-wrap items-center gap-2">
+                  <span className="font-mono font-semibold text-brand">{a.capability ?? "syscall"}</span>
+                  <span
+                    className={cn(
+                      "rounded-md px-1.5 font-mono text-xs font-semibold",
+                      a.outcome === "rolled back" ? "bg-st-failed/12 text-st-failed" : a.outcome === "pending" ? "bg-surface-3 text-text-2" : "bg-st-running/12 text-st-running",
+                    )}
+                  >
+                    {a.outcome === "rolled back" && <Undo2 className="mr-1 inline size-3" aria-hidden />}
+                    {a.outcome}
+                  </span>
+                </p>
+                {a.change && <p className="mt-0.5 font-mono text-xs text-text-2">{a.change}</p>}
+                <p className="font-mono text-xs text-muted-foreground">{a.id}</p>
               </li>
             ))}
           </ul>
-        </section>
-      )}
-      {plan && (
-        <section className="mt-4 rounded-md border bg-background/60 p-3">
-          <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground"><FileText className="size-3.5" /> Recovery plan</h3>
-          <ArtifactMarkdown artifact={plan} />
-        </section>
-      )}
-      {!!shots.length && (
-        <section className="mt-4">
-          <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground"><Camera className="size-3.5" /> Screenshots</h3>
-          <div className="grid gap-2 sm:grid-cols-2">{shots.map((s) => <ArtifactImage key={s} artifact={s} />)}</div>
-        </section>
-      )}
-      {!!r?.evidence?.length && (
-        <section className="mt-3">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Evidence ({r.evidence.length})</h3>
-          <div className="mt-1 max-h-40 overflow-y-auto">
-            {r.evidence.map((p) => <EvidencePath key={p} path={p} flagged={view.flaggedPaths.includes(p)} />)}
-          </div>
-        </section>
-      )}
-      {r && (
-        <p className="mt-3 font-mono text-xs text-muted-foreground">
-          {r.actions?.length ?? 0} committed actions · {tokens} tokens · {r.usage?.tool_calls ?? 0} tool calls
-        </p>
-      )}
+        </Side>
+
+        {!!shots.length && (
+          <Side title="Sandbox screenshot" icon={Camera}>
+            <div className="space-y-2">
+              {shots.map((s) => (
+                <ArtifactImage key={s} artifact={s} />
+              ))}
+            </div>
+          </Side>
+        )}
+
+        {!!refs.length && (
+          <Side title="Artifacts" icon={FileText}>
+            <ul className="space-y-1 font-mono text-sm">
+              {refs.map((a) => (
+                <li key={a}>
+                  <a href={client.artifactUrl(a) ?? undefined} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-ev-tool hover:underline">
+                    {isImage(a) ? <Camera className="size-3.5" aria-hidden /> : <FileText className="size-3.5" aria-hidden />}
+                    {artifactName(a)}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </Side>
+        )}
+
+        {!!r?.evidence?.length && (
+          <Side title={`Evidence (${r.evidence.length})`} icon={FileText}>
+            <div className="flex max-h-56 flex-wrap gap-1.5 overflow-y-auto">
+              {r.evidence.map((p) => (
+                <EvidenceChip key={p} path={p} flagged={view.flaggedPaths.includes(p)} />
+              ))}
+            </div>
+          </Side>
+        )}
+        {r && (
+          <p className="px-1 font-mono text-xs text-text-2">
+            {tokens.toLocaleString()} tokens · {r.usage?.tool_calls ?? 0} tool calls · {r.usage?.children_spawned ?? 0} agents
+          </p>
+        )}
+      </aside>
     </div>
   );
 }
@@ -79,22 +153,24 @@ export function SandboxPanel({ view }: { view: TaskView }) {
   const boxes = Object.values(view.sandboxes);
   if (!boxes.length) return null;
   return (
-    <div className="rounded-lg border bg-card/50 p-3">
-      <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground"><Box className="size-4 text-ev-tool" /> Sandboxes</h2>
+    <div className="rounded-xl border border-line bg-surface-1 p-3 shadow-panel">
+      <h2 className="flex items-center gap-2 text-sm font-semibold">
+        <Box className="size-4 text-ev-tool" aria-hidden /> Sandboxes
+      </h2>
       <ul className="mt-2 space-y-2">
         {boxes.map((b) => (
           <li key={b.sandboxId} className="text-sm">
-            <p className="flex items-center gap-2">
+            <p className="flex flex-wrap items-center gap-2">
               <PidChip pid={b.pid} />
-              <span className="font-mono">{b.sandboxId}</span>
-              <span className={cn("rounded px-1.5 font-mono text-[11px]", b.destroyed ? "bg-secondary text-muted-foreground" : "bg-st-running/15 text-st-running")}>
+              <span className="font-mono text-xs">{b.sandboxId}</span>
+              <span className={cn("rounded px-1.5 font-mono text-xs", b.destroyed ? "bg-surface-3 text-text-2" : "bg-st-running/12 text-st-running")}>
                 {b.destroyed ? "destroyed" : "running"}
               </span>
             </p>
-            {b.image && <p className="pl-11 font-mono text-xs text-muted-foreground">{b.image}</p>}
+            {b.image && <p className="mt-0.5 font-mono text-xs text-text-2">{b.image}</p>}
             {b.screenshots.map((s) => (
-              <div key={s} className="mt-1.5 pl-11">
-                <ArtifactImage artifact={s} className="max-w-md" />
+              <div key={s} className="mt-1.5">
+                <ArtifactImage artifact={s} />
               </div>
             ))}
           </li>
@@ -104,16 +180,18 @@ export function SandboxPanel({ view }: { view: TaskView }) {
   );
 }
 
-/** S2: knowledge changed under the agents' feet. Shown prominently on purpose. */
+/** Knowledge changed under the agents' feet: shown prominently on purpose (the invalidation demo). */
 export function InvalidationBanner({ view }: { view: TaskView }) {
   if (!view.invalidations.length) return null;
   return (
-    <div className="rounded-lg border-2 border-st-failed/60 bg-st-failed/10 p-3">
-      <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-st-failed"><Brain className="size-4" /> Memory invalidated</h2>
+    <div className="rounded-xl border border-st-waiting/60 bg-st-waiting/10 p-3">
+      <h2 className="flex items-center gap-2 text-sm font-semibold text-st-waiting">
+        <Brain className="size-4" aria-hidden /> Memory invalidated
+      </h2>
       {view.invalidations.map((e) => (
-        <div key={e.event_id} className="mt-2 text-sm">
-          <EvidencePath path={str(e, "source") ?? ""} />
-          <p className="pl-1.5 text-xs text-muted-foreground">
+        <div key={e.event_id} className="mt-2 space-y-1 text-sm">
+          <EvidenceChip path={str(e, "source") ?? ""} />
+          <p className="text-xs text-text-2">
             {strList(e, "invalidated").length} memories marked stale · affected agents: {strList(e, "affected_agents").join(", ") || "none"}
           </p>
         </div>
@@ -121,3 +199,4 @@ export function InvalidationBanner({ view }: { view: TaskView }) {
     </div>
   );
 }
+

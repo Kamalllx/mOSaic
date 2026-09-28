@@ -9,7 +9,7 @@ import { PidChip } from "./status";
 export function KnowledgePanel({ view }: { view: TaskView }) {
   const hidden = view.retrieved.reduce((n, r) => n + (num(r.event, "filtered_by_policy") ?? 0), 0);
   return (
-    <div className="rounded-lg border bg-card/50 p-3">
+    <div className="rounded-xl border border-line bg-surface-1 p-3 shadow-panel">
       <div className="flex items-center justify-between">
         <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
           <BookOpenText className="size-4 text-ev-knowledge" /> Knowledge
@@ -20,11 +20,11 @@ export function KnowledgePanel({ view }: { view: TaskView }) {
       </div>
 
       {view.flaggedPaths.length > 0 && (
-        <div className="mt-3 rounded-md border border-st-failed/50 bg-st-failed/10 p-2.5">
-          <p className="flex items-center gap-2 text-sm font-semibold text-st-failed">
+        <div className="mt-3 rounded-lg border border-untrusted/50 bg-untrusted-bg p-2.5">
+          <p className="flex items-center gap-2 text-sm font-semibold text-untrusted">
             <ShieldAlert className="size-4" /> Context firewall
           </p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
+          <p className="mt-0.5 text-xs text-text-2">
             Instruction-like text found in retrieved evidence. It is passed to agents as data, never as instructions.
           </p>
           <div className="mt-1.5">
@@ -45,7 +45,7 @@ export function KnowledgePanel({ view }: { view: TaskView }) {
                 “{str(r.event, "query")}”
               </span>
             </p>
-            <p className="pl-11 text-xs text-muted-foreground">
+            <p className="pl-11 text-xs text-text-2">
               {num(r.event, "hits") ?? 0} hits · {num(r.event, "filtered_by_policy") ?? 0} hidden by policy
             </p>
             <div className="pl-9">
