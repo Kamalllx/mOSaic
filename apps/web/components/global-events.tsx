@@ -1,10 +1,14 @@
 "use client";
 
+import type { Event } from "@mosaic/contracts";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { toast } from "sonner";
 import { useClient } from "@/app/providers";
 import { str, strList } from "@/lib/events";
+
+/** The latest memory.invalidated events this session, newest first (read by the Memory screen). */
+export const INVALIDATIONS_KEY = ["memory-invalidations"];
 
 const TYPES = ["approval.requested", "approval.resolved", "knowledge.changed", "knowledge.reindexed", "memory.invalidated"];
 
@@ -26,6 +30,7 @@ export function GlobalEvents() {
           }
           if (e.type === "memory.invalidated") {
             qc.invalidateQueries({ queryKey: ["memory"] });
+            qc.setQueryData<Event[]>(INVALIDATIONS_KEY, (old = []) => [e, ...old.filter((x) => x.event_id !== e.event_id)].slice(0, 10));
             toast.warning(invalidationTitle(e.payload), {
               description: `Affected: ${strList(e, "affected_agents").join(", ") || "no agents"}`,
               duration: 20_000,
