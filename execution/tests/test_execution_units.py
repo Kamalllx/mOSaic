@@ -188,3 +188,53 @@ def test_docker_manager_lifecycle_with_fake_client(tmp_path):
     info, res, listed = asyncio.run(go())
     assert res.stdout == "hi\n" and client.started[0].removed
     assert listed[0].status.value == "destroyed" and (tmp_path / "T-9").is_dir()
+
+
+def test_port_mode_browser_sandbox_joins_the_sandbox_network(tmp_path):
+    """Docker Desktop (port mode) starts browser sandboxes on the default bridge to publish :3000; they must also join
+    mosaic_sandbox, or internal hosts like http://vendor-docs/ don't resolve. network=none sandboxes never join."""
+    connected: list[tuple[str, str]] = []
+
+    class Container:
+        def __init__(self, kw):
+            self.kw, self.name, self.labels = kw, kw["name"], kw["labels"]
+            self.attrs = {"NetworkSettings": {"Networks": {}, "Ports": {}}}
+
+        def reload(self):
+            pass
+
+        def remove(self, force):
+            pass
+
+    class Network:
+        def __init__(self, name):
+            self.name = name
+
+        def connect(self, container):
+            connected.append((self.name, container.name))
+
+    class Client:
+        def __init__(self):
+            self.containers, self.networks = self, self
+
+        def list(self, all=None, filters=None, names=None):
+            return [] if filters is not None else [Network(n) for n in names or []]
+
+        def get(self, name):
+            return Network(name)
+
+        def create(self, *a, **kw):
+            pass
+
+        def run(self, **kw):
+            return Container(kw)
+
+    mgr = DockerSandboxManager(Path(tmp_path), client=Client(), endpoint_mode="port")
+
+    async def go():
+        web = await mgr.provision(SandboxSpec(task_id="T-7", display=True, network=NetworkMode.ALLOWLIST))
+        offline = await mgr.provision(SandboxSpec(task_id="T-7", display=True, network=NetworkMode.NONE))
+        return web, offline
+
+    web, offline = asyncio.run(go())
+    assert connected == [("mosaic_sandbox", f"mosaic-{web.sandbox_id.lower()}")]

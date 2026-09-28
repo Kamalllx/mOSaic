@@ -123,6 +123,10 @@ class DockerSandboxManager:
             if "network" in kw:
                 self._ensure_network()
             container = self.client().containers.run(**kw)
+            if self.endpoint_mode == "port" and spec.network != NetworkMode.NONE:
+                # Port mode starts on the default bridge (to publish :3000), where internal services such as
+                # vendor-docs don't resolve; join the sandbox network as well.
+                self.client().networks.get(self._ensure_network()).connect(container)
             container.reload()
             return container
 
