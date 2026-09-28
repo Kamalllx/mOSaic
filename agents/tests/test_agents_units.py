@@ -63,7 +63,7 @@ def _planner_ctx(plan: dict, synthesis: dict | None = None, children: dict | Non
     async def child(agent, goal, inputs):
         spawned.append((agent, inputs))
         out, ev = (children or {}).get(agent, ({}, []))
-        return AgentResult(pid=0, agent=agent, status=AgentResultStatus.COMPLETED, summary=f"{agent} done", output=out,
+        return AgentResult(pid=1, agent=agent, status=AgentResultStatus.COMPLETED, summary=f"{agent} done", output=out,
                            evidence=ev)
 
     responses = {"produce a plan": plan}
@@ -104,3 +104,45 @@ def test_action_agent_shows_the_root_cause_documents_to_the_approver():
     assert jira.evidence == ["/org/finance/apollo-budget", "/org/decisions/ADR-042", "/org/engineering/apollo-status",
                              "/org/inbox/vendor-email-2026-09-12"]
     assert "jira.write completed" in result.summary
+
+
+PLAN = {"rationale": "r", "steps": [{"step_id": "f", "agent": "finance-agent", "goal": "budget"},
+                                    {"step_id": "e", "agent": "engineering-agent", "goal": "slip"}]}
+CHILDREN = {
+    "finance-agent": ({"drivers": [{"item": "Cloud", "cause": "dual-run of old and new stacks",
+                                    "evidence": ["/org/decisions/ADR-042"]}]}, ["/org/decisions/ADR-042"]),
+    "engineering-agent": ({"blockers": [{"issue": "APOLLO-12", "cause": "backfill failed",
+                                         "evidence": ["/org/engineering/apollo-status"]},
+                                        {"issue": "APOLLO-31", "cause": "vendor SDK v5 certification",
+                                         "evidence": ["/org/engineering/apollo-status"]}]},
+                          ["/org/engineering/apollo-status"]),
+}
+
+
+def _plan_md(ctx) -> str:
+    [ref] = [r for r in ctx.artifacts._data if r.endswith("/recovery-plan.md")]
+    return ctx.artifacts._data[ref].decode()
+
+
+def test_root_causes_come_from_the_specialists_when_the_model_cannot_synthesize():
+    from mosaic_agents.library.planner import PlannerAgent
+
+    ctx, _ = _planner_ctx(PLAN, children=CHILDREN)  # no synthesis reply: the fake returns an empty skeleton, twice
+    result = asyncio.run(PlannerAgent().run("Why is Apollo late and over budget?", ctx))
+    causes = [rc["cause"] for rc in result.output["root_causes"]]
+    assert causes == ["Cloud: dual-run of old and new stacks", "APOLLO-12: backfill failed",
+                      "APOLLO-31: vendor SDK v5 certification"]
+    md = _plan_md(ctx)
+    assert "## Root Causes" in md and "APOLLO-31: vendor SDK v5 certification** — Evidence: /org/engineering/apollo-status" in md
+    assert any("simpler schema" in m for _, m, _ in ctx.logs), "the simpler retry ran first"
+
+
+def test_synthesized_root_causes_keep_only_retrieved_citations():
+    from mosaic_agents.library.planner import PlannerAgent
+
+    synthesis = {"summary": "s", "recovery_plan": "1. fix", "root_causes": [
+        {"cause": "dual-run cost", "evidence": ["/org/decisions/ADR-042", "/org/finance/invented"]},
+        {"cause": "made up", "evidence": ["/org/nowhere"]}]}
+    ctx, _ = _planner_ctx(PLAN, synthesis=synthesis, children=CHILDREN)
+    result = asyncio.run(PlannerAgent().run("Why is Apollo late and over budget?", ctx))
+    assert result.output["root_causes"] == [{"cause": "dual-run cost", "evidence": ["/org/decisions/ADR-042"]}]

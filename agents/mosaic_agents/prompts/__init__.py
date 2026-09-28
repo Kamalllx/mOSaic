@@ -28,6 +28,17 @@ class PlanOut(BaseModel):
     steps: list[PlanStep] = Field(default_factory=list)
 
 
+class RootCause(BaseModel):
+    cause: str
+    evidence: list[str] = Field(default_factory=list, description="/org paths from the findings")
+
+
+class RootCausesOut(BaseModel):
+    """The planner's simpler retry when the full synthesis fails (small local models)."""
+
+    root_causes: list[RootCause] = Field(default_factory=list)
+
+
 class SynthesisOut(BaseModel):
     """The planner's structured synthesis output."""
 
@@ -76,4 +87,4 @@ class ResearchOut(BaseModel):
     summary: str = ""
 
 
-__all__ = ["PlanStep", "PlanOut", "SynthesisOut", "FinanceOut", "EngOut", "ResearchOut"]
+__all__ = ["PlanStep", "PlanOut", "RootCause", "RootCausesOut", "SynthesisOut", "FinanceOut", "EngOut", "ResearchOut"]

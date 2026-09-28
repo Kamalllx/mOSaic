@@ -20,7 +20,7 @@ from typing import Any
 
 from mosaic_contracts.schema import AgentResult, AgentResultStatus
 
-from mosaic_agents.prompts import PlanOut, PlanStep, SynthesisOut
+from mosaic_agents.prompts import PlanOut, PlanStep, RootCausesOut, SynthesisOut
 from mosaic_agents.sdk import MosaicAgent, ask_json, cite, gather_evidence, keep_retrieved
 
 log = logging.getLogger("mosaic.agents.planner")
@@ -154,15 +154,23 @@ class PlannerAgent(MosaicAgent):
         )
 
         synthesis = await ask_json(ctx, SYNTHESIS_SYSTEM, synthesis_prompt, SynthesisOut, max_tokens=2000)
-        await ctx.log("planner: synthesis complete")
-        if synthesis:
-            backed = []
-            for rc in synthesis.root_causes:
-                if isinstance(rc, dict):
-                    rc["evidence"] = await keep_retrieved(ctx, rc.get("evidence", []), retrieved, "root_causes")
-                    if rc["evidence"]:
-                        backed.append(rc)
-            synthesis.root_causes = backed
+        synthesis = synthesis or SynthesisOut()
+        synthesis.root_causes = await self._backed(ctx, synthesis.root_causes, retrieved)
+        if not synthesis.root_causes:
+            # Small models often fail the full schema: retry once with just the root causes and compact findings
+            await ctx.log("planner: synthesis had no cited root causes; retrying with a simpler schema", level="warning")
+            retry = await ask_json(ctx, SYNTHESIS_SYSTEM, (
+                f"Goal: {goal}\n\nSpecialist findings (with their /org evidence):\n{self._findings_text(upstream)}\n\n"
+                "List the root causes as JSON: root_causes (list of {cause, evidence: [/org paths from the findings]})."),
+                RootCausesOut, max_tokens=800)
+            if retry:
+                synthesis.root_causes = await self._backed(ctx, [rc.model_dump() for rc in retry.root_causes], retrieved)
+        if not synthesis.root_causes:
+            await ctx.log("planner: building root causes from the specialists' structured findings", level="warning")
+            synthesis.root_causes = self._root_causes_from_findings(upstream)
+        if not synthesis.recovery_plan:
+            synthesis.recovery_plan = "\n".join(f"{i}. Address: {rc['cause']}" for i, rc in enumerate(synthesis.root_causes, 1))
+        await ctx.log(f"planner: synthesis complete ({len(synthesis.root_causes)} root causes)")
 
         # 8. Write artifact
         recovery_md = self._make_recovery_md(goal, synthesis, upstream)
@@ -170,9 +178,11 @@ class PlannerAgent(MosaicAgent):
         await ctx.log(f"planner: wrote artifact {artifact_ref}")
 
         # 9. Return result
-        root_causes = synthesis.root_causes if synthesis else []
-        recovery_text = synthesis.recovery_plan if synthesis else ""
-        summary = synthesis.summary if synthesis and synthesis.summary else f"Investigation complete for: {goal[:100]}"
+        root_causes = synthesis.root_causes
+        recovery_text = synthesis.recovery_plan
+        summary = synthesis.summary or (
+            f"{len(root_causes)} root causes: " + "; ".join(rc["cause"] for rc in root_causes) if root_causes
+            else f"Investigation complete for: {goal[:100]}")
 
         all_evidence = [h.path for h in evidence.hits]
         for out in upstream.values():
@@ -225,6 +235,43 @@ class PlannerAgent(MosaicAgent):
                 earlier.add(s.step_id)
         return steps
 
+    @staticmethod
+    async def _backed(ctx: Any, root_causes: list[Any], retrieved: set[str]) -> list[dict[str, Any]]:
+        """Root causes whose citations survive the retrieved-paths check; the others are dropped."""
+        backed = []
+        for rc in root_causes:
+            if isinstance(rc, dict) and isinstance(rc.get("cause"), str) and rc["cause"].strip():
+                rc = {**rc, "evidence": await keep_retrieved(ctx, rc.get("evidence", []), retrieved, "root_causes")}
+                if rc["evidence"]:
+                    backed.append(rc)
+        return backed
+
+    @staticmethod
+    def _specialist_items(upstream: dict[str, Any]) -> list[tuple[str, list[str]]]:
+        """(cause, evidence) from the specialists' structured outputs; their citations are already checked."""
+        items: list[tuple[str, list[str]]] = []
+        for out in upstream.values():
+            if not isinstance(out, dict):
+                continue
+            for d in out.get("drivers", []):
+                if isinstance(d, dict):
+                    items.append((f"{d.get('item', 'cost driver')}: {d.get('cause', '')}".strip(": "), d.get("evidence", [])))
+            for b in out.get("blockers", []):
+                if isinstance(b, dict):
+                    items.append((f"{b.get('issue', 'blocker')}: {b.get('cause', '')}".strip(": "), b.get("evidence", [])))
+        return [(c, [p for p in ev if isinstance(p, str)]) for c, ev in items]
+
+    def _findings_text(self, upstream: dict[str, Any]) -> str:
+        return "\n".join(f"- {c} (evidence: {', '.join(ev) or 'none'})" for c, ev in self._specialist_items(upstream)) \
+            or "(no specialist findings)"
+
+    def _root_causes_from_findings(self, upstream: dict[str, Any]) -> list[dict[str, Any]]:
+        causes: dict[str, list[str]] = {}
+        for cause, ev in self._specialist_items(upstream):
+            if ev and cause:
+                causes[cause] = list(dict.fromkeys([*causes.get(cause, []), *ev]))
+        return [{"cause": c, "evidence": ev} for c, ev in causes.items()]
+
     def _format_upstream(self, upstream: dict[str, Any]) -> str:
         lines = []
         for step_id, out in upstream.items():
@@ -237,13 +284,11 @@ class PlannerAgent(MosaicAgent):
     def _make_recovery_md(self, goal: str, synthesis: SynthesisOut | None, upstream: dict) -> str:
         parts = [f"# Recovery Plan\n\n**Goal:** {goal}\n"]
 
-        if synthesis and synthesis.root_causes:
-            parts.append("\n## Root Causes\n")
-            for i, rc in enumerate(synthesis.root_causes, 1):
-                cause = rc.get("cause", str(rc))
-                evidence = rc.get("evidence", [])
-                ev_str = ", ".join(evidence) if evidence else "(no citations)"
-                parts.append(f"{i}. **{cause}** — Evidence: {ev_str}")
+        parts.append("\n## Root Causes\n")
+        for i, rc in enumerate(synthesis.root_causes if synthesis else [], 1):
+            parts.append(f"{i}. **{rc['cause']}** — Evidence: {', '.join(rc['evidence'])}")
+        if not synthesis or not synthesis.root_causes:
+            parts.append("No root cause could be backed by a retrieved document; see the specialist findings below.")
 
         if synthesis and synthesis.recovery_plan:
             parts.append(f"\n## Recovery Steps\n\n{synthesis.recovery_plan}")
