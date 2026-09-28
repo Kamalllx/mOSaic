@@ -1,8 +1,8 @@
 "use client";
 
-import type { Approval, Risk } from "@mosaic/contracts";
+import type { Approval } from "@mosaic/contracts";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, FileSearch, Gavel, KeyRound, Loader2, ShieldAlert, X } from "lucide-react";
+import { Check, FileSearch, KeyRound, Loader2, ShieldCheck, Undo2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useClient } from "@/app/providers";
@@ -10,36 +10,49 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { MosaicError } from "@/lib/mosaic-client";
 import { cn } from "@/lib/utils";
-import { PidChip, formatTime } from "./status";
-import { EvidencePath } from "./timeline";
+import { EvidenceChip, PidChip, RiskBadge, formatTime } from "./status";
 
-const RISK: Record<Risk, string> = {
-  low: "bg-st-running/15 text-st-running border-st-running/50",
-  medium: "bg-st-waiting/15 text-st-waiting border-st-waiting/50",
-  high: "bg-st-failed/15 text-st-failed border-st-failed/50",
-  critical: "bg-st-failed/30 text-st-failed border-st-failed",
-};
+const VERB: Record<string, string> = { write: "write to", read: "read from", delete: "delete from", open: "open", exec: "run code in", send: "send via" };
+const TARGET: Record<string, string> = { jira: "Jira", fs: "the file system", browser: "a web page", email: "email", slack: "Slack" };
+
+/** "action-agent#105 wants to write to Jira" from the capability (jira.write). */
+export function approvalHeadline(a: Approval): string {
+  const [tool, op] = a.syscall.capability.split(".");
+  const verb = VERB[op];
+  const target = TARGET[tool] ?? tool;
+  return `${a.agent}#${a.pid} wants ${verb ? `to ${verb} ${target}` : a.syscall.capability}`;
+}
 
 /** Renders JSON with light syntax colouring (keys, strings, numbers) without a dependency. */
 function JsonView({ value }: { value: unknown }) {
   const json = JSON.stringify(value ?? {}, null, 2);
   const parts = json.split(/("(?:\\.|[^"\\])*"(?:\s*:)?|\b-?\d+(?:\.\d+)?\b|\btrue\b|\bfalse\b|\bnull\b)/g);
   return (
-    <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md border bg-background/80 p-3 font-mono text-[13px] leading-relaxed">
+    <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-line bg-surface-2 p-3 font-mono text-[13px] leading-relaxed">
       {parts.map((p, i) => {
-        if (/^".*":$/.test(p.replace(/\s/g, ""))) return <span key={i} className="text-ev-tool">{p}</span>;
+        if (/^".*":$/.test(p.replace(/\s/g, ""))) return <span key={i} className="text-ev-knowledge">{p}</span>;
         if (p.startsWith('"')) return <span key={i} className="text-st-running">{p}</span>;
-        if (/^(-?\d|true|false|null)/.test(p)) return <span key={i} className="text-ev-policy">{p}</span>;
+        if (/^(-?\d|true|false|null)/.test(p)) return <span key={i} className="text-st-waiting">{p}</span>;
         return <span key={i}>{p}</span>;
       })}
     </pre>
   );
 }
 
+function Section({ label, icon: Icon, children }: { label: string; icon?: typeof KeyRound; children: React.ReactNode }) {
+  return (
+    <section>
+      <h4 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        {Icon && <Icon className="size-3.5" aria-hidden />} {label}
+      </h4>
+      <div className="mt-1.5">{children}</div>
+    </section>
+  );
+}
+
 export function ApprovalCard({
   approval,
   flaggedPaths = [],
-  compact,
   onShown,
   onResolved,
 }: {
@@ -66,7 +79,7 @@ export function ApprovalCard({
     },
     onError: (e) => {
       if (e instanceof MosaicError && e.code === "APPROVAL_ALREADY_RESOLVED") {
-        toast.info("Already resolved", { description: "Someone else (or the phone app) resolved this approval first." });
+        toast.info("Already resolved", { description: "Someone else (or the phone) resolved this approval first." });
       } else {
         toast.error("Couldn't resolve the approval", { description: e instanceof MosaicError ? e.message : String(e) });
       }
@@ -77,85 +90,67 @@ export function ApprovalCard({
   return (
     <article
       className={cn(
-        "rounded-xl border-2 bg-card p-5",
-        pending ? "border-st-waiting/70 shadow-[0_0_40px_-12px] shadow-st-waiting/40" : "border-border opacity-80",
+        "rounded-xl border bg-surface-1 p-5 shadow-panel",
+        pending ? "border-st-waiting/70" : "border-line",
       )}
+      data-testid="approval-card"
     >
-      <header className="flex flex-wrap items-center gap-3">
-        <span
-          className={cn(
-            "flex items-center gap-2 rounded-md px-2.5 py-1 font-mono text-xs font-bold uppercase tracking-widest",
-            pending ? "bg-st-waiting text-black" : approval.status === "approved" ? "bg-st-running/20 text-st-running" : "bg-st-failed/20 text-st-failed",
+      <header className="space-y-2">
+        <div className="flex flex-wrap items-center gap-2 font-mono text-xs text-text-2">
+          <span>{approval.approval_id}</span>
+          {approval.requested_at && <span>· requested {formatTime(approval.requested_at)}</span>}
+          {!pending && (
+            <span className={approval.status === "approved" ? "text-st-running" : "text-st-failed"}>
+              · {approval.status}
+              {approval.resolved_by && ` by ${approval.resolved_by}`}
+            </span>
           )}
-        >
-          <Gavel className="size-3.5" />
-          {pending ? "Approval required" : approval.status}
-        </span>
-        <span className="font-mono text-sm text-muted-foreground">{approval.approval_id}</span>
-        <span className="ml-auto font-mono text-xs text-muted-foreground">
-          {approval.requested_at && `requested ${formatTime(approval.requested_at)}`}
-          {approval.resolved_by && ` · ${approval.status} by ${approval.resolved_by}`}
-        </span>
+        </div>
+        <h3 className="text-xl font-semibold leading-snug">{approvalHeadline(approval)}</h3>
+        <div className="flex flex-wrap items-center gap-2">
+          <PidChip pid={approval.pid} agent={approval.agent} />
+          <RiskBadge risk={sc.risk} />
+        </div>
       </header>
 
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        <PidChip pid={approval.pid} className="text-sm" />
-        <span className="text-base font-medium">{approval.agent}</span>
-        <span className="text-muted-foreground">wants</span>
-        <span className="flex items-center gap-1.5 rounded-md border border-ev-syscall/60 bg-ev-syscall/10 px-2.5 py-1 font-mono text-base font-semibold text-ev-syscall">
-          <KeyRound className="size-4" />
-          {sc.capability}
-        </span>
-        <span className="font-mono text-sm text-muted-foreground">
-          {sc.tool}.{sc.operation}
-          {sc.resource ? ` on ${sc.resource}` : ""}
-        </span>
-        {sc.risk && (
-          <span className={cn("rounded-md border px-2 py-0.5 font-mono text-xs font-bold uppercase", RISK[sc.risk])}>
-            risk {sc.risk}
-          </span>
-        )}
-      </div>
+      <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
+        <dt className="text-text-2">Capability</dt>
+        <dd className="font-mono font-semibold text-brand">{sc.capability}</dd>
+        <dt className="text-text-2">Operation</dt>
+        <dd className="font-mono">{sc.tool}.{sc.operation}</dd>
+        <dt className="text-text-2">Target</dt>
+        <dd className="font-mono">{sc.resource ?? String((sc.arguments as Record<string, unknown> | undefined)?.key ?? "—")}</dd>
+      </dl>
 
-      <div className={cn("mt-4 grid gap-4", !compact && "xl:grid-cols-2")}>
-        <div className="space-y-3">
-          <section>
-            <h4 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              <ShieldAlert className="size-3.5 text-ev-policy" /> Policy
-            </h4>
-            <p className="mt-1 text-sm">
-              <span className="font-mono font-semibold text-ev-policy">{approval.decision.policy}</span>
-              <span className="text-muted-foreground"> · {approval.decision.reason}</span>
-            </p>
-            {!!approval.decision.matched_rules?.length && (
-              <p className="mt-0.5 font-mono text-xs text-muted-foreground">rules: {approval.decision.matched_rules.join(", ")}</p>
-            )}
-          </section>
-          {sc.justification && (
-            <section>
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Justification</h4>
-              <blockquote className="mt-1 border-l-2 border-primary/60 pl-3 text-sm italic">{sc.justification}</blockquote>
-            </section>
+      <div className="mt-4 space-y-4">
+        <Section label="Policy" icon={ShieldCheck}>
+          <p className="text-sm">
+            <span className="font-mono font-semibold text-brand">{approval.decision.policy}</span>
+            <span className="text-text-2"> · {approval.decision.reason}</span>
+          </p>
+          {!!approval.decision.matched_rules?.length && (
+            <p className="mt-0.5 font-mono text-xs text-text-2">rules: {approval.decision.matched_rules.join(", ")}</p>
           )}
-          <section>
-            <h4 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              <FileSearch className="size-3.5 text-ev-knowledge" /> Evidence ({sc.evidence?.length ?? 0})
-            </h4>
-            <div className="mt-1">
-              {sc.evidence?.length ? (
-                sc.evidence.map((p) => <EvidencePath key={p} path={p} flagged={flaggedPaths.includes(p)} />)
-              ) : (
-                <p className="text-sm text-st-waiting">No evidence cited for this action.</p>
-              )}
+        </Section>
+        {sc.justification && (
+          <Section label="Justification">
+            <blockquote className="border-l-2 border-brand pl-3 text-[15px]">{sc.justification}</blockquote>
+          </Section>
+        )}
+        <Section label="Arguments" icon={KeyRound}>
+          <JsonView value={sc.arguments} />
+        </Section>
+        <Section label={`Evidence (${sc.evidence?.length ?? 0})`} icon={FileSearch}>
+          {sc.evidence?.length ? (
+            <div className="flex flex-wrap gap-1.5">
+              {sc.evidence.map((p) => (
+                <EvidenceChip key={p} path={p} flagged={flaggedPaths.includes(p)} />
+              ))}
             </div>
-          </section>
-        </div>
-        <section>
-          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Arguments</h4>
-          <div className="mt-1">
-            <JsonView value={sc.arguments} />
-          </div>
-        </section>
+          ) : (
+            <p className="text-sm text-st-waiting">No evidence cited for this action.</p>
+          )}
+        </Section>
       </div>
 
       {pending ? (
@@ -164,12 +159,13 @@ export function ApprovalCard({
             value={comment}
             onChange={(e) => setComment(e.target.value)}
             placeholder="Comment (optional, recorded in the audit journal)"
-            className="min-h-16"
+            aria-label="Comment"
+            className="min-h-16 text-sm"
           />
           <div className="flex gap-3">
             <Button
               size="lg"
-              className="flex-1 bg-st-running text-black hover:bg-st-running/90"
+              className="h-12 flex-1 bg-st-running text-base font-semibold text-white hover:bg-st-running/90 dark:text-black"
               disabled={resolve.isPending}
               onClick={() => resolve.mutate(true)}
             >
@@ -179,7 +175,7 @@ export function ApprovalCard({
             <Button
               size="lg"
               variant="outline"
-              className="flex-1 border-st-failed/60 text-st-failed hover:bg-st-failed/10 hover:text-st-failed"
+              className="h-12 flex-1 border-st-failed/60 text-base font-semibold text-st-failed hover:bg-st-failed/10 hover:text-st-failed"
               disabled={resolve.isPending}
               onClick={() => resolve.mutate(false)}
             >
@@ -187,9 +183,12 @@ export function ApprovalCard({
               Reject
             </Button>
           </div>
+          <p className="flex items-center gap-1.5 text-xs text-text-2">
+            <Undo2 className="size-3.5" aria-hidden /> The action runs in a transaction: verify → commit, or automatic rollback.
+          </p>
         </footer>
       ) : (
-        approval.comment && <p className="mt-4 text-sm text-muted-foreground">Comment: “{approval.comment}”</p>
+        approval.comment && <p className="mt-4 text-sm text-text-2">Comment: “{approval.comment}”</p>
       )}
     </article>
   );

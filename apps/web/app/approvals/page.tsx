@@ -1,66 +1,82 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { BellRing } from "lucide-react";
 import Link from "next/link";
+import { useState } from "react";
 import { useClient } from "@/app/providers";
-import { ApprovalCard } from "@/components/approval-card";
-import { PidChip, formatTime } from "@/components/status";
+import { ApprovalCard, approvalHeadline } from "@/components/approval-card";
+import { PidChip, RiskBadge, formatTime } from "@/components/status";
 import { cn } from "@/lib/utils";
 
 export default function ApprovalsPage() {
   const client = useClient();
+  const [tab, setTab] = useState<"pending" | "history">("pending");
   const all = useQuery({ queryKey: ["approvals", "all"], queryFn: () => client.approvals(), refetchInterval: 2_000 });
   const approvals = [...(all.data ?? [])].sort((a, b) => (b.requested_at ?? "").localeCompare(a.requested_at ?? ""));
   const pending = approvals.filter((a) => (a.status ?? "pending") === "pending");
   const resolved = approvals.filter((a) => (a.status ?? "pending") !== "pending");
 
   return (
-    <div className="mx-auto max-w-6xl space-y-8">
+    <div className="mx-auto max-w-4xl space-y-5">
       <div>
-        <h1 className="flex items-center gap-2 text-2xl font-semibold">
-          <BellRing className={cn("size-6", pending.length ? "text-st-waiting" : "text-muted-foreground")} /> Approval center
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Privileged syscalls that policy routed to a human. Each card shows exactly which documents justify the action.
+        <h1 className="text-2xl font-semibold">Approvals</h1>
+        <p className="mt-1 text-sm text-text-2">
+          Privileged syscalls that policy routed to a human. Each card shows the documents that justify the action.
         </p>
       </div>
 
-      <section className="space-y-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Pending ({pending.length})</h2>
-        {all.isError && <p className="text-sm text-st-failed">Gateway unreachable: {String(all.error)}</p>}
-        {all.isSuccess && pending.length === 0 && <p className="text-sm text-muted-foreground">Nothing is waiting for you.</p>}
-        {pending.map((a) => (
-          <div key={a.approval_id} className="space-y-1">
-            <Link href={`/tasks/${a.task_id}`} className="font-mono text-xs text-muted-foreground hover:text-foreground">
-              task {a.task_id} →
-            </Link>
-            <ApprovalCard approval={a} />
-          </div>
+      <div role="tablist" aria-label="Approvals" className="flex gap-1 border-b border-line">
+        {(["pending", "history"] as const).map((t) => (
+          <button
+            key={t}
+            role="tab"
+            type="button"
+            aria-selected={tab === t}
+            onClick={() => setTab(t)}
+            className={cn(
+              "-mb-px border-b-2 px-3 pb-2 text-sm font-medium capitalize",
+              tab === t ? "border-brand text-foreground" : "border-transparent text-text-2 hover:text-foreground",
+            )}
+          >
+            {t} <span className="font-mono">({t === "pending" ? pending.length : resolved.length})</span>
+          </button>
         ))}
-      </section>
+      </div>
 
-      <section>
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Resolved ({resolved.length})</h2>
-        <table className="mt-2 w-full text-sm">
-          <tbody>
-            {resolved.map((a) => (
-              <tr key={a.approval_id} className="border-b border-border/60">
-                <td className="py-2 font-mono text-xs text-muted-foreground">{formatTime(a.resolved_at ?? a.requested_at)}</td>
-                <td className="py-2"><PidChip pid={a.pid} /></td>
-                <td className="py-2 font-mono text-ev-syscall">{a.syscall.capability}</td>
-                <td className="py-2 text-muted-foreground">{a.agent}</td>
-                <td className={cn("py-2 font-semibold", a.status === "approved" ? "text-st-running" : "text-st-failed")}>
-                  {a.status}{a.resolved_by ? ` by ${a.resolved_by}` : ""}
-                </td>
-                <td className="py-2 text-right">
-                  <Link href={`/tasks/${a.task_id}`} className="font-mono text-xs text-muted-foreground hover:text-foreground">{a.task_id}</Link>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
+      {all.isError && <p className="text-sm text-st-failed">Gateway unreachable: {String(all.error)}</p>}
+
+      {tab === "pending" ? (
+        <section className="space-y-5">
+          {all.isSuccess && pending.length === 0 && <p className="text-sm text-text-2">Nothing is waiting for you.</p>}
+          {pending.map((a) => (
+            <div key={a.approval_id} className="space-y-1.5">
+              <Link href={`/tasks/${a.task_id}`} className="font-mono text-xs text-text-2 hover:text-foreground">
+                task {a.task_id} →
+              </Link>
+              <ApprovalCard approval={a} />
+            </div>
+          ))}
+        </section>
+      ) : (
+        <ul className="divide-y divide-line rounded-xl border border-line bg-surface-1">
+          {resolved.length === 0 && <li className="p-4 text-sm text-text-2">No resolved approvals yet.</li>}
+          {resolved.map((a) => (
+            <li key={a.approval_id} className="flex flex-wrap items-center gap-3 px-4 py-3 text-sm">
+              <span className="w-20 font-mono text-xs text-text-2">{formatTime(a.resolved_at ?? a.requested_at)}</span>
+              <span className="min-w-0 flex-1 truncate">{approvalHeadline(a)}</span>
+              <PidChip pid={a.pid} />
+              <RiskBadge risk={a.syscall.risk} />
+              <span className={cn("font-semibold", a.status === "approved" ? "text-st-running" : "text-st-failed")}>
+                {a.status}
+                {a.resolved_by ? ` by ${a.resolved_by}` : ""}
+              </span>
+              <Link href={`/tasks/${a.task_id}`} className="font-mono text-xs text-text-2 hover:text-foreground">
+                {a.task_id}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
