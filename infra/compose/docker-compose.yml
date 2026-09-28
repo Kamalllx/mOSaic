@@ -60,7 +60,9 @@ services:
       MOSAIC_DATABASE_URL: postgresql+psycopg://mosaic:mosaic@postgres:5432/mosaic
       MOSAIC_REDIS_URL: redis://redis:6379/0
       MOSAIC_OLLAMA_URL: http://ollama:11434
-    ports: ["127.0.0.1:8080:8080"]   # loopback like everything else; expose via `tailscale serve`
+      MOSAIC_GATEWAY_PORT: "8080"     # fixed inside the container; pick the host side with MOSAIC_HOST_PORT
+    # loopback like everything else; expose via `tailscale serve`. Port 8080 taken? MOSAIC_HOST_PORT=8088 docker compose ...
+    ports: ["127.0.0.1:${MOSAIC_HOST_PORT:-8080}:8080"]
     volumes:
       - ${MOSAIC_DATA_DIR:-../../.data}:/sovereign-data
       - /var/run/docker.sock:/var/run/docker.sock   # sandbox manager (P1) — appliance only
