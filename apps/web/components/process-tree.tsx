@@ -1,8 +1,6 @@
 "use client";
 
 import type { AgentProcess } from "@mosaic/contracts";
-import { ALLOWED_TRANSITIONS } from "@mosaic/contracts";
-import { useMutation } from "@tanstack/react-query";
 import {
   Background,
   type Edge,
@@ -17,108 +15,110 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { Hourglass, Pause, Play, Skull } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { toast } from "sonner";
-import { useClient } from "@/app/providers";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { MosaicError } from "@/lib/mosaic-client";
+import { useTheme } from "next-themes";
+import { useEffect, useMemo } from "react";
 import { agentTone } from "@/lib/tones";
 import { cn } from "@/lib/utils";
 import { AgentStateBadge } from "./status";
+import { availableActions, type ProcessAction, useProcessActions } from "./task/process-actions";
 
-const NODE_W = 196;
-const NODE_H = 104;
-const GAP_X = 18;
+const NODE_W = 212;
+const NODE_H = 112;
+const GAP_X = 20;
 const GAP_Y = 64;
 
-type ProcNode = Node<{ proc: AgentProcess; onAction: (a: Action, p: AgentProcess) => void }, "proc">;
-type Action = "kill" | "pause" | "resume";
+interface NodeData extends Record<string, unknown> {
+  proc: AgentProcess;
+  selected: boolean;
+  onAction: (a: ProcessAction, p: AgentProcess) => void;
+  onSelect: (pid: number) => void;
+}
+type ProcNode = Node<NodeData, "proc">;
 
-const can = (state: string | undefined, next: string) => (ALLOWED_TRANSITIONS[state ?? ""] ?? []).includes(next);
-const tokensOf = (p: AgentProcess) => (p.usage?.tokens_prompt ?? 0) + (p.usage?.tokens_completion ?? 0);
+export const tokensOf = (p: AgentProcess) => (p.usage?.tokens_prompt ?? 0) + (p.usage?.tokens_completion ?? 0);
+
+const ACTION_ICON = { pause: Pause, resume: Play, kill: Skull } as const;
 
 function ProcessNode({ data }: NodeProps<ProcNode>) {
   const p = data.proc;
   const tone = agentTone(p.state);
-  const busy = p.state === "RUNNING";
+  const actions = availableActions(p).filter((a): a is keyof typeof ACTION_ICON => a in ACTION_ICON);
   return (
     <div
-      className={cn("rounded-lg border-2 bg-card px-3 py-2 shadow-lg", tone.border, p.state === "WAITING" && "ring-2 ring-st-waiting/40")}
+      role="button"
+      tabIndex={0}
+      aria-pressed={data.selected}
+      aria-label={`PID ${p.pid} ${p.agent}, ${p.state}`}
+      onClick={() => data.onSelect(p.pid)}
+      onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && data.onSelect(p.pid)}
+      className={cn(
+        "cursor-pointer rounded-xl border bg-surface-1 px-3 py-2.5 shadow-panel transition-[border-color,box-shadow] duration-200",
+        data.selected ? "border-brand ring-2 ring-brand/30" : tone.border,
+      )}
       style={{ width: NODE_W, minHeight: NODE_H }}
     >
-      <Handle type="target" position={Position.Top} className="!bg-transparent !border-0" />
+      <Handle type="target" position={Position.Top} className="!border-0 !bg-transparent" />
       <div className="flex items-center justify-between gap-2">
-        <span className={cn("font-mono text-lg font-bold", tone.text)}>{p.pid}</span>
+        <span className="font-mono text-base font-bold">
+          <span className="text-muted-foreground">PID </span>
+          {p.pid}
+        </span>
         <AgentStateBadge state={p.state} />
       </div>
-      <p className="truncate text-sm font-medium">{p.agent}</p>
-      <div className="mt-1 flex flex-wrap items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
-        <span className="rounded bg-secondary px-1.5 py-0.5">{tokensOf(p)} tok</span>
-        {(p.usage?.tool_calls ?? 0) > 0 && <span className="rounded bg-secondary px-1.5 py-0.5">{p.usage?.tool_calls} tools</span>}
-        {p.waiting_on && (
-          <span className="flex items-center gap-1 rounded bg-st-waiting/15 px-1.5 py-0.5 text-st-waiting">
-            <Hourglass className="size-3" /> {p.waiting_on}
-          </span>
-        )}
+      <p className="mt-0.5 truncate text-sm font-medium">{p.agent}</p>
+      <div className="mt-1 flex flex-wrap items-center gap-1.5 font-mono text-xs text-text-2">
+        <span>{tokensOf(p).toLocaleString()} tok</span>
+        {(p.usage?.tool_calls ?? 0) > 0 && <span>· {p.usage?.tool_calls} tools</span>}
       </div>
-      <div className="nodrag mt-1.5 flex gap-1">
-        {can(p.state, "PAUSED") && (
-          <NodeButton label="Pause" onClick={() => data.onAction("pause", p)} icon={<Pause className="size-3" />} />
-        )}
-        {p.state === "PAUSED" && can(p.state, "RUNNING") && (
-          <NodeButton label="Resume" onClick={() => data.onAction("resume", p)} icon={<Play className="size-3" />} />
-        )}
-        {can(p.state, "TERMINATED") && (
-          <NodeButton label="Kill" danger onClick={() => data.onAction("kill", p)} icon={<Skull className="size-3" />} />
-        )}
-        {busy && <span className="ml-auto self-center size-2 animate-pulse rounded-full bg-st-running" />}
-      </div>
-      <Handle type="source" position={Position.Bottom} className="!bg-transparent !border-0" />
-    </div>
-  );
-}
-
-function NodeButton({ label, onClick, icon, danger }: { label: string; onClick: () => void; icon: React.ReactNode; danger?: boolean }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] text-muted-foreground hover:text-foreground",
-        danger && "hover:border-st-failed hover:text-st-failed",
+      {p.waiting_on && (
+        <p className={cn("mt-1 flex items-center gap-1 truncate font-mono text-xs", tone.text)}>
+          <Hourglass className="size-3.5 shrink-0" aria-hidden /> {p.waiting_on}
+        </p>
       )}
-    >
-      {icon} {label}
-    </button>
+      {actions.length > 0 && (
+        <div className="nodrag mt-2 flex gap-1">
+          {actions.map((a) => {
+            const Icon = ACTION_ICON[a];
+            return (
+              <button
+                key={a}
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  data.onAction(a, p);
+                }}
+                aria-label={`${a} PID ${p.pid}`}
+                className={cn(
+                  "flex items-center gap-1 rounded-md border border-line px-1.5 py-0.5 text-xs capitalize text-text-2 transition-colors hover:bg-surface-3 hover:text-foreground",
+                  a === "kill" && "hover:border-st-failed hover:text-st-failed",
+                )}
+              >
+                <Icon className="size-3.5" aria-hidden /> {a}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      <Handle type="source" position={Position.Bottom} className="!border-0 !bg-transparent" />
+    </div>
   );
 }
 
 const nodeTypes = { proc: ProcessNode };
 
-/** Re-fit whenever the set of processes or their parents change: fitView on its own only runs for the first render, and new
- *  nodes need a moment to be measured, so fit once right away and once after they've rendered. Also re-fit when the pane
- *  is resized (window resize, projector switch, drawer opening), debounced so a drag doesn't animate on every frame. */
+/** Re-fit whenever the set of processes or their parents change, and when the pane is resized. */
 function FitOnGrowth({ pids }: { pids: string }) {
   const { fitView } = useReactFlow();
   const width = useStore((s) => s.width);
   const height = useStore((s) => s.height);
   useEffect(() => {
-    const fit = () => void fitView({ padding: 0.08, maxZoom: 1.25, duration: 250 });
+    const fit = () => void fitView({ padding: 0.08, maxZoom: 1.2, duration: 220 });
     const timers = [setTimeout(fit, 60), setTimeout(fit, 450)];
     return () => timers.forEach(clearTimeout);
   }, [pids, fitView]);
   useEffect(() => {
     if (!width || !height) return;
-    const timer = setTimeout(() => void fitView({ padding: 0.08, maxZoom: 1.25, duration: 150 }), 150);
+    const timer = setTimeout(() => void fitView({ padding: 0.08, maxZoom: 1.2, duration: 150 }), 150);
     return () => clearTimeout(timer);
   }, [width, height, fitView]);
   return null;
@@ -156,25 +156,25 @@ export function layout(procs: AgentProcess[]): { positions: Record<number, { x: 
   return { positions, edges };
 }
 
-export function ProcessTree({ processes }: { processes: Record<number, AgentProcess> }) {
-  const client = useClient();
-  const [confirm, setConfirm] = useState<AgentProcess | null>(null);
-  const act = useMutation({
-    mutationFn: ({ action, pid }: { action: Action; pid: number }) =>
-      action === "kill" ? client.killProcess(pid) : action === "pause" ? client.pauseProcess(pid) : client.resumeProcess(pid),
-    onSuccess: (p, { action }) => toast(`pid ${p.pid} ${action === "kill" ? "killed" : action === "pause" ? "paused" : "resumed"}`),
-    onError: (e) => toast.error("Process control failed", { description: e instanceof MosaicError ? e.message : String(e) }),
-  });
-
+export function ProcessTree({
+  processes,
+  selected = null,
+  onSelect = () => {},
+}: {
+  processes: Record<number, AgentProcess>;
+  selected?: number | null;
+  onSelect?: (pid: number) => void;
+}) {
+  const { act, dialog } = useProcessActions();
+  const { resolvedTheme } = useTheme();
   const procs = useMemo(() => Object.values(processes), [processes]);
   const { nodes, edges } = useMemo(() => {
-    const onAction = (a: Action, p: AgentProcess) => (a === "kill" ? setConfirm(p) : act.mutate({ action: a, pid: p.pid }));
     const { positions, edges: pairs } = layout(procs);
     const nodes: ProcNode[] = procs.map((p) => ({
       id: String(p.pid),
       type: "proc",
       position: positions[p.pid] ?? { x: 0, y: 0 },
-      data: { proc: p, onAction },
+      data: { proc: p, selected: p.pid === selected, onAction: act, onSelect },
       draggable: false,
     }));
     const edges: Edge[] = pairs.map(([a, b]) => {
@@ -184,11 +184,13 @@ export function ProcessTree({ processes }: { processes: Record<number, AgentProc
         source: String(a),
         target: String(b),
         animated: child?.state === "RUNNING",
-        style: { stroke: agentTone(child?.state).stroke, strokeWidth: 2, opacity: 0.7 },
+        style: { stroke: agentTone(child?.state).stroke, strokeWidth: 2, opacity: 0.75 },
       };
     });
     return { nodes, edges };
-  }, [procs, processes, act]);
+    // `act` is recreated each render but only opens a dialog or fires a mutation; depending on it would rebuild the graph every render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [procs, processes, selected, onSelect]);
 
   return (
     <div className="relative h-full min-h-0">
@@ -196,44 +198,24 @@ export function ProcessTree({ processes }: { processes: Record<number, AgentProc
         <p className="p-4 text-sm text-muted-foreground">No processes yet.</p>
       ) : (
         <ReactFlowProvider>
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          nodeTypes={nodeTypes}
-          fitView
-          fitViewOptions={{ padding: 0.08, maxZoom: 1.25 }}
-          nodesConnectable={false}
-          proOptions={{ hideAttribution: true }}
-          colorMode="dark"
-          minZoom={0.3}
-          style={{ background: "transparent" }}
-        >
-          <Background gap={24} size={1} color="#1c2733" />
-          <FitOnGrowth pids={procs.map((p) => `${p.pid}<${p.ppid ?? ""}`).sort().join(",")} />
-        </ReactFlow>
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            nodeTypes={nodeTypes}
+            fitView
+            fitViewOptions={{ padding: 0.08, maxZoom: 1.2 }}
+            nodesConnectable={false}
+            proOptions={{ hideAttribution: true }}
+            colorMode={resolvedTheme === "light" ? "light" : "dark"}
+            minZoom={0.3}
+            style={{ background: "transparent" }}
+          >
+            <Background gap={24} size={1} color="var(--line)" />
+            <FitOnGrowth pids={procs.map((p) => `${p.pid}<${p.ppid ?? ""}`).sort().join(",")} />
+          </ReactFlow>
         </ReactFlowProvider>
       )}
-      <AlertDialog open={!!confirm} onOpenChange={(o) => !o && setConfirm(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              Kill pid {confirm?.pid} ({confirm?.agent})?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              The process and its children are terminated. This is recorded in the audit journal and can&apos;t be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Keep running</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-white hover:bg-destructive/90"
-              onClick={() => confirm && act.mutate({ action: "kill", pid: confirm.pid })}
-            >
-              Kill
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {dialog}
     </div>
   );
 }
