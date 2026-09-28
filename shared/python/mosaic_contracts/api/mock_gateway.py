@@ -3,8 +3,9 @@
     uv run --package mosaic-contracts mosaic-mock-gateway          # http://localhost:8080/docs
 
 Serves the Project Apollo example run. POST /tasks starts a replay of examples.events() over
-/ws/events (rewritten to the new task_id); the replay pauses at approval.requested until
-POST /approvals/{id}/approve|reject is called. Knowledge endpoints are backed by the fake
+/ws/events (rewritten to the new task_id); the approval appears in GET /approvals when the replay
+reaches approval.requested, and the replay waits there until POST /approvals/{id}/approve|reject.
+Like the real gateway, /ws/events?task_id=... first replays the task's history, then streams live. Knowledge endpoints are backed by the fake
 knowledge service over shared/fixtures/okf, so they return real search results.
 """
 from __future__ import annotations
@@ -66,9 +67,12 @@ class _State:
         self.approvals: dict[str, Approval] = {a.approval_id: a for a in [examples.approval()]}
         self.approval_gates: dict[str, asyncio.Event] = {}
         self.listeners: list[tuple[str | None, list[str], asyncio.Queue]] = []
+        self.history: dict[str, list[Event]] = {}
         self.knowledge = FakeKnowledgeService(models=FakeModelRouter(), firewall=FakeContextFirewall())
 
     async def emit(self, event: Event) -> None:
+        if event.task_id:
+            self.history.setdefault(event.task_id, []).append(event)
         for task_id, types, q in list(self.listeners):
             if (task_id is None or event.task_id == task_id) and any(fnmatch(event.type, t) for t in types):
                 q.put_nowait(event)
@@ -125,7 +129,15 @@ def build_mock_app(replay_speed: float = 4.0) -> FastAPI:
     def _retarget(ev: Event, task_id: str, approval_id: str) -> Event:
         payload = {k: (approval_id if v == "APR-882" else v) for k, v in ev.payload.items()}
         corr = approval_id if ev.correlation_id == "APR-882" else ev.correlation_id
-        return ev.model_copy(update={"task_id": task_id, "ts": utcnow(), "payload": payload, "correlation_id": corr})
+        return ev.model_copy(update={"event_id": new_id("EV"), "task_id": task_id, "ts": utcnow(), "payload": payload,
+                                     "correlation_id": corr})
+
+    def _open_approval(task_id: str, approval_id: str) -> None:
+        a = examples.approval()
+        st.approvals[approval_id] = a.model_copy(update={
+            "approval_id": approval_id, "task_id": task_id, "requested_at": utcnow(),
+            "decision": a.decision.model_copy(update={"approval_id": approval_id}),
+            "syscall": a.syscall.model_copy(update={"task_id": task_id})})
 
     async def _replay(task_id: str, approval_id: str) -> None:
         prev = None
@@ -133,6 +145,8 @@ def build_mock_app(replay_speed: float = 4.0) -> FastAPI:
             if prev is not None:
                 await asyncio.sleep(max(0.0, (ev.ts - prev).total_seconds()) / replay_speed)
             prev = ev.ts
+            if ev.type == EventType.APPROVAL_REQUESTED:
+                _open_approval(task_id, approval_id)
             if ev.type == EventType.APPROVAL_RESOLVED:
                 await st.approval_gates[approval_id].wait()
                 prev = None
@@ -171,11 +185,6 @@ def build_mock_app(replay_speed: float = 4.0) -> FastAPI:
                  data_scope=body.data_scope, approval_policy=body.approval_policy, status=TaskStatus.RUNNING, root_pid=101)
         st.tasks[t.task_id] = t
         approval_id = new_id("APR")
-        a = examples.approval()
-        st.approvals[approval_id] = a.model_copy(update={
-            "approval_id": approval_id, "task_id": t.task_id, "requested_at": utcnow(),
-            "decision": a.decision.model_copy(update={"approval_id": approval_id}),
-            "syscall": a.syscall.model_copy(update={"task_id": t.task_id})})
         st.approval_gates[approval_id] = asyncio.Event()
         asyncio.get_running_loop().create_task(_replay(t.task_id, approval_id))
         return t
@@ -349,12 +358,19 @@ def build_mock_app(replay_speed: float = 4.0) -> FastAPI:
     async def ws_events(ws: WebSocket, task_id: str | None = None, types: str = "*") -> None:
         await ws.accept()
         q: asyncio.Queue = asyncio.Queue()
-        entry = (task_id, types.split(","), q)
-        st.listeners.append(entry)
+        patterns = types.split(",")
+        entry = (task_id, patterns, q)
+        st.listeners.append(entry)  # before the history snapshot, so nothing falls in between
         try:
+            replayed = set()
+            for ev in list(st.history.get(task_id, ())) if task_id else []:
+                replayed.add(ev.event_id)
+                if any(fnmatch(ev.type, t) for t in patterns):
+                    await ws.send_text(ev.model_dump_json())
             while True:
-                ev: Event = await q.get()
-                await ws.send_text(ev.model_dump_json())
+                ev = await q.get()
+                if ev.event_id not in replayed:
+                    await ws.send_text(ev.model_dump_json())
         except WebSocketDisconnect:
             pass
         finally:

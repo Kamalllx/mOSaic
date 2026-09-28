@@ -94,6 +94,28 @@ def test_mock_gateway_serves_artifact_bytes():
         assert missing.status_code == 404 and missing.json()["code"] == "ARTIFACT_NOT_FOUND"
 
 
+def test_mock_gateway_opens_the_approval_when_the_run_reaches_it_and_replays_history():
+    from fastapi.testclient import TestClient
+    from mosaic_contracts.api.mock_gateway import build_mock_app
+
+    with TestClient(build_mock_app(replay_speed=20)) as client:  # approval.requested comes ~2 s into the replay
+        tid = client.post("/tasks", json={"goal": "Investigate Apollo"}).json()["task_id"]
+        mine = lambda: [a for a in client.get("/approvals").json() if a["task_id"] == tid]  # noqa: E731
+        assert mine() == [], "no approval before the run asks for one"
+        with client.websocket_connect(f"/ws/events?task_id={tid}") as ws:
+            seen = []
+            while not seen or seen[-1]["type"] != "approval.requested":
+                seen.append(json.loads(ws.receive_text()))
+        pending = mine()
+        assert len(pending) == 1 and pending[0]["status"] == "pending"
+        assert pending[0]["approval_id"] == seen[-1]["payload"]["approval_id"]
+        # a late subscriber gets the whole history first, with unique event ids
+        with client.websocket_connect(f"/ws/events?task_id={tid}&types=task.*,approval.*") as late:
+            first = json.loads(late.receive_text())
+            assert first["type"] == "task.created" and first["event_id"] == seen[0]["event_id"]
+        assert len({e["event_id"] for e in seen}) == len(seen)
+
+
 def test_exported_schema_keeps_fields_named_title():
     """export strips JSON-schema "title" annotations; it must not drop real fields called `title` (regenerate with
     `uv run mosaic-export-contracts` if this fails)."""
