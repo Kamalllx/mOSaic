@@ -93,3 +93,21 @@ def test_exec_timeout(client, tmp_path):
             await mgr.destroy(info.sandbox_id)
 
     assert asyncio.run(go()) == "TIMEOUT"
+
+
+@pytest.mark.parametrize("endpoint_mode", ["ip", "port"])
+@pytest.mark.parametrize("network", [NetworkMode.NONE, NetworkMode.ALLOWLIST])
+def test_non_display_sandbox_has_no_internet_in_any_endpoint_mode(client, tmp_path, endpoint_mode, network):
+    """The endpoint mode only exists to publish a browser's port on Docker Desktop; exec sandboxes never get egress."""
+    mgr = DockerSandboxManager(tmp_path, client=client, endpoint_mode=endpoint_mode)
+    probe = "import socket;socket.create_connection(('1.1.1.1',53),3);print('REACHABLE')"
+
+    async def go():
+        info = await mgr.provision(SandboxSpec(task_id="T-egress", network=network))
+        try:
+            return await mgr.exec(info.sandbox_id, ExecRequest(command=["python", "-c", probe], timeout_s=30))
+        finally:
+            await mgr.destroy(info.sandbox_id)
+
+    res = asyncio.run(go())
+    assert res.exit_code != 0 and "REACHABLE" not in res.stdout, f"{endpoint_mode}/{network}: sandbox reached the internet"

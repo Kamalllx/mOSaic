@@ -5,7 +5,13 @@ CPU/memory/pids limits, network=none unless allowlisted, only the task workspace
 Browser sandboxes (spec.display) run P4's mosaic/sandbox-browser image and expose Playwright on :3000.
 
 Endpoint mode (MOSAIC_SANDBOX_ENDPOINT): "ip" (Linux appliance: container IP on the internal network) or
-"port" (Docker Desktop on Windows/macOS: publish :3000 on 127.0.0.1; egress is NOT restricted in this dev mode).
+"port" (Docker Desktop on Windows/macOS: publish :3000 on 127.0.0.1). The mode only matters for display sandboxes:
+- display=False: network=none -> network_mode "none"; allowlist -> internal mosaic_sandbox only (no internet). Any mode.
+- display=True, ip mode: internal mosaic_sandbox only.
+- display=True, port mode, allowlist: default bridge (an internal network can't publish ports) + mosaic_sandbox, so
+  the browser CAN reach the internet; browser.open still checks every URL against the allowlist first, but page
+  subresources aren't filtered. Known dev-mode limit; the Linux appliance (ip mode) has no egress.
+- display=True, port mode, network=none: refused (it would have egress).
 """
 from __future__ import annotations
 
@@ -105,8 +111,11 @@ class DockerSandboxManager:
             kw["device_requests"] = [DeviceRequest(count=-1, capabilities=[["gpu"]])]
         if spec.network == NetworkMode.NONE and not spec.display:
             kw["network_mode"] = "none"
-        elif self.endpoint_mode == "port":
-            kw["ports"] = {f"{PLAYWRIGHT_PORT}/tcp": ("127.0.0.1", None)} if spec.display else {}
+        elif spec.display and self.endpoint_mode == "port":
+            if spec.network == NetworkMode.NONE:
+                raise MosaicError("BAD_REQUEST", "a display sandbox with network=none needs MOSAIC_SANDBOX_ENDPOINT=ip: "
+                                                 "port mode publishes :3000 from the default bridge, which has internet")
+            kw["ports"] = {f"{PLAYWRIGHT_PORT}/tcp": ("127.0.0.1", None)}
         else:
             kw["network"] = SANDBOX_NETWORK
         return kw
@@ -123,7 +132,7 @@ class DockerSandboxManager:
             if "network" in kw:
                 self._ensure_network()
             container = self.client().containers.run(**kw)
-            if self.endpoint_mode == "port" and spec.network != NetworkMode.NONE:
+            if "ports" in kw:
                 # Port mode starts on the default bridge (to publish :3000), where internal services such as
                 # vendor-docs don't resolve; join the sandbox network as well.
                 self.client().networks.get(self._ensure_network()).connect(container)

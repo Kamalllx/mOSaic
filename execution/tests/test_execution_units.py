@@ -139,8 +139,26 @@ def test_docker_run_kwargs_are_hardened(tmp_path):
     assert "ports" not in browser
 
     dev = DockerSandboxManager(tmp_path, client=object(), endpoint_mode="port")
-    browser_dev = dev.run_kwargs("SB-3", SandboxSpec(task_id="T-1", display=True), tmp_path)
+    browser_dev = dev.run_kwargs("SB-3", SandboxSpec(task_id="T-1", display=True, network=NetworkMode.ALLOWLIST), tmp_path)
     assert browser_dev["ports"] == {"3000/tcp": ("127.0.0.1", None)}
+
+
+@pytest.mark.parametrize("mode", ["ip", "port"])
+def test_only_display_sandboxes_depend_on_the_endpoint_mode(tmp_path, mode):
+    mgr = DockerSandboxManager(tmp_path, client=object(), endpoint_mode=mode)
+    offline = mgr.run_kwargs("SB-1", SandboxSpec(task_id="T-1", network=NetworkMode.NONE), tmp_path)
+    assert offline["network_mode"] == "none" and "ports" not in offline and "network" not in offline
+    allow = mgr.run_kwargs("SB-2", SandboxSpec(task_id="T-1", network=NetworkMode.ALLOWLIST), tmp_path)
+    assert allow["network"] == "mosaic_sandbox" and "ports" not in allow, "non-display sandboxes never use the default bridge"
+
+
+def test_port_mode_refuses_an_offline_display_sandbox(tmp_path):
+    mgr = DockerSandboxManager(tmp_path, client=object(), endpoint_mode="port")
+    with pytest.raises(MosaicError) as e:
+        mgr.run_kwargs("SB-1", SandboxSpec(task_id="T-1", display=True, network=NetworkMode.NONE), tmp_path)
+    assert e.value.code == "BAD_REQUEST" and "MOSAIC_SANDBOX_ENDPOINT=ip" in e.value.message
+    ip = DockerSandboxManager(tmp_path, client=object(), endpoint_mode="ip")
+    assert ip.run_kwargs("SB-2", SandboxSpec(task_id="T-1", display=True, network=NetworkMode.NONE), tmp_path)["network"]         == "mosaic_sandbox"
 
 
 def test_docker_manager_lifecycle_with_fake_client(tmp_path):
@@ -192,7 +210,7 @@ def test_docker_manager_lifecycle_with_fake_client(tmp_path):
 
 def test_port_mode_browser_sandbox_joins_the_sandbox_network(tmp_path):
     """Docker Desktop (port mode) starts browser sandboxes on the default bridge to publish :3000; they must also join
-    mosaic_sandbox, or internal hosts like http://vendor-docs/ don't resolve. network=none sandboxes never join."""
+    mosaic_sandbox, or internal hosts like http://vendor-docs/ don't resolve. network=none sandboxes never join, and non-display ones start on it directly."""
     connected: list[tuple[str, str]] = []
 
     class Container:
@@ -233,8 +251,9 @@ def test_port_mode_browser_sandbox_joins_the_sandbox_network(tmp_path):
 
     async def go():
         web = await mgr.provision(SandboxSpec(task_id="T-7", display=True, network=NetworkMode.ALLOWLIST))
-        offline = await mgr.provision(SandboxSpec(task_id="T-7", display=True, network=NetworkMode.NONE))
-        return web, offline
+        await mgr.provision(SandboxSpec(task_id="T-7", network=NetworkMode.ALLOWLIST))  # starts on it, no connect
+        await mgr.provision(SandboxSpec(task_id="T-7", network=NetworkMode.NONE))
+        return web
 
-    web, offline = asyncio.run(go())
+    web = asyncio.run(go())
     assert connected == [("mosaic_sandbox", f"mosaic-{web.sandbox_id.lower()}")]
