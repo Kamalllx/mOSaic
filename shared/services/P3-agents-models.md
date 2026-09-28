@@ -26,4 +26,5 @@ Full brief: [docs/team/P3-agents-models.md](../../docs/team/P3-agents-models.md)
 | Citations limited to documents retrieved in the run; approval evidence = root-cause documents | ☑ |
 | Router: batch `/api/embed`, schema-invalid JSON repaired, `MODEL_UNAVAILABLE` at routing time; model tests skip when models aren't pulled | ☑ |
 | Agents consult `/org/policies` (needed for the security-policy-v2 invalidation demo) | ☐ follow-up |
-| Review leftovers: `MOSAIC_MODELS_CONFIG` override (contract field); nomic `search_query:`/`search_document:` prefixes (contract, co-propose with P2) | ☐ |
+| Review leftovers: `MOSAIC_MODELS_CONFIG` override (contract field, 0.5.0; `models/models.7b-only.yaml` for 8 GB GPUs) | ✅ |
+| Review leftovers: nomic `search_query:`/`search_document:` prefixes (contract, co-propose with P2) | ☐ |

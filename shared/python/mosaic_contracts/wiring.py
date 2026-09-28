@@ -69,6 +69,10 @@ class Settings(BaseModel):
     jira_url: str = "http://localhost:8090"          # mock-jira (P1)
     default_chat_model: str = "qwen2.5:7b-instruct"
     default_embed_model: str = "nomic-embed-text"
+    models_config: Path = Field(
+        REPO_ROOT / "models" / "models.yaml",
+        description="P3: model routing file; e.g. models/models.7b-only.yaml keeps one chat model resident on an 8 GB GPU",
+    )
     gateway_host: str = "0.0.0.0"
     gateway_port: int = 8080
     knowledge_watch: bool = Field(
