@@ -2,6 +2,8 @@
 from mosaic_contracts.interfaces import BrowserDriver
 from mosaic_contracts.wiring import ServiceBundle, Settings
 
+from .driver import PlaywrightDriver
+
 
 def build_browser_driver(settings: Settings, services: ServiceBundle) -> BrowserDriver:
-    raise NotImplementedError("P4: driver.PlaywrightDriver()")
+    return PlaywrightDriver()

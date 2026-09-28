@@ -13,6 +13,7 @@ SAMPLE_FOR = {
     "jira-json": SAMPLES / "jira-export.json",
     "slack-export": SAMPLES / "slack-export",
     "csv": SAMPLES / "budget.csv",
+    "document": SAMPLES / "steering-notes.docx",  # skips unless the `ingest` extra (markitdown) is installed
 }
 
 
