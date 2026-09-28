@@ -19,6 +19,7 @@ _RRF_K = 60
 # outranked the best lexical/semantic matches (retrieval QA on the demo bundle fell from 8/10 lexical-only to 1/10).
 # Checked with real embeddings (nomic-embed-text): graph 0 and 0.1 give 9/10 with the same ranks, 0.25 slips, 0.5+ collapses.
 MODE_WEIGHTS = {"lexical": 1.0, "semantic": 1.0, "graph": 0.1}
+SNIPPET_CHARS = 400  # enough for a finance table row or two; the firewall still screens the full body
 _PER_MODE_LIMIT = 50
 _TRUST_ORDER = [TrustLevel.UNTRUSTED, TrustLevel.UNVERIFIED, TrustLevel.TRUSTED, TrustLevel.VERIFIED]
 _PRIVACY_ORDER = [PrivacyLevel.PUBLIC, PrivacyLevel.INTERNAL, PrivacyLevel.CONFIDENTIAL, PrivacyLevel.RESTRICTED]
@@ -152,10 +153,21 @@ class HybridRetriever:
                         cand.best_chunk = row
                         break
 
-    def _snippet_for(self, cand: _Candidate, obj: dict[str, Any], width: int = 220) -> str:
+    def _snippet_for(self, cand: _Candidate, obj: dict[str, Any]) -> str:
         if cand.best_chunk and cand.best_chunk.get("text"):
-            return cand.best_chunk["text"].strip().splitlines()[0][:width]
-        return (obj.get("body") or "").strip()[:width]
+            return snippet_of(cand.best_chunk["text"])
+        return snippet_of(obj.get("body") or "")
+
+
+def snippet_of(text: str, width: int = SNIPPET_CHARS) -> str:
+    """The chunk's content, not its heading: agents only see snippets (a title-only snippet made them invent numbers).
+    Markdown heading lines are dropped, whitespace collapsed, cut at a word boundary."""
+    flat = " ".join(line.strip() for line in text.splitlines() if line.strip() and not line.lstrip().startswith("#"))
+    flat = " ".join(flat.split())
+    if len(flat) <= width:
+        return flat
+    cut = flat[:width].rsplit(" ", 1)[0]
+    return f"{cut} …"
 
 
 def _provenance_from_row(obj: dict[str, Any]):

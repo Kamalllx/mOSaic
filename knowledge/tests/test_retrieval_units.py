@@ -68,3 +68,13 @@ def test_filtered_by_policy_ignores_the_query_own_filters():
 
     ev = asyncio.run(go())
     assert ev.filtered_by_policy == 0
+
+
+def test_snippet_is_the_chunk_content_not_its_heading():
+    from mosaic_knowledge.retrieval.retriever import snippet_of
+
+    chunk = "# Apollo budget and variance\n\nWhy Project Apollo is over budget: actuals are 31% over.\n\n| Total | 20.0 | 26.2 |"
+    assert snippet_of(chunk) == "Why Project Apollo is over budget: actuals are 31% over. | Total | 20.0 | 26.2 |"
+    long = "## Notes\n" + "word " * 200
+    s = snippet_of(long, width=50)
+    assert s.endswith(" …") and len(s) <= 52 and not s.startswith("#")
