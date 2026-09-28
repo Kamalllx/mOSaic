@@ -15,7 +15,7 @@ from typing import Any
 
 from fastapi import Body, FastAPI, Header, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from .. import CONTRACT_VERSION, examples
 from ..errors import MosaicError
@@ -56,6 +56,7 @@ from ..schema import (
 )
 from ..schema.common import new_id, utcnow
 from ..testing.fakes import FakeContextFirewall, FakeKnowledgeService, FakeModelRouter
+from . import artifact_headers, artifact_media_type
 
 
 class _State:
@@ -71,6 +72,30 @@ class _State:
         for task_id, types, q in list(self.listeners):
             if (task_id is None or event.task_id == task_id) and any(fnmatch(event.type, t) for t in types):
                 q.put_nowait(event)
+
+
+# 1x1 transparent PNG: the mock's stand-in for a sandbox screenshot
+_PNG_1X1 = bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+                         "0000000d49444154789c6360000002000154a24f5d0000000049454e44ae426082")
+
+
+def _mock_artifacts(task_id: str) -> dict[str, bytes]:
+    plan = """# Project Apollo recovery plan
+
+## Root Causes
+
+1. **Dual-run cloud cost**: the old and new stacks ran side by side for 6 weeks
+   ([/org/decisions/ADR-042](/org/decisions/ADR-042), [/org/finance/apollo-budget](/org/finance/apollo-budget)).
+2. **Backfill failure**: the APOLLO-12 backfill failed twice
+   ([/org/engineering/postmortem-backfill-failure](/org/engineering/postmortem-backfill-failure)).
+3. **Vendor SDK certification**: SDK v5 certification slipped ([/org/projects/apollo](/org/projects/apollo)).
+
+## Actions
+
+- APOLLO-12 set to At Risk (approved).
+"""
+    return {"recovery-plan.md": plan.encode(), "engineering-evidence.json": examples.evidence().model_dump_json(indent=2).encode(),
+            "screenshots/001.png": _PNG_1X1}
 
 
 def _principal(user: str, org: str) -> Principal:
@@ -182,7 +207,16 @@ def build_mock_app(replay_speed: float = 4.0) -> FastAPI:
     @app.get("/tasks/{task_id}/artifacts", response_model=list[str], tags=["tasks"])
     async def task_artifacts(task_id: str) -> list[str]:
         _task(task_id)
-        return [f"artifact://{task_id}/recovery-plan.md", f"artifact://{task_id}/engineering-evidence.json"]
+        return [f"artifact://{task_id}/{name}" for name in _mock_artifacts(task_id)]
+
+    @app.get("/tasks/{task_id}/artifacts/{name:path}", tags=["tasks"], response_class=Response,
+             responses={200: {"content": {"application/octet-stream": {}}, "description": "the artifact bytes"}})
+    async def task_artifact(task_id: str, name: str) -> Response:
+        _task(task_id)
+        data = _mock_artifacts(task_id).get(name)
+        if data is None:
+            raise MosaicError("ARTIFACT_NOT_FOUND", f"artifact://{task_id}/{name}")
+        return Response(data, media_type=artifact_media_type(name), headers=artifact_headers(name))
 
     # ------------------------------------------------------------------ processes
     @app.get("/agents", response_model=list[AgentProcess], tags=["agents"])

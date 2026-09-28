@@ -77,6 +77,22 @@ def test_mock_gateway_flow():
         assert client.get("/tasks/T-nope").status_code == 404
 
 
+def test_mock_gateway_serves_artifact_bytes():
+    from fastapi.testclient import TestClient
+    from mosaic_contracts.api.mock_gateway import build_mock_app
+
+    with TestClient(build_mock_app(replay_speed=1000)) as client:
+        tid = client.post("/tasks", json={"goal": "Investigate Apollo"}).json()["task_id"]
+        refs = client.get(f"/tasks/{tid}/artifacts").json()
+        assert f"artifact://{tid}/recovery-plan.md" in refs and f"artifact://{tid}/screenshots/001.png" in refs
+        plan = client.get(f"/tasks/{tid}/artifacts/recovery-plan.md")
+        assert plan.status_code == 200 and plan.headers["content-type"].startswith("text/markdown")
+        assert "## Root Causes" in plan.text and plan.headers["x-content-type-options"] == "nosniff"
+        png = client.get(f"/tasks/{tid}/artifacts/screenshots/001.png")
+        assert png.headers["content-type"] == "image/png" and png.content[1:4] == b"PNG"
+        missing = client.get(f"/tasks/{tid}/artifacts/nope.md")
+        assert missing.status_code == 404 and missing.json()["code"] == "ARTIFACT_NOT_FOUND"
+
 
 def test_exported_schema_keeps_fields_named_title():
     """export strips JSON-schema "title" annotations; it must not drop real fields called `title` (regenerate with
