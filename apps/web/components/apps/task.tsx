@@ -13,7 +13,7 @@ import { ProcessTree } from "@/components/process-tree";
 import { InvalidationBanner, ResultPanel, SandboxPanel } from "@/components/result-panel";
 import { TaskStatusBadge, duration } from "@/components/status";
 import { Inspector } from "@/components/task/inspector";
-import { PhoneTaskView } from "@/components/task/phone-task-view";
+import { RunStory } from "@/components/desktop/run-story";
 import { Timeline } from "@/components/timeline";
 import { Button } from "@/components/ui/button";
 import { isActive } from "@/lib/events";
@@ -109,7 +109,9 @@ export function TaskApp({ id }: { id: string }) {
         </div>
       </header>
 
-      <PhoneTaskView view={view} start={start} />
+      <div className="@3xl:hidden">
+        <RunStory view={view} />
+      </div>
 
       <div className="hidden min-h-0 flex-1 flex-col gap-3 @3xl:flex">
         <div role="tablist" aria-label="Task view" className="flex gap-1 border-b border-line">

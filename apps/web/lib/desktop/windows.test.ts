@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseRoute } from "./routes";
-import { COMPACT_WIDTH, EMPTY, focused, reduce, type WinState } from "./windows";
+import { COMPACT_WIDTH, dockWidth, EMPTY, focused, reduce, type WinState } from "./windows";
 
 const area = { w: 1600, h: 900 };
 const open = (s: WinState, url: string, a = area) => reduce(s, { type: "open", url, area: a });
@@ -46,8 +46,10 @@ describe("window manager", () => {
     expect(reduce(s, { type: "focus", key: "memory" })).toBe(s);
   });
 
-  it("maximises the live task view, and every window on a phone", () => {
-    expect(open(EMPTY, "/tasks/T-1").wins[0].maximized).toBe(true);
+  it("docks a live task to the left, and maximises every window on a phone", () => {
+    const task = open(EMPTY, "/tasks/T-1").wins[0];
+    expect([task.docked, task.maximized, task.x, task.y, task.w, task.h]).toEqual([true, false, 0, 0, dockWidth(area), area.h]);
+    expect(open(EMPTY, "/tasks/T-1", { w: COMPACT_WIDTH - 1, h: 800 }).wins[0]).toMatchObject({ docked: false, maximized: true });
     expect(open(EMPTY, "/memory").wins[0].maximized).toBe(false);
     expect(open(EMPTY, "/memory", { w: COMPACT_WIDTH - 1, h: 800 }).wins[0].maximized).toBe(true);
   });
@@ -69,6 +71,9 @@ describe("window manager", () => {
     expect(w.x).toBe(area.w - 80);
     expect(w.y).toBe(0);
     s = reduce(s, { type: "resize", key: "memory", w: 10, h: 10, area });
+    let t = open(EMPTY, "/tasks/T-1");
+    t = reduce(t, { type: "move", key: "task:T-1", x: 200, y: 40, area });
+    expect(t.wins[0].docked).toBe(false);
     expect([s.wins[0].w, s.wins[0].h]).toEqual([360, 240]);
   });
 });

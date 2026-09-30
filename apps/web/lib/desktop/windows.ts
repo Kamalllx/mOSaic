@@ -13,6 +13,8 @@ export interface Win {
   z: number;
   minimized: boolean;
   maximized: boolean;
+  /** Docked to the left edge (a live task); moving, resizing or zooming undocks it. */
+  docked: boolean;
 }
 
 export interface Area {
@@ -54,7 +56,13 @@ function clampPos(x: number, y: number, w: number, area: Area) {
   return { x: Math.round(Math.min(Math.max(x, 80 - w), area.w - 80)), y: Math.round(Math.min(Math.max(y, 0), area.h - 34)) };
 }
 
+/** Width of a window docked left: room for the run's story, the rest of the desktop for its stage. */
+export function dockWidth(area: Area): number {
+  return Math.round(Math.min(700, Math.max(440, area.w * 0.36)));
+}
+
 function place(app: AppId, area: Area, open: number) {
+  if (APPS[app].dockLeft) return { x: 0, y: 0, w: dockWidth(area), h: area.h };
   const [fw, fh] = APPS[app].size;
   const w = Math.max(MIN_W, Math.min(area.w, Math.round(area.w * fw)));
   const h = Math.max(MIN_H, Math.min(area.h, Math.round(area.h * fh)));
@@ -74,8 +82,10 @@ export function reduce(s: WinState, a: WinAction): WinState {
         return { top: s.top + 1, wins: map(r.key, (w) => ({ ...w, url: r.url, minimized: false, z: s.top })) };
       }
       const g = place(r.app, a.area, s.wins.filter((w) => !w.minimized).length);
-      const maximized = !!APPS[r.app].maximized || a.area.w < COMPACT_WIDTH;
-      const win: Win = { key: r.key, app: r.app, url: r.url, ...g, z: s.top, minimized: false, maximized };
+      const compact = a.area.w < COMPACT_WIDTH;
+      const maximized = !!APPS[r.app].maximized || compact;
+      const docked = !!APPS[r.app].dockLeft && !compact;
+      const win: Win = { key: r.key, app: r.app, url: r.url, ...g, z: s.top, minimized: false, maximized, docked };
       return { top: s.top + 1, wins: [...s.wins, win] };
     }
     case "focus": {
@@ -90,9 +100,9 @@ export function reduce(s: WinState, a: WinAction): WinState {
     case "minimizeAll":
       return { ...s, wins: s.wins.map((w) => ({ ...w, minimized: true })) };
     case "toggleMax":
-      return { top: s.top + 1, wins: map(a.key, (w) => ({ ...w, maximized: !w.maximized, minimized: false, z: s.top })) };
+      return { top: s.top + 1, wins: map(a.key, (w) => ({ ...w, maximized: !w.maximized, docked: false, minimized: false, z: s.top })) };
     case "move":
-      return { ...s, wins: map(a.key, (w) => ({ ...w, ...clampPos(a.x, a.y, w.w, a.area), maximized: false })) };
+      return { ...s, wins: map(a.key, (w) => ({ ...w, ...clampPos(a.x, a.y, w.w, a.area), maximized: false, docked: false })) };
     case "resize":
       return {
         ...s,
@@ -101,6 +111,7 @@ export function reduce(s: WinState, a: WinAction): WinState {
           w: Math.round(Math.max(MIN_W, Math.min(a.w, a.area.w - Math.max(0, w.x)))),
           h: Math.round(Math.max(MIN_H, Math.min(a.h, a.area.h - Math.max(0, w.y)))),
           maximized: false,
+          docked: false,
         })),
       };
   }

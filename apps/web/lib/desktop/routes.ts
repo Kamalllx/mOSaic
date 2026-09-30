@@ -53,15 +53,17 @@ export interface AppMeta {
   title: string;
   /** Default window size as a fraction of the desktop area. */
   size: [number, number];
-  /** Opens maximised (the live task view needs the room). */
+  /** Opens maximised. */
   maximized?: boolean;
+  /** Opens docked to the left edge, full height: the live run's story, with the run stage beside it. */
+  dockLeft?: boolean;
   /** The URL the dock opens. */
   home: string;
 }
 
 export const APPS: Record<AppId, AppMeta> = {
   tasks: { title: "Tasks", size: [0.6, 0.72], home: "/tasks" },
-  task: { title: "Task", size: [0.9, 0.9], maximized: true, home: "/tasks" },
+  task: { title: "Task", size: [0.9, 0.9], dockLeft: true, home: "/tasks" },
   approvals: { title: "Approvals", size: [0.5, 0.78], home: "/approvals" },
   files: { title: "Knowledge", size: [0.82, 0.84], home: "/knowledge" },
   memory: { title: "Memory", size: [0.74, 0.84], home: "/memory" },

@@ -17,11 +17,13 @@ import { TerminalApp } from "@/components/apps/terminal";
 import { APPS, type AppId, parseRoute } from "@/lib/desktop/routes";
 import { type Area, COMPACT_WIDTH, EMPTY, focused as topWindow, reduce, type Win } from "@/lib/desktop/windows";
 import { Boot } from "./boot";
-import { Composer } from "./composer";
 import { Dock } from "./dock";
-import { Launcher } from "./launcher";
 import { Notifications } from "./notifications";
-import { TopBar } from "./top-bar";
+import { RunStage } from "./run-stage";
+import { DOCK_APPS, ShortcutSheet, Switcher } from "./shortcuts";
+import { Spotlight } from "./spotlight";
+import { type MenuActions, TopBar } from "./top-bar";
+import { Hero, Widgets } from "./widgets";
 import { Wallpaper } from "./wallpaper";
 import { WindowContext } from "./window-context";
 import { WindowFrame } from "./window-frame";
@@ -99,9 +101,13 @@ function DesktopInner() {
   const [state, dispatch] = useReducer(reduce, EMPTY);
   const areaRef = useRef<HTMLDivElement>(null);
   const [area, setArea] = useState<Area>({ w: 1440, h: 800 });
-  const [launcher, setLauncher] = useState(false);
+  const [spotlight, setSpotlight] = useState(false);
+  const [sheet, setSheet] = useState(false);
+  const [switcher, setSwitcher] = useState<number | null>(null);
   const compact = area.w < COMPACT_WIDTH;
   const top = topWindow(state);
+  // Windows for the Alt+` switcher, front first.
+  const stack = useMemo(() => [...state.wins].sort((a, b) => Number(a.minimized) - Number(b.minimized) || b.z - a.z), [state.wins]);
 
   useLayoutEffect(() => {
     const el = areaRef.current;
@@ -138,55 +144,141 @@ function DesktopInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [top?.key, top?.url]);
 
+  const openApp = useCallback(
+    (app: AppId) => {
+      const family: AppId[] = app === "tasks" ? ["tasks", "task"] : app === "journals" ? ["journals", "journal"] : [app];
+      const mine = state.wins.filter((w) => family.includes(w.app)).sort((a, b) => b.z - a.z);
+      if (!mine.length) return router.push(APPS[app].home);
+      dispatch({ type: "focus", key: mine[0].key });
+    },
+    [state.wins, router],
+  );
+
+  // Keyboard: Alt is the modifier (the browser and the OS keep most Ctrl/Cmd combinations). Alt+` switches windows
+  // while Alt is held, like Cmd+Tab.
+  const switchRef = useRef<number | null>(null);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+      const k = e.key.toLowerCase();
+      if ((e.ctrlKey || e.metaKey) && k === "k") {
         e.preventDefault();
-        setLauncher((o) => !o);
-      } else if (e.ctrlKey && e.key === "`") {
+        setSpotlight(true);
+        return;
+      }
+      if (!e.altKey || e.ctrlKey || e.metaKey) return;
+      if (e.code === "Space") {
+        e.preventDefault();
+        setSpotlight((o) => !o);
+      } else if (e.code === "Backquote") {
+        e.preventDefault();
+        if (!stack.length) return;
+        const cur = switchRef.current;
+        const next = cur === null ? (stack.length > 1 ? 1 : 0) : (cur + (e.shiftKey ? stack.length - 1 : 1)) % stack.length;
+        switchRef.current = next;
+        setSwitcher(next);
+      } else if (/^Digit[1-8]$/.test(e.code)) {
+        e.preventDefault();
+        openApp(DOCK_APPS[Number(e.code.slice(5)) - 1]);
+      } else if (k === "w" && top) {
+        e.preventDefault();
+        dispatch({ type: "close", key: top.key });
+      } else if (k === "m" && top) {
+        e.preventDefault();
+        dispatch({ type: "minimize", key: top.key });
+      } else if (e.key === "Enter" && top) {
+        e.preventDefault();
+        dispatch({ type: "toggleMax", key: top.key });
+      } else if (k === "d") {
+        e.preventDefault();
+        router.push("/");
+      } else if (k === "t") {
         e.preventDefault();
         router.push("/terminal");
+      } else if (e.code === "Slash") {
+        e.preventDefault();
+        setSheet((o) => !o);
+      }
+    };
+    const onUp = (e: KeyboardEvent) => {
+      if (e.key === "Alt" && switchRef.current !== null) {
+        const chosen = stack[switchRef.current];
+        switchRef.current = null;
+        setSwitcher(null);
+        if (chosen) dispatch({ type: "focus", key: chosen.key });
       }
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [router]);
+    window.addEventListener("keyup", onUp);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keyup", onUp);
+    };
+  }, [router, stack, top, openApp]);
 
   const navigate = useCallback((to: string) => router.push(to), [router]);
   const close = useCallback((key: string) => dispatch({ type: "close", key }), []);
 
-  const onApp = (app: AppId, home: string) => {
+  const onDock = (app: AppId) => {
     const family: AppId[] = app === "tasks" ? ["tasks", "task"] : app === "journals" ? ["journals", "journal"] : [app];
-    const mine = state.wins.filter((w) => family.includes(w.app)).sort((a, b) => b.z - a.z);
-    if (!mine.length) return router.push(home);
     if (top && family.includes(top.app)) return dispatch({ type: "minimize", key: top.key });
-    dispatch({ type: "focus", key: mine[0].key });
+    openApp(app);
+  };
+
+  const actions: MenuActions = {
+    spotlight: () => setSpotlight(true),
+    close: () => top && dispatch({ type: "close", key: top.key }),
+    minimize: () => top && dispatch({ type: "minimize", key: top.key }),
+    zoom: () => top && dispatch({ type: "toggleMax", key: top.key }),
+    desktop: () => router.push("/"),
+    shortcuts: () => setSheet(true),
+    openApp,
+    focusWindow: (key) => dispatch({ type: "focus", key }),
+    boot: () => router.push("/boot"),
   };
 
   if (pathname === "/boot") return <Boot />;
 
   const focusedTask = top?.app === "task" ? parseRoute(top.url)?.id : undefined;
-  const titleOf = top ? (top.app === "task" ? "Task" : APPS[top.app].title) : undefined;
+  // A live task docked left gets the rest of the desktop as its stage.
+  const docked = !compact ? state.wins.find((w) => w.app === "task" && w.docked && !w.minimized && !w.maximized) : undefined;
+  const dockedTask = docked ? parseRoute(docked.url)?.id : undefined;
+  const nothingOpen = !state.wins.some((w) => !w.minimized);
 
   return (
     <div className="desktop fixed inset-0 flex flex-col overflow-hidden bg-grout text-foreground">
       <Wallpaper />
-      <TopBar title={titleOf} onLauncher={() => setLauncher(true)} onBell={() => router.push("/approvals")} />
-      <main ref={areaRef} className={`relative min-h-0 flex-1 ${compact ? "" : "mb-[86px]"}`} aria-label="Desktop">
-        <div className={`absolute inset-0 flex items-start justify-center overflow-y-auto px-4 ${compact ? "pt-6" : "pt-[12vh]"}`}>
-          <Composer />
+      <TopBar front={top} wins={state.wins} actions={actions} compact={compact} />
+      <main ref={areaRef} className={`relative min-h-0 flex-1 ${compact ? "" : "mb-[90px]"}`} aria-label="Desktop">
+        <div
+          className={`absolute inset-0 flex overflow-y-auto px-4 ${compact ? "flex-col items-center gap-6 pt-8 pb-6" : "items-start justify-center pt-[11vh]"} ${docked ? "invisible" : ""}`}
+          style={compact ? undefined : { paddingRight: "min(360px, 22vw)" }}
+        >
+          <Hero onAsk={() => setSpotlight(true)} compact={compact} />
+          {!compact && (
+            <div className="absolute top-4 right-5 hidden min-[1100px]:block">
+              <Widgets />
+            </div>
+          )}
+          {compact && nothingOpen && <Widgets />}
         </div>
+        {docked && dockedTask && (
+          <div className="@container absolute top-3 right-4 bottom-3 overflow-y-auto pr-1" style={{ left: docked.w + 16, zIndex: Math.max(1, docked.z - 1) }} aria-label="Live run">
+            <RunStage taskId={dockedTask} onZoom={() => dispatch({ type: "toggleMax", key: docked.key })} />
+          </div>
+        )}
         {state.wins.map((w) => (
           <WindowView key={w.key} win={w} focused={w.key === top?.key} compact={compact} area={area} dispatch={dispatch} onNavigate={navigate} onClose={() => close(w.key)} />
         ))}
         <Notifications focusedTask={focusedTask} />
       </main>
-      <div className={compact ? "relative" : "pointer-events-none absolute inset-x-0 bottom-2.5 z-[5000] flex justify-center"}>
+      <div className={compact ? "relative" : "pointer-events-none absolute inset-x-0 bottom-2 z-[5000] flex justify-center"}>
         <div className={compact ? "" : "pointer-events-auto"}>
-          <Dock wins={state.wins} focusedKey={top?.key} compact={compact} onApp={onApp} onDesktop={() => router.push("/")} />
+          <Dock wins={state.wins} focusedKey={top?.key} compact={compact} onApp={(app) => onDock(app)} onDesktop={() => router.push("/")} />
         </div>
       </div>
-      <Launcher open={launcher} onOpenChange={setLauncher} />
+      <Spotlight open={spotlight} onClose={() => setSpotlight(false)} />
+      {switcher !== null && <Switcher wins={stack} index={switcher} />}
+      {sheet && <ShortcutSheet onClose={() => setSheet(false)} />}
     </div>
   );
 }
