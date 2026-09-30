@@ -277,7 +277,7 @@ cd apps/web && NEXT_PUBLIC_MOSAIC_URL=http://localhost:8080 npx next dev -p 3002
 
 ## 8. Open work (split)
 
-**Person A (Kamal): demo, ops, pitch**
+**Person A (Kamal): demo, ops, pitch**. The pitch-day runbook (setup, timed talk track, fallback ladder, judge Q&A) is `docs/pitch/RUNBOOK.md`, and the deck is `docs/pitch/deck.html`. The backup video is recorded by `scripts/record_demo.py`.
 - Rehearse `docs/DEMO_SCRIPT.md` three times, including the invalidation and re-derivation moment, and time it.
 - Record a backup video.
 - Set up the venue: power, hotspot, `phone-access.ps1`, kiosk boot.
