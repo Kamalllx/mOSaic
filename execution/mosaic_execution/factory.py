@@ -16,8 +16,10 @@ def build_sandbox_manager(settings: Settings, services: ServiceBundle) -> Sandbo
 
 
 def build_tool_executor(settings: Settings, services: ServiceBundle) -> ToolExecutor:
-    """jira (settings.jira_url; "inprocess" runs the mock in-process), fs, browser (P4 driver), sandbox exec,
+    """jira (settings.jira_url; "inprocess" runs the mock in-process), fs, db (settings.demo_data_url), browser (P4
+    driver), sandbox exec,
     plus every MCP server listed in $MOSAIC_MCP_CONFIG."""
+    from .connectors.db import DbBackend
     from .connectors.jira import JiraBackend
     from .files.workspace import FsBackend
     from .mcp.backend import McpBackend, load_mcp_config
@@ -25,7 +27,7 @@ def build_tool_executor(settings: Settings, services: ServiceBundle) -> ToolExec
     from .tools.sandboxed import BrowserBackend, SandboxExecBackend, SandboxPool
 
     pool = SandboxPool(services)
-    backends = [JiraBackend(settings.jira_url), FsBackend(settings.data_dir / "workspaces"),
+    backends = [JiraBackend(settings.jira_url), FsBackend(settings.data_dir / "workspaces"), DbBackend(settings.demo_data_url),
                 BrowserBackend(services, pool), SandboxExecBackend(services, pool),
                 *(McpBackend(cfg) for cfg in load_mcp_config())]  # MOSAIC_MCP_CONFIG
     return Executor(backends, event_bus=services.event_bus, on_task_end=pool.release_task)
