@@ -37,12 +37,24 @@ def _ollama_ready(url: str) -> bool:
     return any(m["name"].split(":")[0] == MODEL for m in tags)
 
 
+def _ensure_database(database_url: str, name: str) -> None:
+    """Create `name` on the same server if it's missing (a fresh setup has only the configured database)."""
+    import psycopg
+
+    from .test_contract import _to_psycopg_dsn
+
+    with psycopg.connect(_to_psycopg_dsn(database_url), autocommit=True, connect_timeout=2) as conn:
+        if not conn.execute("SELECT 1 FROM pg_database WHERE datname = %s", (name,)).fetchone():
+            conn.execute(f'CREATE DATABASE "{name}"')
+
+
 def test_paraphrase_without_shared_words_is_recalled():
-    s = Settings.from_env(dotenv=None)
+    s = Settings.from_env()  # .env points tests at the test server; without it this silently skipped when run alone
     if not _postgres_reachable(s.database_url) or not _ollama_ready(s.ollama_url):
         pytest.skip(f"needs Postgres and Ollama with {MODEL}")
     # its own database: 768-dim real embeddings must not flip the 64-dim test database back and forth
     db = s.database_url.rsplit("/", 1)[0] + "/mosaic_real"
+    _ensure_database(s.database_url, "mosaic_real")
     org = f"org-{uuid4().hex[:8]}"
 
     def rec(content: str) -> MemoryRecord:
