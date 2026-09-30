@@ -84,6 +84,11 @@ class Settings(BaseModel):
         description="P2: also ask the local LLM classifier about unverified/untrusted hits the regex didn't flag; "
         "its catches carry the extra flag instruction_like_llm",
     )
+    demo_data_url: str = Field(
+        "postgresql+psycopg://mosaic:mosaic@localhost:5432/mosaic_demo_data",
+        description="P1: the demo company's operational database behind the db tool (db.query read-only, db.write "
+        "with approval); scripts/seed_demo_data.py creates and fills it (0.12.0)",
+    )
     modes: dict[str, Mode] = Field(default_factory=lambda: {c: "fake" for c in COMPONENTS})
 
     @classmethod

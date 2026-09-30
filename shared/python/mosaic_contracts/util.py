@@ -65,7 +65,7 @@ def capability_matches(capability: str, granted: str) -> bool:
 # A generated agent's policy requires approval for these whatever the org policy says: writes always need a person.
 APPROVAL_REQUIRED: frozenset[str] = frozenset({
     "knowledge.write", "agent.retry", "jira.write", "browser.click", "browser.type", "sandbox.exec", "database.write",
-    "external.email", "mcp.call",
+    "external.email", "mcp.call", "db.write",
 })
 
 

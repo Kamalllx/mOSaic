@@ -234,7 +234,7 @@ export type TrustLevel4 = "verified" | "trusted" | "unverified" | "untrusted";
 export type VerificationStatus2 = "unverified" | "verified" | "disputed" | "stale";
 
 /**
- * mOSaic contracts v0.11.0
+ * mOSaic contracts v0.12.0
  */
 export interface MOSaic {
   A2AMessage?: A2AMessage;

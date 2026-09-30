@@ -121,6 +121,69 @@
     ]
   },
   {
+    "name": "db",
+    "description": "Demo company database (read-only queries; writes need approval)",
+    "transport": "native",
+    "operations": [
+      {
+        "name": "schema",
+        "capability": "db.query",
+        "description": "Tables, columns and notes of the database",
+        "input_schema": {
+          "type": "object",
+          "properties": {}
+        },
+        "output_schema": {},
+        "risk": "low",
+        "reversible": false,
+        "requires_sandbox": false
+      },
+      {
+        "name": "query",
+        "capability": "db.query",
+        "description": "Run one read-only SELECT (LIMIT <= 200)",
+        "input_schema": {
+          "type": "object",
+          "required": [
+            "sql"
+          ],
+          "properties": {
+            "sql": {
+              "type": "string"
+            }
+          }
+        },
+        "output_schema": {},
+        "risk": "low",
+        "reversible": false,
+        "requires_sandbox": false
+      },
+      {
+        "name": "write",
+        "capability": "db.write",
+        "description": "Run one INSERT/UPDATE/DELETE with parameters",
+        "input_schema": {
+          "type": "object",
+          "required": [
+            "sql"
+          ],
+          "properties": {
+            "sql": {
+              "type": "string"
+            },
+            "params": {
+              "type": "array"
+            }
+          }
+        },
+        "output_schema": {},
+        "risk": "high",
+        "reversible": false,
+        "requires_sandbox": false
+      }
+    ]
+  },
+  {
     "name": "browser",
     "description": "Isolated browser (Playwright)",
     "transport": "browser",

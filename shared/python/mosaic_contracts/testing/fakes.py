@@ -16,6 +16,7 @@ import logging
 import math
 import posixpath
 import re
+import sqlite3
 from collections import defaultdict
 from collections.abc import AsyncIterator, Awaitable, Callable
 from fnmatch import fnmatch
@@ -110,6 +111,7 @@ from ..schema import (
 from ..schema.common import new_id
 from ..util import estimate_tokens, has_capability, okf_file_to_org_path, path_allowed, privacy_allows
 from ..wiring import REPO_ROOT
+from . import demo_data
 
 log = logging.getLogger("mosaic.fakes")
 
@@ -319,6 +321,16 @@ FAKE_TOOL_SPECS = [
                       input_schema={"type": "object", "required": ["path", "content"], "properties": {
                           "path": {"type": "string"}, "content": {"type": "string"}}}, risk=Risk.LOW, reversible=True),
     ]),
+    ToolSpec(name="db", description="Demo company database (read-only queries; writes need approval)",
+             transport=ToolTransport.NATIVE, operations=[
+        ToolOperation(name="schema", capability="db.query", description="Tables, columns and notes of the database",
+                      input_schema={"type": "object", "properties": {}}),
+        ToolOperation(name="query", capability="db.query", description="Run one read-only SELECT (LIMIT <= 200)",
+                      input_schema={"type": "object", "required": ["sql"], "properties": {"sql": {"type": "string"}}}),
+        ToolOperation(name="write", capability="db.write", description="Run one INSERT/UPDATE/DELETE with parameters",
+                      input_schema={"type": "object", "required": ["sql"], "properties": {
+                          "sql": {"type": "string"}, "params": {"type": "array"}}}, risk=Risk.HIGH),
+    ]),
     ToolSpec(name="browser", description="Isolated browser (Playwright)", transport=ToolTransport.BROWSER, operations=[
         ToolOperation(name="open", capability="browser.open", description="Open a URL and return title + text",
                       input_schema={"type": "object", "required": ["url"], "properties": {"url": {"type": "string"}}},
@@ -328,7 +340,7 @@ FAKE_TOOL_SPECS = [
 
 
 class FakeToolExecutor:
-    """Mock Jira + in-memory fs + fake browser. Reversible where the real one will be."""
+    """Mock Jira + in-memory fs + fake browser + the demo database in SQLite. Reversible where the real one will be."""
 
     def __init__(self) -> None:
         self.issues: dict[str, dict[str, Any]] = {
@@ -338,6 +350,7 @@ class FakeToolExecutor:
                           "labels": ["vendor"], "comments": []},
         }
         self.files: dict[str, str] = {}
+        self.db = demo_data.sqlite_db()
         self.invocations: list[ToolInvocation] = []
         self._undo: dict[str, tuple[str, Any]] = {}
 
@@ -373,6 +386,15 @@ class FakeToolExecutor:
                 self.files[a["path"]] = a["content"]
                 return ToolResult(invocation_id=invocation.invocation_id, status=ToolResultStatus.SUCCESS,
                                   output={"path": a["path"], "bytes": len(a["content"])}, rollback_token=token)
+            elif op == "db.schema":
+                out = demo_data.schema_doc()
+            elif op == "db.query":
+                cur = self.db.execute(a["sql"])
+                out = {"columns": [d[0] for d in cur.description or []], "rows": [list(r) for r in cur.fetchall()]}
+            elif op == "db.write":
+                cur = self.db.execute(a["sql"], list(a.get("params") or []))
+                self.db.commit()
+                out = {"rowcount": cur.rowcount}
             elif op == "browser.open":
                 out = {"url": a["url"], "title": f"Fake page for {a['url']}", "text": "lorem ipsum"}
             else:
@@ -380,6 +402,9 @@ class FakeToolExecutor:
             return ToolResult(invocation_id=invocation.invocation_id, status=ToolResultStatus.SUCCESS, output=out)
         except MosaicError as e:
             return ToolResult(invocation_id=invocation.invocation_id, status=ToolResultStatus.ERROR, error=e.to_info())
+        except sqlite3.Error as e:  # a bad statement is the caller's error, reported like the real backend's
+            return ToolResult(invocation_id=invocation.invocation_id, status=ToolResultStatus.ERROR,
+                              error=MosaicError("BAD_REQUEST", f"SQL error: {e}").to_info())
 
     async def verify(self, invocation: ToolInvocation, result: ToolResult) -> VerificationResult:
         checks: list[VerificationCheck] = [VerificationCheck(name="status_success", passed=result.status == ToolResultStatus.SUCCESS)]
