@@ -50,7 +50,7 @@ Full brief: [docs/team/P1-kernel-execution.md](../../docs/team/P1-kernel-executi
 | EventBus (+ Redis Stream mirror) · AuditLog (SQLite, hash chain; `RunTimeline.chain_verified` recomputes it, contract 0.6.0) · PolicyEngine (YAML, hot reload) | ✅ |
 | Process table · lifecycle (retry, escalation, kill tree, pause/resume) · tasks · scheduler (priorities, GPU admission, preemption) | ✅ |
 | KernelAgentContext + IPC mailboxes | ✅ |
-| `ctx.narrate()` and the thought-process events (0.10.0) | contract only; kernel emission on `b/thought-events` |
+| `ctx.narrate()` (0.10.0): validates and publishes the three agent-told events | ✅ (agent.created, tool.query, task.data emission: `b/thought-events`) |
 | Syscalls · approvals · transactions (verify → commit / rollback) · idempotency | ✅ |
 | Gateway (route conformance, WS history replay) · CLI (`ai-*`, `ai run`) | ✅ |
 | Artifacts · fs (jailed, reversible) · mock Jira + jira tool · executor · MCP adapter | ✅ |
