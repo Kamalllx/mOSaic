@@ -45,13 +45,24 @@ const KIND: Record<AuditKind, { icon: LucideIcon; color: string; label: string }
 };
 const PRIVILEGED: AuditKind[] = ["syscall", "policy", "approval", "commit", "rollback"];
 
-/** Checks that each entry's prev_hash is the previous entry's hash. It can't recompute the hashes (the kernel does
- *  that), so it only shows whether the links the gateway returned are unbroken. */
-function chainStatus(entries: AuditEntry[]): "none" | "intact" | "broken" {
+type Chain = "verified" | "tampered" | "intact" | "broken" | "none";
+
+/** The kernel's verdict when the gateway reports one (it recomputes every hash); otherwise a link check in the browser,
+ *  which can only say whether each prev_hash matches the previous entry's hash. */
+function chainStatus(entries: AuditEntry[], verified: boolean | null | undefined): Chain {
+  if (verified === true) return "verified";
+  if (verified === false) return "tampered";
   if (!entries.some((e) => e.hash)) return "none";
   for (let i = 1; i < entries.length; i++) if (entries[i].prev_hash !== entries[i - 1].hash) return "broken";
   return "intact";
 }
+
+const CHAIN_TEXT: Record<Exclude<Chain, "none">, string> = {
+  verified: "hash chain verified: the kernel recomputed all N entries",
+  tampered: "hash chain verification failed: an entry was changed after it was written",
+  intact: "chain intact: N entries link to their predecessor",
+  broken: "chain broken: an entry's prev_hash doesn't match the previous entry",
+};
 
 function Stat({ value, label, tone = "text-foreground" }: { value: number | string; label: string; tone?: string }) {
   return (
@@ -108,7 +119,7 @@ export default function AuditPage({ params }: { params: Promise<{ taskId: string
   const entries = [...(q.data?.entries ?? [])].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
   const counts = entries.reduce<Record<string, number>>((m, e) => ({ ...m, [e.kind]: (m[e.kind] ?? 0) + 1 }), {});
   const pids = [...new Set(entries.map((e) => e.pid).filter((p): p is number => !!p))].sort((a, b) => a - b);
-  const chain = chainStatus(entries);
+  const chain = chainStatus(entries, q.data?.chain_verified);
   const shown = entries.filter((e) => !hidden.includes(e.kind)).filter((e) => !pid || String(e.pid ?? "") === pid);
   const s = q.data?.stats;
   const kinds = (Object.keys(KIND) as AuditKind[]).filter((k) => counts[k]);
@@ -138,13 +149,12 @@ export default function AuditPage({ params }: { params: Promise<{ taskId: string
             <p
               className={cn(
                 "inline-flex items-center gap-2 rounded-md border px-2.5 py-1 text-sm font-medium",
-                chain === "intact" ? "border-st-running/50 bg-st-running/10 text-st-running" : "border-st-failed/60 bg-st-failed/10 text-st-failed",
+                chain === "verified" || chain === "intact" ? "border-st-running/50 bg-st-running/10 text-st-running" : "border-st-failed/60 bg-st-failed/10 text-st-failed",
               )}
+              data-testid="chain-status"
             >
-              {chain === "intact" ? <Link2 className="size-4" aria-hidden /> : <Link2Off className="size-4" aria-hidden />}
-              {chain === "intact"
-                ? `chain intact: ${entries.length} entries link to their predecessor`
-                : "chain broken: an entry's prev_hash doesn't match the previous entry"}
+              {chain === "verified" ? <ShieldCheck className="size-4" aria-hidden /> : chain === "intact" ? <Link2 className="size-4" aria-hidden /> : <Link2Off className="size-4" aria-hidden />}
+              {CHAIN_TEXT[chain].replace("N", String(entries.length))}
             </p>
           )}
           {!!s?.models?.length && <p className="text-sm text-text-2">models: <span className="font-mono">{s.models.join(", ")}</span></p>}
