@@ -17,7 +17,7 @@ from typing import Any
 
 from mosaic_contracts.schema import AgentResult, AgentResultStatus, Risk, SyscallStatus
 
-from mosaic_agents.sdk import MosaicAgent, gather_evidence, propose_action
+from mosaic_agents.sdk import MosaicAgent, gather_evidence, project_of, propose_action, tracking_issue
 
 log = logging.getLogger("mosaic.agents.action")
 
@@ -48,9 +48,11 @@ class ActionAgent(MosaicAgent):
 
         # Build comment from upstream findings
         comment = self._build_comment(goal, upstream)
-        report_path = "reports/apollo-recovery.md"
+        project = project_of(goal, ctx.inputs)
+        issue = tracking_issue(project)
+        report_path = f"reports/{project.lower()}-recovery.md"
 
-        # Action 1: Update APOLLO-12 in Jira (requires approval — jira.write)
+        # Action 1: Update the project's tracking issue in Jira (requires approval — jira.write)
         report_path_result = ""
         if "jira.write" in (ctx.manifest.capabilities.tools or []):
             try:
@@ -60,14 +62,14 @@ class ActionAgent(MosaicAgent):
                     tool="jira",
                     operation="update_issue",
                     arguments={
-                        "key": "APOLLO-12",
+                        "key": issue,
                         "fields": {"status": "At Risk"},
                         "comment": comment,
                     },
-                    justification=f"Update Apollo tracking issue with root causes: {goal[:100]}",
+                    justification=f"Update {project} tracking issue with root causes: {goal[:100]}",
                     evidence=ev_paths,
                     risk=Risk.MEDIUM,
-                    resource="APOLLO-12",
+                    resource=issue,
                 )
 
                 await ctx.log("action-agent: issuing jira.write syscall (may require approval)")
@@ -76,7 +78,7 @@ class ActionAgent(MosaicAgent):
                 syscall_results.append({
                     "capability": "jira.write",
                     "status": result.status.value,
-                    "issue": "APOLLO-12",
+                    "issue": issue,
                 })
 
                 status_msg = result.status.value
@@ -99,7 +101,7 @@ class ActionAgent(MosaicAgent):
         # Action 2: Write recovery plan report (fs.write)
         if "fs.write" in (ctx.manifest.capabilities.tools or []):
             try:
-                report_content = self._build_report(goal, upstream, comment)
+                report_content = self._build_report(project, goal, upstream, comment)
                 req = propose_action(
                     ctx,
                     capability="fs.write",
@@ -185,10 +187,10 @@ class ActionAgent(MosaicAgent):
 
         return "\n".join(lines) or f"Root cause investigation complete for: {goal[:100]}"
 
-    def _build_report(self, goal: str, upstream: dict, comment: str) -> str:
+    def _build_report(self, project: str, goal: str, upstream: dict, comment: str) -> str:
         """Build the recovery plan markdown report."""
         parts = [
-            "# Apollo Recovery Plan\n",
+            f"# {project} Recovery Plan\n",
             f"**Investigation Goal:** {goal}\n",
             "## Executive Summary\n",
             comment,

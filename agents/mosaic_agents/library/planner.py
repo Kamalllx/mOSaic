@@ -22,16 +22,30 @@ from typing import Any
 from mosaic_contracts.schema import AgentResult, AgentResultStatus
 
 from mosaic_agents.prompts import PlanOut, PlanStep, RootCausesOut, SynthesisOut
-from mosaic_agents.sdk import MosaicAgent, ask_json, cite, gather_evidence, keep_retrieved
+from mosaic_agents.sdk import (
+    DEFAULT_PROJECT,
+    MosaicAgent,
+    ask_json,
+    cite,
+    gather_evidence,
+    keep_retrieved,
+    project_of,
+    tracking_issue,
+)
 
 log = logging.getLogger("mosaic.agents.planner")
 
-DEFAULT_PLAN = [
-    PlanStep(step_id="s1", agent="finance-agent", goal="Explain the Apollo budget variance with evidence"),
-    PlanStep(step_id="s2", agent="engineering-agent", goal="Identify engineering causes of the schedule slip"),
-    PlanStep(step_id="s3", agent="research-agent", goal="Collect vendor SDK context"),
-    PlanStep(step_id="s4", agent="action-agent", goal="Record root causes on APOLLO-12", depends_on=["s1", "s2", "s3"]),
-]
+
+def default_plan(project: str) -> list[PlanStep]:
+    """The plan used when the model's is unusable."""
+    vendor = "Collect vendor SDK context" if project == DEFAULT_PROJECT else f"Collect vendor context for Project {project}"
+    return [
+        PlanStep(step_id="s1", agent="finance-agent", goal=f"Explain the {project} budget variance with evidence"),
+        PlanStep(step_id="s2", agent="engineering-agent", goal="Identify engineering causes of the schedule slip"),
+        PlanStep(step_id="s3", agent="research-agent", goal=vendor),
+        PlanStep(step_id="s4", agent="action-agent", goal=f"Record root causes on {tracking_issue(project)}",
+                 depends_on=["s1", "s2", "s3"]),
+    ]
 
 PLANNER_SYSTEM = """You are the Planner agent in mOSaic. Your job is to decompose a user goal into
 a sequence of subtasks, each delegated to a specialist agent.
@@ -87,10 +101,11 @@ def _usable_text(text: str, min_words: int) -> bool:
 
 
 class PlannerAgent(MosaicAgent):
-    """Orchestrates the Apollo investigation end-to-end."""
+    """Orchestrates a project investigation end-to-end."""
 
     async def run(self, goal: str, ctx: Any) -> AgentResult:
         await ctx.log("planner: starting", data={"goal": goal[:200]})
+        project = project_of(goal, getattr(ctx, "inputs", None))
 
         # 1. Gather evidence
         evidence = await gather_evidence(ctx, goal, scope=["/org"], top_k=8)
@@ -121,7 +136,15 @@ class PlannerAgent(MosaicAgent):
         # 4. Fallback plan
         if not steps:
             await ctx.log("planner: using fallback plan (LLM output unusable)")
-            steps = await self._validate_steps(ctx, [s.model_copy(deep=True) for s in DEFAULT_PLAN], allowed)
+            steps = await self._validate_steps(ctx, default_plan(project), allowed)
+
+        # The 7B's step goals are often generic ("Analyze the budget variance"), and a specialist's search is its step
+        # goal: fine for Apollo, which dominates the bundle, but any other project would retrieve Apollo's documents.
+        # Apollo's goals are left exactly as planned so the demo run's queries do not change.
+        if project != DEFAULT_PROJECT:
+            for s in steps:
+                if project.lower() not in s.goal.lower():
+                    s.goal = f"Project {project}: {s.goal}"
 
         await ctx.log(f"planner: executing {len(steps)} steps")
 
@@ -146,7 +169,7 @@ class PlannerAgent(MosaicAgent):
             # Spawn all ready steps in parallel
             for step in ready:
                 remaining.remove(step)
-                inputs = {"upstream": {k: upstream[k] for k in step.depends_on if k in upstream}}
+                inputs = {"upstream": {k: upstream[k] for k in step.depends_on if k in upstream}, "project": project}
                 try:
                     pid = await ctx.spawn(step.agent, step.goal, inputs)
                     step_pids[step.step_id] = pid

@@ -14,7 +14,7 @@ from mosaic_contracts.schema.common import new_id
 from mosaic_contracts.schema.ipc import A2AMessage
 
 from mosaic_agents.prompts import EngOut
-from mosaic_agents.sdk import MosaicAgent, ask_json, cite, gather_evidence, keep_retrieved, remember_finding
+from mosaic_agents.sdk import MosaicAgent, ask_json, cite, gather_evidence, keep_retrieved, project_of, remember_finding
 
 log = logging.getLogger("mosaic.agents.engineering")
 
@@ -57,6 +57,8 @@ class EngineeringAgent(MosaicAgent):
 
     async def run(self, goal: str, ctx: Any) -> AgentResult:
         await ctx.log("engineering-agent: starting", data={"goal": goal[:200]})
+        project = project_of(goal, ctx.inputs)
+        issue_prefix = project.upper()
 
         # Gather engineering evidence
         evidence = await gather_evidence(
@@ -82,9 +84,9 @@ class EngineeringAgent(MosaicAgent):
                     capability="jira.read",
                     tool="jira",
                     operation="search_issues",
-                    arguments={"project": "APOLLO"},
+                    arguments={"project": issue_prefix},
                     risk=Risk.LOW,
-                    justification="Retrieve APOLLO project issues for engineering analysis",
+                    justification=f"Retrieve {issue_prefix} project issues for engineering analysis",
                     evidence=[h.path for h in evidence.hits[:3]],
                 )
                 result = await ctx.syscall(req)
@@ -161,7 +163,8 @@ class EngineeringAgent(MosaicAgent):
 
         # Remember the finding, derived from the documents it rests on (they going stale invalidates it)
         cited = sorted({q for d in eng_out.blockers if isinstance(d, dict) for q in d.get("evidence", [])} & retrieved)
-        await remember_finding(ctx, eng_out.summary or "engineering finding", cited or sorted(retrieved)[:5], tags=["engineering", "apollo"])
+        await remember_finding(ctx, eng_out.summary or "engineering finding", cited or sorted(retrieved)[:5],
+                               tags=["engineering", project.lower()])
 
         return AgentResult(
             pid=ctx.pid,

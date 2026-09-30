@@ -15,7 +15,7 @@ from mosaic_contracts.schema.common import new_id
 from mosaic_contracts.schema.ipc import A2AMessage
 
 from mosaic_agents.prompts import ResearchOut
-from mosaic_agents.sdk import MosaicAgent, ask_json, cite, gather_evidence, keep_retrieved, propose_action
+from mosaic_agents.sdk import MosaicAgent, ask_json, cite, gather_evidence, keep_retrieved, project_of, propose_action
 
 log = logging.getLogger("mosaic.agents.research")
 
@@ -33,6 +33,12 @@ VENDOR_DOCS_URL = "http://vendor-docs/sdk-v5.html"
 # The planner often hands research a generic goal ("Gather evidence from available documents"), which never reaches
 # the vendor's own messages; this agent owns vendor context, so it always looks for them too.
 VENDOR_QUERY = "vendor SDK release status and delays"
+VENDOR_PURPOSE = "Retrieve vendor SDK v5 documentation for research"
+# Other projects' vendors: (allowlisted page, what to search the knowledge base for, why the page is opened).
+VENDORS: dict[str, tuple[str, str, str]] = {
+    "zeus": ("http://vendor-docs/warehouse-pricing.html", "Project Zeus warehouse vendor pricing and renewal",
+             "Retrieve the warehouse vendor's pricing page for research"),
+}
 
 
 class ResearchAgent(MosaicAgent):
@@ -40,10 +46,12 @@ class ResearchAgent(MosaicAgent):
 
     async def run(self, goal: str, ctx: Any) -> AgentResult:
         await ctx.log("research-agent: starting", data={"goal": goal[:200]})
+        project = project_of(goal, ctx.inputs)
+        vendor_url, vendor_query, vendor_purpose = VENDORS.get(project.lower(), (VENDOR_DOCS_URL, VENDOR_QUERY, VENDOR_PURPOSE))
 
         # Gather knowledge base evidence (all scopes): the goal, plus the vendor's side of the story
         evidence = await gather_evidence(ctx, goal, scope=["/org"], top_k=8)
-        vendor = await gather_evidence(ctx, VENDOR_QUERY, scope=["/org"], top_k=4)
+        vendor = await gather_evidence(ctx, vendor_query, scope=["/org"], top_k=4)
         seen = {h.path for h in evidence.hits}
         evidence = evidence.model_copy(update={"hits": [*evidence.hits, *(h for h in vendor.hits if h.path not in seen)]})
         evidence_text = cite(evidence)
@@ -62,17 +70,17 @@ class ResearchAgent(MosaicAgent):
                     capability="browser.open",
                     tool="browser",
                     operation="open",
-                    arguments={"url": VENDOR_DOCS_URL},
-                    justification="Retrieve vendor SDK v5 documentation for research",
+                    arguments={"url": vendor_url},
+                    justification=vendor_purpose,
                     evidence=[h.path for h in evidence.hits[:3]],
                     risk=Risk.LOW,
                 )
                 result = await ctx.syscall(req)
                 if result.tool_result and result.tool_result.output:
                     page_text = result.tool_result.output.get("text", "")
-                    browser_text = f"\nVendor docs ({VENDOR_DOCS_URL}):\n{page_text[:1000]}"
-                    urls_opened.append(VENDOR_DOCS_URL)
-                    await ctx.log(f"research-agent: opened {VENDOR_DOCS_URL}")
+                    browser_text = f"\nVendor docs ({vendor_url}):\n{page_text[:1000]}"
+                    urls_opened.append(vendor_url)
+                    await ctx.log(f"research-agent: opened {vendor_url}")
             except Exception as e:
                 await ctx.log(f"research-agent: browser open failed (non-fatal): {e}", level="warning")
 
@@ -112,7 +120,7 @@ class ResearchAgent(MosaicAgent):
         research_out.urls_opened = [u for u in research_out.urls_opened if u in urls_opened]
 
         # Merge urls_opened from syscall
-        if urls_opened and VENDOR_DOCS_URL not in research_out.urls_opened:
+        if urls_opened and vendor_url not in research_out.urls_opened:
             research_out.urls_opened.extend(urls_opened)
 
         await ctx.log(f"research-agent: found {len(research_out.findings)} findings, opened {len(research_out.urls_opened)} URLs")
