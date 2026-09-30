@@ -22,9 +22,38 @@ export default function AuditIndexPage() {
           Every model call, knowledge read, IPC message, syscall and approval is written to a hash-chained journal per task.
         </p>
       </div>
-      <ul className="divide-y divide-line rounded-xl border border-line bg-surface-1 shadow-panel">
-        {tasks.isError && <li className="p-4 text-sm text-st-failed">Gateway unreachable: {String(tasks.error)}</li>}
-        {tasks.isSuccess && all.length === 0 && <li className="p-4 text-sm text-text-2">No tasks yet.</li>}
+      <ul aria-label="Tasks with audit journals" className="divide-y divide-line rounded-xl border border-line bg-surface-1 shadow-panel">
+        {tasks.isError && (
+          <li className="flex items-center justify-between p-4 text-sm text-st-failed">
+            <span>Gateway unreachable: {String(tasks.error)}</span>
+            <button
+              type="button"
+              onClick={() => tasks.refetch()}
+              className="rounded-md border border-line px-3 py-1.5 text-sm text-foreground hover:bg-surface-3"
+            >
+              Retry
+            </button>
+          </li>
+        )}
+        {tasks.isLoading && (
+          <>
+            {[0, 1, 2].map((i) => (
+              <li key={i} className="flex items-center gap-3 px-4 py-3">
+                <div className="h-5 w-28 animate-pulse rounded-md bg-surface-3" />
+                <div className="flex-1 space-y-1.5">
+                  <div className="h-3.5 w-3/4 animate-pulse rounded bg-surface-3" />
+                  <div className="h-3 w-1/4 animate-pulse rounded bg-surface-3" />
+                </div>
+              </li>
+            ))}
+          </>
+        )}
+        {tasks.isSuccess && all.length === 0 && (
+          <li className="px-4 py-8 text-center">
+            <p className="text-sm text-text-2">No tasks yet.</p>
+            <p className="mt-1 text-xs text-muted-foreground">Run a task from the home page and its journal will appear here.</p>
+          </li>
+        )}
         {all.map((t) => (
           <li key={t.task_id}>
             <Link href={`/audit/${t.task_id}`} className="group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-surface-3">
