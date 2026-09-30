@@ -11,12 +11,13 @@ import {
   Platform,
   Pressable,
   ScrollView,
-  StatusBar as RNStatusBar,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 
 import { createClient, type Settings } from "./src/client";
 
@@ -28,6 +29,15 @@ const POLL_INTERVAL_MS = 2_000;
 type Tab = "approvals" | "compose" | "settings";
 
 export default function App() {
+  return (
+    <SafeAreaProvider>
+      <Shell />
+    </SafeAreaProvider>
+  );
+}
+
+/** The app itself, inside the safe areas (notch, home indicator, Android status bar). */
+function Shell() {
   const [tab, setTab] = useState<Tab>("approvals");
   const [settings, setSettings] = useState<Settings | null>(null);
 
@@ -44,14 +54,14 @@ export default function App() {
 
   if (!settings) {
     return (
-      <View style={styles.center}>
+      <SafeAreaView style={styles.center}>
         <ActivityIndicator size="large" color="#2bb8a3" />
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.screen}>
+    <SafeAreaView style={styles.screen} edges={["top", "left", "right"]}>
       <StatusBar style="light" />
       <View style={styles.header}>
         <Text style={styles.brand}>mOSaic</Text>
@@ -74,7 +84,7 @@ export default function App() {
       {tab === "approvals" && <Approvals settings={settings} />}
       {tab === "compose" && <Compose settings={settings} />}
       {tab === "settings" && <SettingsForm settings={settings} onSave={save} />}
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -405,23 +415,16 @@ function riskStyle(risk?: string | null) {
   return { backgroundColor: "#1c1f26", borderColor: "#4b5563" };
 }
 
-// On Android, StatusBar with translucent=false sits outside the View layout tree, so we
-// manually pad the top by StatusBar.currentHeight to avoid content sliding under it.
-// On iOS this is not needed when translucent=false.
-const STATUS_BAR_HEIGHT = Platform.OS === "android" ? (RNStatusBar.currentHeight ?? 0) : 0;
-
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: "#0d1117",
-    paddingTop: STATUS_BAR_HEIGHT,
   },
   center: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#0d1117",
-    paddingTop: STATUS_BAR_HEIGHT,
   },
   header: {
     flexDirection: "row",
