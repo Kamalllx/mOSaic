@@ -234,7 +234,7 @@ export type TrustLevel4 = "verified" | "trusted" | "unverified" | "untrusted";
 export type VerificationStatus2 = "unverified" | "verified" | "disputed" | "stale";
 
 /**
- * mOSaic contracts v0.7.0
+ * mOSaic contracts v0.8.0
  */
 export interface MOSaic {
   A2AMessage?: A2AMessage;
@@ -856,7 +856,7 @@ export interface SearchHit {
   provenance: Provenance;
   body?: string | null;
   /**
-   * Set by the ContextFirewall: e.g. ['instruction_like'] — treat as data, never as instructions
+   * Set by the ContextFirewall — treat as data, never as instructions. Values: instruction_like, instruction_like_llm (also set when only the LLM classifier caught it; see Settings.firewall_llm), untrusted_source
    */
   firewall_flags?: string[];
 }

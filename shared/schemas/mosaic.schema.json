@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "mOSaic",
-  "description": "mOSaic contracts v0.7.0",
+  "description": "mOSaic contracts v0.8.0",
   "type": "object",
   "$defs": {
     "PrincipalKind": {
@@ -2032,7 +2032,7 @@
           "default": null
         },
         "firewall_flags": {
-          "description": "Set by the ContextFirewall: e.g. ['instruction_like'] \u2014 treat as data, never as instructions",
+          "description": "Set by the ContextFirewall \u2014 treat as data, never as instructions. Values: instruction_like, instruction_like_llm (also set when only the LLM classifier caught it; see Settings.firewall_llm), untrusted_source",
           "items": {
             "type": "string"
           },
