@@ -37,3 +37,9 @@ scripts/win/local.ps1
 
 # design review captures (impeccable)
 .impeccable/
+
+# knowledge that lives on this box, not in the repo: uploads, mounted folders, connector syncs
+data/okf/uploads/
+data/okf/mnt/
+data/okf/github/
+data/okf/calendar/

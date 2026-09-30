@@ -8,6 +8,7 @@ from .converters import (
     JiraJsonConverter,
     MarkdownConverter,
     SlackConverter,
+    TextConverter,
     markitdown_available,
 )
 
@@ -17,5 +18,6 @@ def build_converters(settings: Settings, services: ServiceBundle) -> list[Source
     converters: list[SourceConverter] = [JiraJsonConverter(), SlackConverter(), CsvConverter()]
     if markitdown_available():
         converters.append(DocumentConverter())
+    converters.append(TextConverter())
     converters.append(MarkdownConverter())
     return converters

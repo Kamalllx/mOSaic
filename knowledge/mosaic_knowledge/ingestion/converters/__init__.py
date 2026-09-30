@@ -4,5 +4,6 @@ from .document import DocumentConverter, markitdown_available
 from .jira_json import JiraJsonConverter
 from .markdown import MarkdownConverter
 from .slack import SlackConverter
+from .text import TextConverter
 
-__all__ = ["CsvConverter", "DocumentConverter", "JiraJsonConverter", "MarkdownConverter", "SlackConverter", "markitdown_available"]
+__all__ = ["CsvConverter", "DocumentConverter", "JiraJsonConverter", "MarkdownConverter", "SlackConverter", "TextConverter", "markitdown_available"]
