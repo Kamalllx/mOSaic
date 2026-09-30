@@ -10,7 +10,10 @@ export type AppId =
   | "journal"
   | "programs"
   | "monitor"
-  | "terminal";
+  | "terminal"
+  | "organization"
+  | "connections"
+  | "ingest";
 
 export interface AppRoute {
   app: AppId;
@@ -31,6 +34,9 @@ const STATIC: Record<string, AppId> = {
   "/agents": "programs",
   "/system": "monitor",
   "/terminal": "terminal",
+  "/organization": "organization",
+  "/connections": "connections",
+  "/ingest": "ingest",
 };
 
 /** Parse a console URL. `/`, `/boot` and unknown paths open no window (null). */
@@ -70,4 +76,7 @@ export const APPS: Record<AppId, AppMeta> = {
   programs: { title: "Agents", size: [0.72, 0.8], home: "/agents" },
   monitor: { title: "System", size: [0.74, 0.84], home: "/system" },
   terminal: { title: "Terminal", size: [0.5, 0.56], home: "/terminal" },
+  organization: { title: "Organization", size: [0.68, 0.8], home: "/organization" },
+  connections: { title: "Connections", size: [0.62, 0.78], home: "/connections" },
+  ingest: { title: "Ingest", size: [0.56, 0.72], home: "/ingest" },
 };

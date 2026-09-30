@@ -1,6 +1,6 @@
 "use client";
 
-import { BellRing, Brain, Cpu, FolderTree, Gauge, ListChecks, type LucideIcon, ScrollText, SquareTerminal, Workflow } from "lucide-react";
+import { BellRing, Brain, Building2, Cable, Cpu, FolderTree, Gauge, ListChecks, type LucideIcon, ScrollText, SquareTerminal, Upload, Workflow } from "lucide-react";
 import type { AppId } from "@/lib/desktop/routes";
 import { cn } from "@/lib/utils";
 
@@ -15,6 +15,9 @@ export const APP_ICON: Record<AppId, LucideIcon> = {
   programs: Cpu,
   monitor: Gauge,
   terminal: SquareTerminal,
+  organization: Building2,
+  connections: Cable,
+  ingest: Upload,
 };
 
 /** Each app's tile colour, from the same mineral family as the wallpaper. */
@@ -29,6 +32,9 @@ export const APP_TINT: Record<AppId, string> = {
   programs: "#4f6a3d",
   monitor: "#7c4a44",
   terminal: "#2a3038",
+  organization: "#4a6a8a",
+  connections: "#5a6e3a",
+  ingest: "#7a5044",
 };
 
 /** An app's icon as a tessera: its glyph on a small tile in the app's colour. */

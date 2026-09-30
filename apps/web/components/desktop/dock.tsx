@@ -9,7 +9,7 @@ import { AppTile } from "./app-icons";
 import { usePendingApprovals, useTasks } from "./hooks";
 import { Orb } from "./orb";
 
-const DOCK: AppId[] = ["tasks", "approvals", "files", "memory", "journals", "programs", "monitor", "terminal"];
+const DOCK: AppId[] = ["tasks", "approvals", "files", "memory", "journals", "programs", "monitor", "organization", "connections", "ingest", "terminal"];
 /** Windows that belong to a dock app (a task window counts as Tasks, a journal as Journal). */
 const FAMILY: Partial<Record<AppId, AppId[]>> = { tasks: ["tasks", "task"], journals: ["journals", "journal"] };
 

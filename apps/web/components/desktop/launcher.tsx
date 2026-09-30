@@ -16,7 +16,7 @@ import { AppTile } from "./app-icons";
 import { useAllDocs, useTasks } from "./hooks";
 import { Orb } from "./orb";
 
-const LAUNCHABLE: AppId[] = ["tasks", "approvals", "files", "memory", "journals", "programs", "monitor", "terminal"];
+const LAUNCHABLE: AppId[] = ["tasks", "approvals", "files", "memory", "journals", "programs", "monitor", "terminal", "organization", "connections", "ingest"];
 
 type Item = { id: string; label: string; detail?: string; icon: React.ReactNode; run: () => void };
 
