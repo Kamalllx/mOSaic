@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "mOSaic",
-  "description": "mOSaic contracts v0.9.0",
+  "description": "mOSaic contracts v0.10.0",
   "type": "object",
   "$defs": {
     "PrincipalKind": {
@@ -4241,6 +4241,569 @@
       ],
       "title": "SystemConfig",
       "type": "object"
+    },
+    "OrgRole": {
+      "additionalProperties": false,
+      "properties": {
+        "role": {
+          "description": "owner | admin | approver | member | viewer (policies/rbac/roles.yaml)",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "type": "string"
+        },
+        "permissions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "role"
+      ],
+      "title": "OrgRole",
+      "type": "object"
+    },
+    "UserInfo": {
+      "additionalProperties": false,
+      "properties": {
+        "user_id": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string"
+        },
+        "name": {
+          "default": "",
+          "type": "string"
+        },
+        "avatar_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "user_id",
+        "email"
+      ],
+      "title": "UserInfo",
+      "type": "object"
+    },
+    "Org": {
+      "additionalProperties": false,
+      "properties": {
+        "org_id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "domain": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Email domain whose users may join, e.g. acme.com"
+        },
+        "created_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "member_count": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "org_id",
+        "name"
+      ],
+      "title": "Org",
+      "type": "object"
+    },
+    "MemberStatus": {
+      "enum": [
+        "invited",
+        "active"
+      ],
+      "title": "MemberStatus",
+      "type": "string"
+    },
+    "Member": {
+      "additionalProperties": false,
+      "properties": {
+        "user_id": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string"
+        },
+        "name": {
+          "default": "",
+          "type": "string"
+        },
+        "avatar_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "role": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/MemberStatus",
+          "default": "active"
+        },
+        "joined_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "user_id",
+        "email",
+        "role"
+      ],
+      "title": "Member",
+      "type": "object"
+    },
+    "OrgCreate": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "maxLength": 80,
+          "minLength": 1,
+          "type": "string"
+        },
+        "domain": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "OrgCreate",
+      "type": "object"
+    },
+    "MemberInvite": {
+      "additionalProperties": false,
+      "properties": {
+        "email": {
+          "minLength": 3,
+          "type": "string"
+        },
+        "role": {
+          "default": "member",
+          "type": "string"
+        }
+      },
+      "required": [
+        "email"
+      ],
+      "title": "MemberInvite",
+      "type": "object"
+    },
+    "MemberUpdate": {
+      "additionalProperties": false,
+      "properties": {
+        "role": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "role"
+      ],
+      "title": "MemberUpdate",
+      "type": "object"
+    },
+    "AuthMode": {
+      "enum": [
+        "dev",
+        "google"
+      ],
+      "title": "AuthMode",
+      "type": "string"
+    },
+    "AuthConfig": {
+      "additionalProperties": false,
+      "description": "What the sign-in screen needs: which mode the gateway runs in, and the Google client id for the button.",
+      "properties": {
+        "mode": {
+          "$ref": "#/$defs/AuthMode"
+        },
+        "google_client_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "mode"
+      ],
+      "title": "AuthConfig",
+      "type": "object"
+    },
+    "GoogleLogin": {
+      "additionalProperties": false,
+      "properties": {
+        "id_token": {
+          "description": "The credential from Google Identity Services",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id_token"
+      ],
+      "title": "GoogleLogin",
+      "type": "object"
+    },
+    "DevLogin": {
+      "additionalProperties": false,
+      "properties": {
+        "email": {
+          "minLength": 3,
+          "type": "string"
+        },
+        "name": {
+          "default": "",
+          "type": "string"
+        }
+      },
+      "required": [
+        "email"
+      ],
+      "title": "DevLogin",
+      "type": "object"
+    },
+    "Me": {
+      "additionalProperties": false,
+      "description": "The signed-in user, their org (none until onboarding creates or joins one), role and permissions.",
+      "properties": {
+        "user": {
+          "$ref": "#/$defs/UserInfo"
+        },
+        "org": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Org"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "role": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "permissions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "mode": {
+          "$ref": "#/$defs/AuthMode",
+          "default": "dev"
+        }
+      },
+      "required": [
+        "user"
+      ],
+      "title": "Me",
+      "type": "object"
+    },
+    "Session": {
+      "additionalProperties": false,
+      "properties": {
+        "token": {
+          "description": "Send as Authorization: Bearer <token>; ?token=<token> on the WebSocket",
+          "type": "string"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "me": {
+          "$ref": "#/$defs/Me"
+        }
+      },
+      "required": [
+        "token",
+        "expires_at",
+        "me"
+      ],
+      "title": "Session",
+      "type": "object"
+    },
+    "ConnectorStatus": {
+      "enum": [
+        "connected",
+        "disconnected"
+      ],
+      "title": "ConnectorStatus",
+      "type": "string"
+    },
+    "Connector": {
+      "additionalProperties": false,
+      "properties": {
+        "connector_id": {
+          "description": "github | google_calendar",
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/ConnectorStatus",
+          "default": "disconnected"
+        },
+        "mode": {
+          "default": "mock",
+          "description": "mock (built-in stand-in, no account needed) | live (a real token in the vault)",
+          "type": "string"
+        },
+        "capabilities": {
+          "description": "e.g. github.read, github.write",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "scopes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "connected_by": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "connected_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "last_sync": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "recent_agents": {
+          "description": "Agents that used it recently (from the audit log)",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "connector_id",
+        "name"
+      ],
+      "title": "Connector",
+      "type": "object"
+    },
+    "ConnectorConnect": {
+      "additionalProperties": false,
+      "description": "A personal access token or API key. Stored encrypted in the vault; never shown again, never sent to agents.",
+      "properties": {
+        "token": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "account": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "e.g. a GitHub owner/repo to sync, a calendar id"
+        }
+      },
+      "title": "ConnectorConnect",
+      "type": "object"
+    },
+    "ConnectorSyncResult": {
+      "additionalProperties": false,
+      "properties": {
+        "created": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "updated": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "errors": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "title": "ConnectorSyncResult",
+      "type": "object"
+    },
+    "KnowledgeMount": {
+      "additionalProperties": false,
+      "description": "A folder of this computer mirrored into /org/mnt/<name>: its documents are converted, indexed and watched.",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "host_path": {
+          "type": "string"
+        },
+        "org_path": {
+          "type": "string"
+        },
+        "files": {
+          "default": 0,
+          "type": "integer"
+        },
+        "skipped": {
+          "default": 0,
+          "type": "integer"
+        },
+        "watching": {
+          "default": false,
+          "type": "boolean"
+        },
+        "synced_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "errors": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "host_path",
+        "org_path"
+      ],
+      "title": "KnowledgeMount",
+      "type": "object"
+    },
+    "KnowledgeMountCreate": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "maxLength": 40,
+          "minLength": 1,
+          "pattern": "^[a-z0-9][a-z0-9-]*$",
+          "type": "string"
+        },
+        "host_path": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "host_path"
+      ],
+      "title": "KnowledgeMountCreate",
+      "type": "object"
     }
   },
   "properties": {
@@ -4286,6 +4849,12 @@
     "AuditKind": {
       "$ref": "#/$defs/AuditKind"
     },
+    "AuthConfig": {
+      "$ref": "#/$defs/AuthConfig"
+    },
+    "AuthMode": {
+      "$ref": "#/$defs/AuthMode"
+    },
     "BrowserPage": {
       "$ref": "#/$defs/BrowserPage"
     },
@@ -4301,8 +4870,23 @@
     "ComponentHealth": {
       "$ref": "#/$defs/ComponentHealth"
     },
+    "Connector": {
+      "$ref": "#/$defs/Connector"
+    },
+    "ConnectorConnect": {
+      "$ref": "#/$defs/ConnectorConnect"
+    },
+    "ConnectorStatus": {
+      "$ref": "#/$defs/ConnectorStatus"
+    },
+    "ConnectorSyncResult": {
+      "$ref": "#/$defs/ConnectorSyncResult"
+    },
     "Decision": {
       "$ref": "#/$defs/Decision"
+    },
+    "DevLogin": {
+      "$ref": "#/$defs/DevLogin"
     },
     "EmbedRequest": {
       "$ref": "#/$defs/EmbedRequest"
@@ -4334,6 +4918,9 @@
     "FirewallConfig": {
       "$ref": "#/$defs/FirewallConfig"
     },
+    "GoogleLogin": {
+      "$ref": "#/$defs/GoogleLogin"
+    },
     "GpuStatus": {
       "$ref": "#/$defs/GpuStatus"
     },
@@ -4364,6 +4951,12 @@
     "KnowledgeListing": {
       "$ref": "#/$defs/KnowledgeListing"
     },
+    "KnowledgeMount": {
+      "$ref": "#/$defs/KnowledgeMount"
+    },
+    "KnowledgeMountCreate": {
+      "$ref": "#/$defs/KnowledgeMountCreate"
+    },
     "KnowledgeObject": {
       "$ref": "#/$defs/KnowledgeObject"
     },
@@ -4387,6 +4980,21 @@
     },
     "ManifestRuntime": {
       "$ref": "#/$defs/ManifestRuntime"
+    },
+    "Me": {
+      "$ref": "#/$defs/Me"
+    },
+    "Member": {
+      "$ref": "#/$defs/Member"
+    },
+    "MemberInvite": {
+      "$ref": "#/$defs/MemberInvite"
+    },
+    "MemberStatus": {
+      "$ref": "#/$defs/MemberStatus"
+    },
+    "MemberUpdate": {
+      "$ref": "#/$defs/MemberUpdate"
     },
     "MemoryKind": {
       "$ref": "#/$defs/MemoryKind"
@@ -4432,6 +5040,15 @@
     },
     "OKFFrontmatter": {
       "$ref": "#/$defs/OKFFrontmatter"
+    },
+    "Org": {
+      "$ref": "#/$defs/Org"
+    },
+    "OrgCreate": {
+      "$ref": "#/$defs/OrgCreate"
+    },
+    "OrgRole": {
+      "$ref": "#/$defs/OrgRole"
     },
     "Plan": {
       "$ref": "#/$defs/Plan"
@@ -4511,6 +5128,9 @@
     "SearchQuery": {
       "$ref": "#/$defs/SearchQuery"
     },
+    "Session": {
+      "$ref": "#/$defs/Session"
+    },
     "SpawnRequest": {
       "$ref": "#/$defs/SpawnRequest"
     },
@@ -4576,6 +5196,9 @@
     },
     "TrustLevel": {
       "$ref": "#/$defs/TrustLevel"
+    },
+    "UserInfo": {
+      "$ref": "#/$defs/UserInfo"
     },
     "ValidationIssue": {
       "$ref": "#/$defs/ValidationIssue"

@@ -38,6 +38,9 @@ class EventType(StrEnum):
     KNOWLEDGE_CHANGED = "knowledge.changed"
     KNOWLEDGE_REINDEXED = "knowledge.reindexed"
     KNOWLEDGE_RETRIEVED = "knowledge.retrieved"
+    INGEST_PROGRESS = "ingest.progress"
+    MOUNT_SYNCED = "mount.synced"
+    CONNECTOR_CHANGED = "connector.changed"
     MEMORY_INVALIDATED = "memory.invalidated"
     MEMORY_CONSOLIDATED = "memory.consolidated"
     # models (P3)

@@ -87,6 +87,11 @@ export type AuditKind =
   | "rollback";
 /**
  * This interface was referenced by `MOSaic`'s JSON-Schema
+ * via the `definition` "AuthMode".
+ */
+export type AuthMode = "dev" | "google";
+/**
+ * This interface was referenced by `MOSaic`'s JSON-Schema
  * via the `definition` "ChangeKind".
  */
 export type ChangeKind = "created" | "updated" | "deleted";
@@ -95,6 +100,12 @@ export type ChangeKind = "created" | "updated" | "deleted";
  * via the `definition` "Role".
  */
 export type Role = "system" | "user" | "assistant" | "tool";
+export type ConnectorStatus = "connected" | "disconnected";
+/**
+ * This interface was referenced by `MOSaic`'s JSON-Schema
+ * via the `definition` "ConnectorStatus".
+ */
+export type ConnectorStatus1 = "connected" | "disconnected";
 /**
  * This interface was referenced by `MOSaic`'s JSON-Schema
  * via the `definition` "SearchMode".
@@ -123,6 +134,13 @@ export type TrustLevel3 = "verified" | "trusted" | "unverified" | "untrusted";
  * via the `definition` "Latency".
  */
 export type Latency = "critical" | "normal" | "batch";
+export type AuthMode1 = "dev" | "google";
+export type MemberStatus = "invited" | "active";
+/**
+ * This interface was referenced by `MOSaic`'s JSON-Schema
+ * via the `definition` "MemberStatus".
+ */
+export type MemberStatus1 = "invited" | "active";
 /**
  * This interface was referenced by `MOSaic`'s JSON-Schema
  * via the `definition` "MemoryKind".
@@ -234,7 +252,7 @@ export type TrustLevel4 = "verified" | "trusted" | "unverified" | "untrusted";
 export type VerificationStatus2 = "unverified" | "verified" | "disputed" | "stale";
 
 /**
- * mOSaic contracts v0.9.0
+ * mOSaic contracts v0.10.0
  */
 export interface MOSaic {
   A2AMessage?: A2AMessage;
@@ -251,12 +269,19 @@ export interface MOSaic {
   ApprovalStatus?: ApprovalStatus1;
   AuditEntry?: AuditEntry;
   AuditKind?: AuditKind;
+  AuthConfig?: AuthConfig;
+  AuthMode?: AuthMode;
   BrowserPage?: BrowserPage;
   ChangeKind?: ChangeKind;
   ChatMessage?: ChatMessage;
   Checkpoint?: Checkpoint;
   ComponentHealth?: ComponentHealth;
+  Connector?: Connector;
+  ConnectorConnect?: ConnectorConnect;
+  ConnectorStatus?: ConnectorStatus1;
+  ConnectorSyncResult?: ConnectorSyncResult;
   Decision?: Decision;
+  DevLogin?: DevLogin;
   EmbedRequest?: EmbedRequest;
   EmbedResponse?: EmbedResponse;
   EndpointInfo?: EndpointInfo;
@@ -267,6 +292,7 @@ export interface MOSaic {
   ExecResult?: ExecResult;
   FilesystemRules?: FilesystemRules;
   FirewallConfig?: FirewallConfig;
+  GoogleLogin?: GoogleLogin;
   GpuStatus?: GpuStatus;
   GraphEdge?: GraphEdge;
   GraphResult?: GraphResult;
@@ -277,6 +303,8 @@ export interface MOSaic {
   KnowledgeChange?: KnowledgeChange;
   KnowledgeEntry?: KnowledgeEntry;
   KnowledgeListing?: KnowledgeListing;
+  KnowledgeMount?: KnowledgeMount;
+  KnowledgeMountCreate?: KnowledgeMountCreate;
   KnowledgeObject?: KnowledgeObject;
   Latency?: Latency;
   ManifestApproval?: ManifestApproval;
@@ -285,6 +313,11 @@ export interface MOSaic {
   ManifestNetwork?: ManifestNetwork;
   ManifestResources?: ManifestResources;
   ManifestRuntime?: ManifestRuntime;
+  Me?: Me;
+  Member?: Member;
+  MemberInvite?: MemberInvite;
+  MemberStatus?: MemberStatus1;
+  MemberUpdate?: MemberUpdate;
   MemoryKind?: MemoryKind;
   MemoryQuery?: MemoryQuery;
   MemoryRecord?: MemoryRecord;
@@ -300,6 +333,9 @@ export interface MOSaic {
   NetworkMode?: NetworkMode;
   OKFDraft?: OKFDraft;
   OKFFrontmatter?: OKFFrontmatter;
+  Org?: Org;
+  OrgCreate?: OrgCreate;
+  OrgRole?: OrgRole;
   Plan?: Plan;
   PlanStep?: PlanStep;
   PolicyAppliesTo?: PolicyAppliesTo;
@@ -326,6 +362,7 @@ export interface MOSaic {
   SearchHit?: SearchHit;
   SearchMode?: SearchMode;
   SearchQuery?: SearchQuery;
+  Session?: Session;
   SpawnRequest?: SpawnRequest;
   StackComponent?: StackComponent;
   StreamChunk?: StreamChunk;
@@ -348,6 +385,7 @@ export interface MOSaic {
   ToolSpec?: ToolSpec;
   ToolTransport?: ToolTransport;
   TrustLevel?: TrustLevel4;
+  UserInfo?: UserInfo;
   ValidationIssue?: ValidationIssue;
   ValidationReport?: ValidationReport;
   VerificationCheck?: VerificationCheck;
@@ -706,6 +744,16 @@ export interface AuditEntry {
   hash?: string | null;
 }
 /**
+ * What the sign-in screen needs: which mode the gateway runs in, and the Google client id for the button.
+ *
+ * This interface was referenced by `MOSaic`'s JSON-Schema
+ * via the `definition` "AuthConfig".
+ */
+export interface AuthConfig {
+  mode: AuthMode;
+  google_client_id?: string | null;
+}
+/**
  * What the BrowserDriver (P4) returns after every browser action.
  *
  * This interface was referenced by `MOSaic`'s JSON-Schema
@@ -762,6 +810,64 @@ export interface ComponentHealth {
    */
   mode?: string;
   detail?: string;
+}
+/**
+ * This interface was referenced by `MOSaic`'s JSON-Schema
+ * via the `definition` "Connector".
+ */
+export interface Connector {
+  /**
+   * github | google_calendar
+   */
+  connector_id: string;
+  name: string;
+  status?: ConnectorStatus;
+  /**
+   * mock (built-in stand-in, no account needed) | live (a real token in the vault)
+   */
+  mode?: string;
+  /**
+   * e.g. github.read, github.write
+   */
+  capabilities?: string[];
+  scopes?: string[];
+  connected_by?: string | null;
+  connected_at?: string | null;
+  last_sync?: string | null;
+  /**
+   * Agents that used it recently (from the audit log)
+   */
+  recent_agents?: string[];
+}
+/**
+ * A personal access token or API key. Stored encrypted in the vault; never shown again, never sent to agents.
+ *
+ * This interface was referenced by `MOSaic`'s JSON-Schema
+ * via the `definition` "ConnectorConnect".
+ */
+export interface ConnectorConnect {
+  token?: string | null;
+  /**
+   * e.g. a GitHub owner/repo to sync, a calendar id
+   */
+  account?: string | null;
+}
+/**
+ * This interface was referenced by `MOSaic`'s JSON-Schema
+ * via the `definition` "ConnectorSyncResult".
+ */
+export interface ConnectorSyncResult {
+  created?: string[];
+  updated?: string[];
+  errors?: string[];
+}
+/**
+ * This interface was referenced by `MOSaic`'s JSON-Schema
+ * via the `definition` "DevLogin".
+ */
+export interface DevLogin {
+  email: string;
+  name?: string;
 }
 /**
  * This interface was referenced by `MOSaic`'s JSON-Schema
@@ -953,6 +1059,16 @@ export interface FirewallConfig {
 }
 /**
  * This interface was referenced by `MOSaic`'s JSON-Schema
+ * via the `definition` "GoogleLogin".
+ */
+export interface GoogleLogin {
+  /**
+   * The credential from Google Identity Services
+   */
+  id_token: string;
+}
+/**
+ * This interface was referenced by `MOSaic`'s JSON-Schema
  * via the `definition` "GpuStatus".
  */
 export interface GpuStatus {
@@ -1055,6 +1171,30 @@ export interface KnowledgeListing {
   entries: KnowledgeEntry[];
 }
 /**
+ * A folder of this computer mirrored into /org/mnt/<name>: its documents are converted, indexed and watched.
+ *
+ * This interface was referenced by `MOSaic`'s JSON-Schema
+ * via the `definition` "KnowledgeMount".
+ */
+export interface KnowledgeMount {
+  name: string;
+  host_path: string;
+  org_path: string;
+  files?: number;
+  skipped?: number;
+  watching?: boolean;
+  synced_at?: string | null;
+  errors?: string[];
+}
+/**
+ * This interface was referenced by `MOSaic`'s JSON-Schema
+ * via the `definition` "KnowledgeMountCreate".
+ */
+export interface KnowledgeMountCreate {
+  name: string;
+  host_path: string;
+}
+/**
  * This interface was referenced by `MOSaic`'s JSON-Schema
  * via the `definition` "KnowledgeObject".
  */
@@ -1107,6 +1247,71 @@ export interface OKFFrontmatter {
    */
   related?: string[];
   [k: string]: unknown;
+}
+/**
+ * The signed-in user, their org (none until onboarding creates or joins one), role and permissions.
+ *
+ * This interface was referenced by `MOSaic`'s JSON-Schema
+ * via the `definition` "Me".
+ */
+export interface Me {
+  user: UserInfo;
+  org?: Org | null;
+  role?: string | null;
+  permissions?: string[];
+  mode?: AuthMode1;
+}
+/**
+ * This interface was referenced by `MOSaic`'s JSON-Schema
+ * via the `definition` "UserInfo".
+ */
+export interface UserInfo {
+  user_id: string;
+  email: string;
+  name?: string;
+  avatar_url?: string | null;
+}
+/**
+ * This interface was referenced by `MOSaic`'s JSON-Schema
+ * via the `definition` "Org".
+ */
+export interface Org {
+  org_id: string;
+  name: string;
+  /**
+   * Email domain whose users may join, e.g. acme.com
+   */
+  domain?: string | null;
+  created_at?: string;
+  member_count?: number;
+}
+/**
+ * This interface was referenced by `MOSaic`'s JSON-Schema
+ * via the `definition` "Member".
+ */
+export interface Member {
+  user_id: string;
+  email: string;
+  name?: string;
+  avatar_url?: string | null;
+  role: string;
+  status?: MemberStatus;
+  joined_at?: string | null;
+}
+/**
+ * This interface was referenced by `MOSaic`'s JSON-Schema
+ * via the `definition` "MemberInvite".
+ */
+export interface MemberInvite {
+  email: string;
+  role?: string;
+}
+/**
+ * This interface was referenced by `MOSaic`'s JSON-Schema
+ * via the `definition` "MemberUpdate".
+ */
+export interface MemberUpdate {
+  role: string;
 }
 /**
  * This interface was referenced by `MOSaic`'s JSON-Schema
@@ -1286,6 +1491,26 @@ export interface OKFDraft {
    * Original file / issue key / message id
    */
   source_ref?: string | null;
+}
+/**
+ * This interface was referenced by `MOSaic`'s JSON-Schema
+ * via the `definition` "OrgCreate".
+ */
+export interface OrgCreate {
+  name: string;
+  domain?: string | null;
+}
+/**
+ * This interface was referenced by `MOSaic`'s JSON-Schema
+ * via the `definition` "OrgRole".
+ */
+export interface OrgRole {
+  /**
+   * owner | admin | approver | member | viewer (policies/rbac/roles.yaml)
+   */
+  role: string;
+  description?: string;
+  permissions?: string[];
 }
 /**
  * This interface was referenced by `MOSaic`'s JSON-Schema
@@ -1524,6 +1749,18 @@ export interface SandboxSpec {
    * Start a virtual display (browser / computer use)
    */
   display?: boolean;
+}
+/**
+ * This interface was referenced by `MOSaic`'s JSON-Schema
+ * via the `definition` "Session".
+ */
+export interface Session {
+  /**
+   * Send as Authorization: Bearer <token>; ?token=<token> on the WebSocket
+   */
+  token: string;
+  expires_at: string;
+  me: Me;
 }
 /**
  * Body of POST /agents/spawn and the argument of AgentContext.spawn().

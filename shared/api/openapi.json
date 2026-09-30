@@ -3,7 +3,7 @@
   "info": {
     "title": "mOSaic Gateway API",
     "description": "Contract for the mOSaic kernel gateway. Served here by the mock implementation.",
-    "version": "0.9.0"
+    "version": "0.10.0"
   },
   "paths": {
     "/health": {
@@ -1638,6 +1638,786 @@
           }
         }
       }
+    },
+    "/auth/config": {
+      "get": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Auth Config",
+        "operationId": "auth_config_auth_config_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthConfig"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/dev": {
+      "post": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Auth Dev",
+        "operationId": "auth_dev_auth_dev_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DevLogin"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/google": {
+      "post": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Auth Google",
+        "operationId": "auth_google_auth_google_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GoogleLogin"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Auth Me",
+        "operationId": "auth_me_auth_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Me"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Auth Logout",
+        "operationId": "auth_logout_auth_logout_post",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/orgs": {
+      "post": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Create Org",
+        "operationId": "create_org_orgs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrgCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Org"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orgs/me": {
+      "get": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Org Me",
+        "operationId": "org_me_orgs_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Org"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orgs/{org_id}/members": {
+      "get": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Org Members",
+        "operationId": "org_members_orgs__org_id__members_get",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Member"
+                  },
+                  "title": "Response Org Members Orgs  Org Id  Members Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Invite Member",
+        "operationId": "invite_member_orgs__org_id__members_post",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Org Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberInvite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Member"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orgs/{org_id}/members/{member}": {
+      "patch": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Update Member",
+        "operationId": "update_member_orgs__org_id__members__member__patch",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Org Id"
+            }
+          },
+          {
+            "name": "member",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Member"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Member"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Remove Member",
+        "operationId": "remove_member_orgs__org_id__members__member__delete",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Org Id"
+            }
+          },
+          {
+            "name": "member",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Member"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orgs/{org_id}/roles": {
+      "get": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Org Roles",
+        "operationId": "org_roles_orgs__org_id__roles_get",
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OrgRole"
+                  },
+                  "title": "Response Org Roles Orgs  Org Id  Roles Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connectors": {
+      "get": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "List Connectors",
+        "operationId": "list_connectors_connectors_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Connector"
+                  },
+                  "type": "array",
+                  "title": "Response List Connectors Connectors Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connectors/{connector_id}/connect": {
+      "post": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "Connector Connect",
+        "operationId": "connector_connect_connectors__connector_id__connect_post",
+        "parameters": [
+          {
+            "name": "connector_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Connector Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectorConnect"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Connector"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connectors/{connector_id}": {
+      "delete": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "Connector Disconnect",
+        "operationId": "connector_disconnect_connectors__connector_id__delete",
+        "parameters": [
+          {
+            "name": "connector_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Connector Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connectors/{connector_id}/sync": {
+      "post": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "Connector Sync",
+        "operationId": "connector_sync_connectors__connector_id__sync_post",
+        "parameters": [
+          {
+            "name": "connector_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Connector Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectorSyncResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/knowledge/upload": {
+      "post": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Knowledge Upload",
+        "operationId": "knowledge_upload_knowledge_upload_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_knowledge_upload_knowledge_upload_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/knowledge/mounts": {
+      "get": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "List Mounts",
+        "operationId": "list_mounts_knowledge_mounts_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/KnowledgeMount"
+                  },
+                  "type": "array",
+                  "title": "Response List Mounts Knowledge Mounts Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Add Mount",
+        "operationId": "add_mount_knowledge_mounts_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KnowledgeMountCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeMount"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/knowledge/mounts/{name}/sync": {
+      "post": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Sync Mount",
+        "operationId": "sync_mount_knowledge_mounts__name__sync_post",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeMount"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/knowledge/mounts/{name}": {
+      "delete": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Remove Mount",
+        "operationId": "remove_mount_knowledge_mounts__name__delete",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2128,6 +2908,72 @@
         ],
         "title": "AuditKind"
       },
+      "AuthConfig": {
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/AuthMode"
+          },
+          "google_client_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Google Client Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "mode"
+        ],
+        "title": "AuthConfig",
+        "description": "What the sign-in screen needs: which mode the gateway runs in, and the Google client id for the button."
+      },
+      "AuthMode": {
+        "type": "string",
+        "enum": [
+          "dev",
+          "google"
+        ],
+        "title": "AuthMode"
+      },
+      "Body_knowledge_upload_knowledge_upload_post": {
+        "properties": {
+          "files": {
+            "items": {
+              "type": "string",
+              "contentMediaType": "application/octet-stream"
+            },
+            "type": "array",
+            "title": "Files"
+          },
+          "target_folder": {
+            "type": "string",
+            "title": "Target Folder",
+            "default": "/org/uploads"
+          },
+          "privacy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Privacy"
+          }
+        },
+        "type": "object",
+        "required": [
+          "files"
+        ],
+        "title": "Body_knowledge_upload_knowledge_upload_post"
+      },
       "Checkpoint": {
         "properties": {
           "checkpoint_id": {
@@ -2215,6 +3061,161 @@
         ],
         "title": "ComponentHealth"
       },
+      "Connector": {
+        "properties": {
+          "connector_id": {
+            "type": "string",
+            "title": "Connector Id",
+            "description": "github | google_calendar"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ConnectorStatus",
+            "default": "disconnected"
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode",
+            "description": "mock (built-in stand-in, no account needed) | live (a real token in the vault)",
+            "default": "mock"
+          },
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Capabilities",
+            "description": "e.g. github.read, github.write"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Scopes"
+          },
+          "connected_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connected By"
+          },
+          "connected_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connected At"
+          },
+          "last_sync": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Sync"
+          },
+          "recent_agents": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Recent Agents",
+            "description": "Agents that used it recently (from the audit log)"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "connector_id",
+          "name"
+        ],
+        "title": "Connector"
+      },
+      "ConnectorConnect": {
+        "properties": {
+          "token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token"
+          },
+          "account": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account",
+            "description": "e.g. a GitHub owner/repo to sync, a calendar id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ConnectorConnect",
+        "description": "A personal access token or API key. Stored encrypted in the vault; never shown again, never sent to agents."
+      },
+      "ConnectorStatus": {
+        "type": "string",
+        "enum": [
+          "connected",
+          "disconnected"
+        ],
+        "title": "ConnectorStatus"
+      },
+      "ConnectorSyncResult": {
+        "properties": {
+          "created": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Created"
+          },
+          "updated": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Updated"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Errors"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ConnectorSyncResult"
+      },
       "Decision": {
         "type": "string",
         "enum": [
@@ -2223,6 +3224,26 @@
           "REQUIRES_APPROVAL"
         ],
         "title": "Decision"
+      },
+      "DevLogin": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "minLength": 3,
+            "title": "Email"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "title": "DevLogin"
       },
       "EndpointInfo": {
         "properties": {
@@ -2353,6 +3374,21 @@
         "additionalProperties": false,
         "type": "object",
         "title": "FirewallConfig"
+      },
+      "GoogleLogin": {
+        "properties": {
+          "id_token": {
+            "type": "string",
+            "title": "Id Token",
+            "description": "The credential from Google Identity Services"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id_token"
+        ],
+        "title": "GoogleLogin"
       },
       "GpuStatus": {
         "properties": {
@@ -2595,6 +3631,88 @@
         ],
         "title": "KnowledgeListing"
       },
+      "KnowledgeMount": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "host_path": {
+            "type": "string",
+            "title": "Host Path"
+          },
+          "org_path": {
+            "type": "string",
+            "title": "Org Path"
+          },
+          "files": {
+            "type": "integer",
+            "title": "Files",
+            "default": 0
+          },
+          "skipped": {
+            "type": "integer",
+            "title": "Skipped",
+            "default": 0
+          },
+          "watching": {
+            "type": "boolean",
+            "title": "Watching",
+            "default": false
+          },
+          "synced_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Synced At"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Errors"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "host_path",
+          "org_path"
+        ],
+        "title": "KnowledgeMount",
+        "description": "A folder of this computer mirrored into /org/mnt/<name>: its documents are converted, indexed and watched."
+      },
+      "KnowledgeMountCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "title": "Name"
+          },
+          "host_path": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Host Path"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "host_path"
+        ],
+        "title": "KnowledgeMountCreate"
+      },
       "KnowledgeObject": {
         "properties": {
           "path": {
@@ -2788,6 +3906,150 @@
           "entrypoint"
         ],
         "title": "ManifestRuntime"
+      },
+      "Me": {
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/UserInfo"
+          },
+          "org": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Org"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Permissions"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/AuthMode",
+            "default": "dev"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "user"
+        ],
+        "title": "Me",
+        "description": "The signed-in user, their org (none until onboarding creates or joins one), role and permissions."
+      },
+      "Member": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "default": ""
+          },
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "status": {
+            "$ref": "#/components/schemas/MemberStatus",
+            "default": "active"
+          },
+          "joined_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Joined At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "user_id",
+          "email",
+          "role"
+        ],
+        "title": "Member"
+      },
+      "MemberInvite": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "minLength": 3,
+            "title": "Email"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role",
+            "default": "member"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "title": "MemberInvite"
+      },
+      "MemberStatus": {
+        "type": "string",
+        "enum": [
+          "invited",
+          "active"
+        ],
+        "title": "MemberStatus"
+      },
+      "MemberUpdate": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "title": "Role"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "role"
+        ],
+        "title": "MemberUpdate"
       },
       "MemoryKind": {
         "type": "string",
@@ -3244,6 +4506,101 @@
         ],
         "title": "OKFFrontmatter",
         "description": "YAML frontmatter of an OKF Markdown file. Extra keys are allowed (OKF is extensible)."
+      },
+      "Org": {
+        "properties": {
+          "org_id": {
+            "type": "string",
+            "title": "Org Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "domain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain",
+            "description": "Email domain whose users may join, e.g. acme.com"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "member_count": {
+            "type": "integer",
+            "title": "Member Count",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "org_id",
+          "name"
+        ],
+        "title": "Org"
+      },
+      "OrgCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "domain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "OrgCreate"
+      },
+      "OrgRole": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "title": "Role",
+            "description": "owner | admin | approver | member | viewer (policies/rbac/roles.yaml)"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Permissions"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "role"
+        ],
+        "title": "OrgRole"
       },
       "PolicyAppliesTo": {
         "properties": {
@@ -4095,6 +5452,31 @@
         ],
         "title": "SearchQuery"
       },
+      "Session": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "title": "Token",
+            "description": "Send as Authorization: Bearer <token>; ?token=<token> on the WebSocket"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "me": {
+            "$ref": "#/components/schemas/Me"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "token",
+          "expires_at",
+          "me"
+        ],
+        "title": "Session"
+      },
       "SpawnRequest": {
         "properties": {
           "agent": {
@@ -4794,6 +6176,41 @@
           "untrusted"
         ],
         "title": "TrustLevel"
+      },
+      "UserInfo": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "default": ""
+          },
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "user_id",
+          "email"
+        ],
+        "title": "UserInfo"
       },
       "ValidationError": {
         "properties": {

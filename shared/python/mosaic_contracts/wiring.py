@@ -83,6 +83,10 @@ class Settings(BaseModel):
         description="P2: also ask the local LLM classifier about unverified/untrusted hits the regex didn't flag; "
         "its catches carry the extra flag instruction_like_llm",
     )
+    auth: str = Field("dev", description="P1: dev (X-Mosaic-User headers, sign in by email) | google (Google ID token -> session)")
+    google_client_id: str | None = Field(None, description="P1: OAuth web client id for Google sign-in (public, not a secret)")
+    vault_key: str | None = Field(None, description="P1: 32-byte key (base64) encrypting connector tokens at rest; unset = dev vault")
+    session_hours: int = Field(12, description="P1: how long a sign-in lasts")
     modes: dict[str, Mode] = Field(default_factory=lambda: {c: "fake" for c in COMPONENTS})
 
     @classmethod

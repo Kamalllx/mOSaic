@@ -14,7 +14,7 @@ import asyncio
 from fnmatch import fnmatch
 from typing import Any
 
-from fastapi import Body, FastAPI, Header, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi import Body, FastAPI, File, Form, Header, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
@@ -27,17 +27,35 @@ from ..schema import (
     Approval,
     ApprovalResolution,
     ApprovalStatus,
+    AuthConfig,
+    AuthMode,
     Checkpoint,
+    Connector,
+    ConnectorConnect,
+    ConnectorStatus,
+    ConnectorSyncResult,
+    DevLogin,
     Event,
     EventType,
     EvidenceSet,
+    GoogleLogin,
     GraphResult,
     IngestRequest,
     IngestResult,
     KnowledgeListing,
+    KnowledgeMount,
+    KnowledgeMountCreate,
     KnowledgeObject,
+    Me,
+    Member,
+    MemberInvite,
+    MemberStatus,
+    MemberUpdate,
     MemoryRecord,
     ModelInfo,
+    Org,
+    OrgCreate,
+    OrgRole,
     PolicyDocument,
     Principal,
     PrincipalKind,
@@ -47,6 +65,7 @@ from ..schema import (
     RunTimeline,
     SandboxInfo,
     SearchQuery,
+    Session,
     SpawnRequest,
     SystemConfig,
     SystemStatus,
@@ -54,6 +73,7 @@ from ..schema import (
     TaskCreate,
     TaskStatus,
     ToolSpec,
+    UserInfo,
     ValidationReport,
 )
 from ..schema.common import new_id, utcnow
@@ -70,37 +90,21 @@ class _State:
         self.listeners: list[tuple[str | None, list[str], asyncio.Queue]] = []
         self.history: dict[str, list[Event]] = {}
         self.knowledge = FakeKnowledgeService(models=FakeModelRouter(), firewall=FakeContextFirewall())
-        # Phase-2: org, members, connectors (mock data only — no shared contract changes)
-        self.org = {"org_id": "acme", "name": "Acme Corp", "domain": "acme.example.com",
-                    "created_at": "2024-01-01T00:00:00Z", "member_count": 2}
-        self.members: list[dict[str, Any]] = [
-            {"user_id": "alice", "email": "alice@acme.example.com", "name": "Alice Admin",
-             "role": "owner", "status": "active", "joined_at": "2024-01-01T00:00:00Z"},
-            {"user_id": "bob", "email": "bob@acme.example.com", "name": "Bob Builder",
-             "role": "member", "status": "active", "joined_at": "2024-01-15T00:00:00Z"},
+        # Phase 2: the demo company's org, its members and connectors, and mounted folders (typed like the real gateway).
+        self.org = Org(org_id="acme", name="Acme Corp", domain="acme.example", member_count=3)
+        self.members: list[Member] = [
+            Member(user_id="alice", email="alice@acme.example", name="Alice", role="owner", status=MemberStatus.ACTIVE),
+            Member(user_id="bob", email="bob@acme.example", name="Bob", role="approver", status=MemberStatus.ACTIVE),
+            Member(user_id="carol@acme.example", email="carol@acme.example", role="member", status=MemberStatus.INVITED),
         ]
-        self.connectors: list[dict[str, Any]] = [
-            {"connector_id": "github", "name": "GitHub", "status": "connected",
-             "scopes": ["repo", "issues"], "last_sync": "2024-03-01T12:00:00Z",
-             "connected_by": "alice", "connected_at": "2024-02-01T00:00:00Z",
-             "recent_agents": ["action-agent", "research-agent"]},
-            {"connector_id": "google_calendar", "name": "Google Calendar", "status": "disconnected",
-             "scopes": [], "recent_agents": []},
-        ]
-        self._roles = [
-            {"role": "owner", "description": "Unrestricted access including configuration and ownership transfer.",
-             "permissions": ["task.create", "task.cancel", "approval.resolve", "knowledge.read",
-                             "knowledge.ingest", "connectors.manage", "config.read", "config.manage", "members.manage"]},
-            {"role": "admin", "description": "Full operational access; cannot change billing or transfer ownership.",
-             "permissions": ["task.create", "task.cancel", "approval.resolve", "knowledge.read",
-                             "knowledge.ingest", "connectors.manage", "config.read", "members.manage"]},
-            {"role": "approver", "description": "Can resolve approval requests in addition to member permissions.",
-             "permissions": ["task.create", "knowledge.read", "approval.resolve"]},
-            {"role": "member", "description": "Can submit tasks and read knowledge.",
-             "permissions": ["task.create", "knowledge.read"]},
-            {"role": "viewer", "description": "Read-only access to tasks and knowledge.",
-             "permissions": ["knowledge.read"]},
-        ]
+        self.roles = _mock_roles()
+        self.connectors: dict[str, Connector] = {
+            "github": Connector(connector_id="github", name="GitHub", status=ConnectorStatus.CONNECTED, mode="mock",
+                                capabilities=["github.read", "github.write"], scopes=["repo", "issues"], connected_by="alice"),
+            "google_calendar": Connector(connector_id="google_calendar", name="Google Calendar",
+                                         capabilities=["calendar.read", "calendar.write"]),
+        }
+        self.mounts: dict[str, KnowledgeMount] = {}
 
     async def emit(self, event: Event) -> None:
         if event.task_id:
@@ -108,6 +112,21 @@ class _State:
         for task_id, types, q in list(self.listeners):
             if (task_id is None or event.task_id == task_id) and any(fnmatch(event.type, t) for t in types):
                 q.put_nowait(event)
+
+
+def _mock_roles() -> list[OrgRole]:
+    import yaml
+
+    from ..wiring import REPO_ROOT
+
+    try:
+        table = (yaml.safe_load((REPO_ROOT / "policies" / "rbac" / "roles.yaml").read_text(encoding="utf-8")) or {}).get("roles", {})
+        return [OrgRole(role=k, description=(v or {}).get("description", ""), permissions=(v or {}).get("permissions", []))
+                for k, v in reversed(list(table.items()))]
+    except OSError:
+        return [OrgRole(role="owner", permissions=["task.create", "task.cancel", "approval.resolve", "knowledge.read",
+                                                    "knowledge.ingest", "connectors.manage", "config.read", "config.manage",
+                                                    "members.manage"])]
 
 
 # 1x1 transparent PNG: the mock's stand-in for a sandbox screenshot
@@ -390,74 +409,129 @@ def build_mock_app(replay_speed: float = 4.0) -> FastAPI:
     async def sandboxes(task_id: str | None = None) -> list[SandboxInfo]:
         return [examples.sandbox()]
 
-    # ------------------------------------------------------------------ orgs / identity (Phase 2)
-    @app.get("/orgs/me", tags=["identity"])
-    async def org_me() -> dict[str, Any]:
+    # ------------------------------------------------------------------ identity (dev mode: everyone is alice, an owner)
+    def _me() -> Me:
+        role = next((r for r in st.roles if r.role == "owner"), st.roles[0])
+        return Me(user=UserInfo(user_id="alice", email="alice@acme.example", name="Alice"), org=st.org, role="owner",
+                  permissions=role.permissions, mode=AuthMode.DEV)
+
+    @app.get("/auth/config", response_model=AuthConfig, tags=["identity"])
+    async def auth_config() -> AuthConfig:
+        return AuthConfig(mode=AuthMode.DEV)
+
+    @app.post("/auth/dev", response_model=Session, tags=["identity"])
+    async def auth_dev(body: DevLogin) -> Session:
+        return Session(token="mock-session", expires_at=utcnow(), me=_me())
+
+    @app.post("/auth/google", response_model=Session, tags=["identity"])
+    async def auth_google(body: GoogleLogin) -> Session:
+        raise MosaicError("BAD_REQUEST", "the mock gateway runs in dev mode")
+
+    @app.get("/auth/me", response_model=Me, tags=["identity"])
+    async def auth_me() -> Me:
+        return _me()
+
+    @app.post("/auth/logout", status_code=204, tags=["identity"])
+    async def auth_logout() -> None:
+        return None
+
+    @app.post("/orgs", response_model=Org, status_code=201, tags=["identity"])
+    async def create_org(body: OrgCreate) -> Org:
+        st.org = Org(org_id=body.name.lower().replace(" ", "-"), name=body.name, domain=body.domain, member_count=1)
         return st.org
 
-    @app.get("/orgs/{org_id}/members", tags=["identity"])
-    async def org_members(org_id: str) -> list[dict[str, Any]]:
+    @app.get("/orgs/me", response_model=Org, tags=["identity"])
+    async def org_me() -> Org:
+        return st.org.model_copy(update={"member_count": len(st.members)})
+
+    @app.get("/orgs/{org_id}/members", response_model=list[Member], tags=["identity"])
+    async def org_members(org_id: str) -> list[Member]:
         return st.members
 
-    @app.post("/orgs/{org_id}/members", status_code=201, tags=["identity"])
-    async def invite_member(org_id: str, body: dict[str, Any] = Body(...)) -> dict[str, Any]:
-        member: dict[str, Any] = {"user_id": new_id("U"), "email": body["email"], "name": body["email"].split("@")[0],
-                                  "role": body.get("role", "member"), "status": "invited",
-                                  "joined_at": utcnow().isoformat()}
-        st.members.append(member)
-        st.org = {**st.org, "member_count": len(st.members)}
-        return member
+    @app.post("/orgs/{org_id}/members", response_model=Member, status_code=201, tags=["identity"])
+    async def invite_member(org_id: str, body: MemberInvite) -> Member:
+        if any(m.email == body.email.lower() for m in st.members):
+            raise MosaicError("CONFLICT", f"{body.email} is already in this org")
+        m = Member(user_id=body.email.lower(), email=body.email.lower(), role=body.role, status=MemberStatus.INVITED)
+        st.members.append(m)
+        return m
 
-    @app.patch("/orgs/{org_id}/members/{user_id}", tags=["identity"])
-    async def update_member(org_id: str, user_id: str, body: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    def _find(member: str) -> int:
         for i, m in enumerate(st.members):
-            if m["user_id"] == user_id:
-                st.members[i] = {**m, "role": body.get("role", m["role"])}
-                return st.members[i]
-        raise MosaicError("NOT_FOUND", f"member {user_id}")
+            if member in (m.user_id, m.email):
+                return i
+        raise MosaicError("NOT_FOUND", f"member {member}")
 
-    @app.delete("/orgs/{org_id}/members/{user_id}", status_code=204, tags=["identity"])
-    async def remove_member(org_id: str, user_id: str) -> None:
-        st.members = [m for m in st.members if m["user_id"] != user_id]
-        st.org = {**st.org, "member_count": len(st.members)}
+    @app.patch("/orgs/{org_id}/members/{member}", response_model=Member, tags=["identity"])
+    async def update_member(org_id: str, member: str, body: MemberUpdate) -> Member:
+        i = _find(member)
+        st.members[i] = st.members[i].model_copy(update={"role": body.role})
+        return st.members[i]
 
-    @app.get("/orgs/{org_id}/roles", tags=["identity"])
-    async def org_roles(org_id: str) -> list[dict[str, Any]]:
-        return st._roles
+    @app.delete("/orgs/{org_id}/members/{member}", status_code=204, tags=["identity"])
+    async def remove_member(org_id: str, member: str) -> None:
+        st.members.pop(_find(member))
 
-    # ------------------------------------------------------------------ connectors (Phase 2)
-    @app.get("/connectors", tags=["connectors"])
-    async def list_connectors() -> list[dict[str, Any]]:
-        return st.connectors
+    @app.get("/orgs/{org_id}/roles", response_model=list[OrgRole], tags=["identity"])
+    async def org_roles(org_id: str) -> list[OrgRole]:
+        return st.roles
 
-    @app.post("/connectors/{connector_id}/connect", status_code=200, tags=["connectors"])
-    async def connector_connect(connector_id: str) -> dict[str, Any]:
-        # Return a mock OAuth URL (in production this would redirect to the provider)
-        return {"auth_url": f"https://mock-oauth.example.com/{connector_id}/auth?mock=true"}
+    # ------------------------------------------------------------------ connectors
+    @app.get("/connectors", response_model=list[Connector], tags=["connectors"])
+    async def list_connectors() -> list[Connector]:
+        return list(st.connectors.values())
+
+    def _connector(cid: str) -> Connector:
+        if cid not in st.connectors:
+            raise MosaicError("NOT_FOUND", f"connector {cid}")
+        return st.connectors[cid]
+
+    @app.post("/connectors/{connector_id}/connect", response_model=Connector, tags=["connectors"])
+    async def connector_connect(connector_id: str, body: ConnectorConnect = Body(default_factory=ConnectorConnect)) -> Connector:
+        c = _connector(connector_id).model_copy(update={"status": ConnectorStatus.CONNECTED, "mode": "live" if body.token else "mock",
+                                                        "connected_by": "alice", "connected_at": utcnow(), "scopes": ["default"]})
+        st.connectors[connector_id] = c
+        return c
 
     @app.delete("/connectors/{connector_id}", status_code=204, tags=["connectors"])
     async def connector_disconnect(connector_id: str) -> None:
-        for c in st.connectors:
-            if c["connector_id"] == connector_id:
-                c["status"] = "disconnected"
-                c.pop("last_sync", None)
-                return
-        raise MosaicError("NOT_FOUND", f"connector {connector_id}")
+        st.connectors[connector_id] = _connector(connector_id).model_copy(
+            update={"status": ConnectorStatus.DISCONNECTED, "mode": "mock", "connected_by": None, "connected_at": None, "scopes": []})
 
-    @app.post("/connectors/{connector_id}/sync", tags=["connectors"])
-    async def connector_sync(connector_id: str) -> dict[str, Any]:
-        return {"queued": True}
+    @app.post("/connectors/{connector_id}/sync", response_model=ConnectorSyncResult, tags=["connectors"])
+    async def connector_sync(connector_id: str) -> ConnectorSyncResult:
+        _connector(connector_id)
+        st.connectors[connector_id] = st.connectors[connector_id].model_copy(update={"last_sync": utcnow()})
+        return ConnectorSyncResult(created=[f"/org/github/acme-reconciliation/issue-{n}" for n in (12, 31)]
+                                   if connector_id == "github" else ["/org/calendar/upcoming"])
 
-    # ------------------------------------------------------------------ upload (Phase 2)
-    @app.post("/knowledge/upload", tags=["knowledge"])
-    async def knowledge_upload(request: Request) -> dict[str, Any]:
-        form = await request.form()
-        files = form.getlist("files")
-        target_folder = form.get("target_folder", "/org/uploads")
-        # In the mock, just acknowledge; real implementation calls converters + writes OKF objects
-        ingested = len(files) if hasattr(files, "__len__") else 1
-        paths = [f"{target_folder}/{getattr(f, 'filename', 'file')}" for f in files] if isinstance(files, list) else []
-        return {"ingested": ingested, "paths": paths}
+    # ------------------------------------------------------------------ files from outside /org
+    @app.post("/knowledge/upload", response_model=IngestResult, tags=["knowledge"])
+    async def knowledge_upload(files: list[UploadFile] = File(...), target_folder: str = Form("/org/uploads"),
+                               privacy: str | None = Form(None)) -> IngestResult:
+        return IngestResult(created=[f"{target_folder}/{(f.filename or 'file').rsplit('.', 1)[0].lower()}" for f in files])
+
+    @app.get("/knowledge/mounts", response_model=list[KnowledgeMount], tags=["knowledge"])
+    async def list_mounts() -> list[KnowledgeMount]:
+        return list(st.mounts.values())
+
+    @app.post("/knowledge/mounts", response_model=KnowledgeMount, status_code=201, tags=["knowledge"])
+    async def add_mount(body: KnowledgeMountCreate) -> KnowledgeMount:
+        m = KnowledgeMount(name=body.name, host_path=body.host_path, org_path=f"/org/mnt/{body.name}", files=3, watching=True,
+                           synced_at=utcnow())
+        st.mounts[body.name] = m
+        return m
+
+    @app.post("/knowledge/mounts/{name}/sync", response_model=KnowledgeMount, tags=["knowledge"])
+    async def sync_mount(name: str) -> KnowledgeMount:
+        if name not in st.mounts:
+            raise MosaicError("NOT_FOUND", f"mount {name}")
+        st.mounts[name] = st.mounts[name].model_copy(update={"synced_at": utcnow()})
+        return st.mounts[name]
+
+    @app.delete("/knowledge/mounts/{name}", status_code=204, tags=["knowledge"])
+    async def remove_mount(name: str) -> None:
+        st.mounts.pop(name, None)
 
     # ------------------------------------------------------------------ events
     @app.websocket("/ws/events")

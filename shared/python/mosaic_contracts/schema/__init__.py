@@ -3,6 +3,7 @@ from .agents import *  # noqa: F401,F403
 from .audit import *  # noqa: F401,F403
 from .common import *  # noqa: F401,F403
 from .events import *  # noqa: F401,F403
+from .identity import *  # noqa: F401,F403
 from .inference import *  # noqa: F401,F403
 from .ipc import *  # noqa: F401,F403
 from .knowledge import *  # noqa: F401,F403
@@ -39,4 +40,7 @@ EXPORTED_MODELS = [
     A2AMessage, Event, AuditEntry, RunTimeline, PolicyDocument,  # noqa: F405
     ComponentHealth, ResourceSnapshot, SystemStatus,  # noqa: F405
     StackComponent, RuntimeVersions, ModelRoute, ModelsConfig, PolicySummary, FirewallConfig, EndpointInfo, SystemConfig,  # noqa: F405
+    # identity / connectors / mounts
+    OrgRole, UserInfo, Org, Member, OrgCreate, MemberInvite, MemberUpdate, AuthConfig, GoogleLogin, DevLogin, Me, Session,  # noqa: F405
+    Connector, ConnectorConnect, ConnectorSyncResult, KnowledgeMount, KnowledgeMountCreate,  # noqa: F405
 ]
