@@ -1,343 +1,313 @@
-# mOSaic: complete project context (hackathon edition)
+# mOSaic: complete project context
 
-Last updated 2026-09-30, `main` at `6e54a07`, contract **0.7.0**, 305 Python tests green, ruff clean.
+Last updated 2026-09-30 (evening), for phase 2 of the hackathon. Read this first, then your own brief in `docs/team/PHASE2-*.md`.
 
-This is the one document to read before working on mOSaic during the hackathon. It covers:
-- what the system is and how the pieces fit;
-- what is built and verified;
-- how to run it;
-- where everything lives;
-- the rules;
-- what is still open.
-
-Deeper material is linked at the end.
-
-Team during the hack:
-
-| Person | Area | Who |
-|---|---|---|
-| **A** | Demo, ops, pitch; owns the demo laptop and merges to `main` | Kamal (@kamalllx) |
-| **B** | Backend and agents: `kernel/`, `agents/`, `knowledge/`, `execution/`, `models/`, `shared/`, `data/`, `policies/` | see `docs/team/HACK-B-backend.md` |
-| **C** | Frontend, mobile, README: `apps/web/`, `apps/mobile/`, `README.md`, `docs/readme/`, `docs/ui-revamp/` | see `docs/team/HACK-C-frontend.md` |
+State of the code:
+- **`main` (`e356d0b`)**: the demo-safe snapshot. It has the old console layout, contract **0.8.0**, 313 Python tests and 65 web tests.
+- **`ui/desktop`**: the console rebuilt as a desktop OS (windows, dock, launcher). This is **the base branch for phase 2**: branch from it, and merge back into it.
+- **Demo**: the scored Apollo run passes **8/8** on real models on both branches.
 
 ---
 
 ## 1. What mOSaic is
 
-mOSaic is a self-hosted "AI operating system" for a company. It borrows the shape of a classic OS:
+mOSaic is a self-hosted operating system for a company's AI. It borrows the shape of a classic OS:
 
 | OS idea | mOSaic |
 |---|---|
-| Filesystem | Company knowledge as `/org/...` paths, backed by OKF Markdown files (`data/okf/`) with front-matter (type, trust, links) |
-| Processes | Agents run as processes with PIDs, parent/child tree, states (running, waiting, paused, killed...), quotas (tokens, tool calls, wall time) |
-| Syscalls | Every action that changes the world (write Jira, write a file, open a browser) is a governed syscall: **policy → approval → sandboxed execution → verify → commit or rollback** |
-| Kernel log | A hash-chained audit journal per task; the kernel can verify the chain |
-| Page cache / coherence | Agent memories remember which documents they came from (`derived_from`); when a document changes, those memories go stale and are re-derived |
-| Security boundary | A context firewall: retrieved text is data, never instructions. Untrusted and instruction-like text is flagged before agents read it |
+| Filesystem | Company knowledge as `/org/...` paths, backed by OKF Markdown files (`data/okf/`) with front-matter (type, trust, privacy, links) |
+| Processes | Agents are processes. Each has a PID, a parent, a state (running, waiting, paused, killed) and quotas (tokens, tool calls, wall time) |
+| Syscalls | Every world-changing action (write Jira, write a file, open a browser) is a governed syscall: **policy → approval → sandboxed execution → verify → commit or rollback** |
+| Kernel log | A hash-chained audit journal per task; the kernel verifies the chain |
+| Cache coherence | Memories record the documents they came from (`derived_from`). When a document changes, those memories go stale and are re-derived from the new text |
+| Protection boundary | A context firewall: retrieved text is data, never instructions. Untrusted or instruction-like text is flagged before agents read it |
 
-Everything runs locally: one Python server (**mosaicd**) with a FastAPI gateway, a Next.js console, Docker sandboxes, Postgres with pgvector, Redis, and local models on Ollama. Private data never leaves the machine (`privacy=restricted` never goes to a remote model).
+Everything runs locally:
+- one Python server, **mosaicd**, with a FastAPI gateway;
+- a Next.js console;
+- Docker sandboxes;
+- Postgres with pgvector, and Redis;
+- local models on Ollama.
 
-### The demo story: Project Apollo
-The user types:
+Data marked `restricted` never goes to a remote model.
 
-> Investigate why Project Apollo is over budget and six weeks behind schedule. Identify root causes, update the tracker, and prepare a recovery plan.
+### The demo: Project Apollo
+Goal: *"Investigate why Project Apollo is over budget and six weeks behind schedule. Identify root causes, update the tracker, and prepare a recovery plan."*
 
-What happens:
+1. The planner (the task's first process) forks specialists: finance, engineering, research and action.
+2. They search `/org` with hybrid retrieval. A vendor email containing a prompt injection is flagged UNTRUSTED, and no agent acts on it.
+3. Research opens vendor docs in a browser sandbox with no internet access.
+4. The action agent requests `jira.write`. Policy requires a human, so the kernel blocks until someone approves from the console, a notification or a phone.
+5. The write runs, is verified and committed. The audit chain is verified.
+6. Result: three cited root causes (dual-run cloud cost; the duplicate-recon-id backfill failure; PayCo certification plus the emergency contract), an overrun of 6.2 lakh / 31%, and a recovery plan.
+7. Edit `data/okf/finance/cloud-bill-2026-09.md`. Within about 0.1 s the finance memories go stale and engineering's stay fresh. Within about 3.5 s the local model re-derives them.
 
-1. The **planner agent** (PID 1 of the task) splits the job and spawns specialists: **finance**, **engineering**, **research**, **action**.
-2. They search `/org` with hybrid retrieval. One hit is a vendor email containing a prompt injection (`/org/inbox/vendor-email-2026-09-12`). The firewall flags it UNTRUSTED/instruction-like, the timeline shows "treated as data, not instructions", and no agent acts on it.
-3. Research opens vendor docs in a **browser sandbox** (no internet access, allowlisted URLs), taking screenshots.
-4. The action agent requests `jira.write` (a comment on APOLLO-31). Policy says external writes need a human, so an **approval** pops up in the console (or on a phone). A human approves.
-5. The write runs, is verified and committed. The audit journal shows the whole chain: "hash chain verified".
-6. The Result tab shows a summary, **the three root causes** with citation chips, and recovery steps. The root causes are: dual-run cloud cost; the duplicate-recon-id backfill failure; PayCo certification plus the emergency contract. The cost is 6.2 lakh / 31% over.
-7. **Invalidation moment:** edit `data/okf/finance/cloud-bill-2026-09.md`. Within about 0.1 s the finance memories go stale (toast naming finance-agent). Within about 3.5 s they are **re-derived** from the new text (a teal "re-derived" chip). Engineering's memories stay fresh. There is an optional variant: swap in `data/demo-assets/security-policy-v2.md`, which invalidates only finance memories.
-
-A real run on the laptop takes about 33–51 s and scores **8/8** on `scripts/demo_run.py`.
+A run takes about 48–51 s on the demo laptop (RTX 5070 Laptop, 8 GB, qwen2.5:7b at about 57 tok/s). `scripts/demo_run.py` scores it out of 8.
 
 ---
 
 ## 2. Architecture
 
 ```
-            Browser console (apps/web, :3000)     Phone: console or Expo app (apps/mobile)
-                          │  HTTP + WebSocket /ws/events
-                          ▼
-  ┌──────────────────────── mosaicd (one Python process, gateway :8089 on the laptop) ─────────────────────────┐
-  │ kernel/        gateway (FastAPI), tasks, process table, scheduler, syscalls, policy, approvals, quotas,       │
-  │                transactions (commit/rollback), audit (hash chain), events bus, lifecycle (resume after crash) │
-  │ agents/        runtime + library agents (planner, finance, engineering, research, action), manifests, IPC,   │
-  │                adapters (NOOA)                                                                                │
-  │ knowledge/     OKF ingestion, indexing (pgvector + lexical + graph), hybrid retrieval, context firewall,      │
-  │                memory (derived_from, invalidation, re-consolidation), coherence (file watcher → reindex)      │
-  │ models/        model router (task class → model), Ollama provider, GPU/resource probe                        │
-  │ execution/     Docker sandbox manager (+ relay on Docker Desktop), tools (fs, jira, browser), connectors, MCP  │
+  Console (apps/web, Next.js desktop, :3000)      Phone (apps/mobile, Expo)      CLI (ai-*)
+                      │  HTTP + WebSocket /ws/events
+                      ▼
+  ┌───────────────────────── mosaicd (one Python process; gateway :8089 on the laptop) ────────────────────────┐
+  │ kernel/     gateway (FastAPI), tasks, process table, scheduler, syscalls, policy, approvals, quotas,          │
+  │             transactions (commit/rollback), audit hash chain, event bus, lifecycle (resume after a crash)     │
+  │ agents/     runtime, library agents (planner, finance, engineering, research, action), manifests, IPC,        │
+  │             registry (loads agents/manifests/*.yaml), adapters (NOOA)                                         │
+  │ knowledge/  ingestion + converters, indexing (pgvector + lexical + graph), hybrid retrieval, context firewall   │
+  │             (regex + optional LLM classifier), memory (derived_from, invalidation, re-derivation), coherence   │
+  │ models/     router (task class and privacy → model), Ollama provider, GPU probe                               │
+  │ execution/  Docker sandbox manager (+ relay on Docker Desktop), tools, connectors (Jira, mock Jira), MCP       │
+  │             backend, headless browser                                                                         │
   └──────────────┬──────────────────────┬──────────────────────┬───────────────────────┬────────────────────────┘
                  ▼                      ▼                      ▼                       ▼
-        Postgres+pgvector (5434)   Redis (6380)       Ollama (11434, GPU)     Docker: sandbox-base, sandbox-browser,
+        Postgres + pgvector      Redis (events)       Ollama (GPU)          Docker: sandbox-base, sandbox-browser,
                                                                               vendor-docs, mosaic_sandbox network
 ```
 
-**Wiring:** `mosaicd/mosaicd/wiring.py` is the only place that imports implementations. Each component can be `fake` or `real` (`MOSAIC_DEFAULT_MODE`, `MOSAIC_MODE_<COMPONENT>`). `uv run mosaicd --print-wiring` shows what backs each service.
+- **Wiring:** `mosaicd/mosaicd/wiring.py` is the only place that imports implementations. Each component is `fake` or `real`: `MOSAIC_DEFAULT_MODE`, or `MOSAIC_MODE_<COMPONENT>` for one component. `uv run mosaicd --print-wiring` lists them. Fake mode needs no GPU, no Docker and no Ollama.
+- **Contracts:** everything that crosses a module boundary lives in `shared/python/mosaic_contracts/`:
+  - `schema/`: Pydantic models;
+  - `interfaces/`: Protocols;
+  - `testing/`: fakes and contract suites;
+  - `wiring.py`: `Settings`, the only config object;
+  - `util`: shared semantics such as `path_allowed` and `privacy_allows`.
 
-**Contracts:** `shared/python/mosaic_contracts/` holds everything that crosses a module boundary:
-- `schema/`: Pydantic models such as Task, AgentProcess, SearchHit, MemoryRecord, Approval, Event and ModelRequest;
-- `interfaces/`: typing Protocols;
-- `testing/`: fakes and contract test suites;
-- `wiring.py`: `Settings`, the only config object;
-- `util`: shared semantics like `path_allowed` and `privacy_allows`.
+  `shared/ts` generates the TypeScript types (`@mosaic/contracts`) used by the web and mobile apps. `shared/catalogs/` lists the events, syscalls, capabilities and error codes.
+- **Contract history:**
 
-`shared/ts` generates the TypeScript types (`@mosaic/contracts`) used by the console and the mobile app. Catalogs in `shared/catalogs/` list events, syscalls, capabilities and error codes.
-
-**Contract history:**
-
-| Version | Change |
-|---|---|
-| 0.4.0 | Handoff baseline |
-| 0.5.0 | `Settings.models_config` (`MOSAIC_MODELS_CONFIG`) |
-| 0.6.0 | `RunTimeline.chain_verified` |
-| 0.7.0 | `EmbedRequest.input_type` (`query` / `document`) for nomic prefixes |
-| 0.8.0 | `Settings.firewall_llm` (`MOSAIC_FIREWALL_LLM`); new flag value `instruction_like_llm` |
+  | Version | Change |
+  |---|---|
+  | 0.4.0 | Handoff baseline |
+  | 0.5.0 | `Settings.models_config` |
+  | 0.6.0 | `RunTimeline.chain_verified` |
+  | 0.7.0 | `EmbedRequest.input_type` (nomic query/document prefixes) |
+  | 0.8.0 | `Settings.firewall_llm` (`MOSAIC_FIREWALL_LLM`), the `instruction_like_llm` flag |
+- **Identity today:** there is none to speak of. The gateway trusts the `X-Mosaic-User` / `X-Mosaic-Org` headers (default `alice` / `acme`). There is no login, and there are no org or member tables. Policies are per agent (`policies/*.yaml`), not per user role. Phase 2 replaces this.
 
 ---
 
-## 3. Status: what is built and verified
+## 3. What is built and verified
 
 ### Backend
-| Feature | State | Where |
-|---|---|---|
-| Kernel: tasks, process table, scheduler, quotas, checkpoints, resume after kill | Done, verified (kill mosaicd mid-run → restart resumes) | `kernel/mosaic_kernel/*` |
-| Governed syscalls: policy → approval → sandbox → verify → commit/rollback | Done | `kernel/.../syscalls`, `policy`, `approvals`, `transactions`; `policies/*.yaml` |
-| Audit hash chain + `chain_ok()` verdict on `/audit/{task}` | Done (0.6.0) | `kernel/.../audit` |
-| Planner: top-3 root causes (dedup, rank), recovery plan list | Done | `agents/mosaic_agents/library/planner.py` (`_top_root_causes`) |
-| Engineering slip grounded in evidence (`grounded_slip()`) | Done | `agents/.../library/engineering.py` |
-| Finance consults `/org/policies` (policy-v2 demo invalidates finance only) | Done | `agents/manifests/finance-agent.yaml`, `library/finance.py`, `policies/finance-agent-v1.yaml` |
-| NOOA adapter: object agents (public async methods with docstrings = skills; model picks one) | Done, tested | `agents/mosaic_agents/adapters/nooa.py` |
-| Hybrid retrieval (lexical + pgvector + graph) | 10/10 QA, MRR 0.90; semantic-only 10/10 (0.83 → 0.90 with nomic prefixes) | `knowledge/mosaic_knowledge/retrieval`, `indexing/store.py` (`EMBED_SCHEME="qd1"`) |
-| Context firewall: regex (always on) | Catches the demo vendor email | `knowledge/mosaic_knowledge/firewall/__init__.py` |
-| Context firewall: LLM classifier (opt-in) | Prompt improved, temperature 0: 3–4 of 5 reworded injections the regex misses, 0 false positives on the bundle, ~0.2 s/doc. Off by default; `MOSAIC_FIREWALL_LLM=true` turns it on (0.8.0); its catches add the flag `instruction_like_llm` | same file; `knowledge/mosaic_knowledge/factory.py` |
-| Memory with `derived_from`, invalidation on source change | Done (stale in ~0.1 s) | `knowledge/.../memory`, `coherence` |
-| Re-consolidation: stale memories re-derived from new text | Done (~3.5 s); tags `reconsolidated`, `replaces:<old id>`; event `memory.consolidated` with source `memory.reconsolidate` | `memory.reconsolidate()`, `coherence._on_changed` |
-| Model router + Ollama provider, nomic `search_query:`/`search_document:` prefixes | Done (0.7.0) | `models/mosaic_models/*`, `models/models.yaml`, `models/models.7b-only.yaml` |
-| Docker sandboxes, network=none by default; browser sandbox with **no internet on Docker Desktop** (relay container publishes the port) | Done, live test | `execution/mosaic_execution/sandbox/docker_manager.py` (`RELAY_SOURCE`, `relay_kwargs`) |
-| In-process mock Jira (`MOSAIC_JIRA_URL=inprocess`) | Done | `execution/.../connectors` |
+| Feature | Where |
+|---|---|
+| Kernel: tasks, process table, scheduler, quotas, checkpoints, resume after kill (verified by killing mosaicd mid-run) | `kernel/mosaic_kernel/*` |
+| Governed syscalls: policy, approval, sandbox, verify, commit/rollback | `kernel/.../syscalls`, `policy`, `approvals`, `transactions`; `policies/*.yaml` (`default-v1`: `jira.write` requires approval) |
+| Audit hash chain, and the kernel's `chain_verified` verdict | `kernel/.../audit` |
+| Planner: top-3 cited root causes and a recovery plan | `agents/mosaic_agents/library/planner.py` |
+| Fixed library agents (planner, finance, engineering, research, action) from manifests | `agents/manifests/*.yaml`, `agents/mosaic_agents/library/`, `registry/` |
+| NOOA adapter: object-style agents run as governed processes | `agents/mosaic_agents/adapters/nooa.py` |
+| Hybrid retrieval: 10/10 on the QA set, MRR 0.90 | `knowledge/mosaic_knowledge/retrieval`, `indexing/store.py` |
+| Firewall: regex always on; LLM classifier opt-in via `MOSAIC_FIREWALL_LLM=true` (3–4 of 5 reworded injections, 0 false positives) | `knowledge/mosaic_knowledge/firewall/` |
+| Memory with `derived_from`, invalidation (~0.1 s) and re-derivation (~3.5 s). A finance finding derives from every finance document it read | `knowledge/.../memory`, `coherence`; `agents/.../library/finance.py` |
+| Ingestion: `POST /knowledge/ingest` takes a **URI**; converters for Markdown, PDF/DOCX (markitdown), CSV, Slack export and Jira JSON. **No upload endpoint and no ingestion UI yet** | `knowledge/mosaic_knowledge/ingestion/` |
+| Browser tool in a sandbox with no internet; an MCP backend; Jira connector plus an in-process mock | `execution/mosaic_execution/{browser,mcp,connectors}` |
 
-### Console (`apps/web`, Next.js 16, Tailwind v4, next-themes, React Query, React Flow)
-| Screen | URL | What it shows |
-|---|---|---|
-| Boot | `/boot` | Full-screen startup checklist; moves to Home when ready (kiosk start) |
-| Home | `/` | Composer with priority, pending approvals, running/recent tasks, live system strip, knowledge count |
-| Tasks | `/tasks` | All tasks |
-| Task | `/tasks/<id>` | Live tab (timeline, process tree with inspector: quotas, capabilities, model), approval drawer (opens itself), sandboxes + screenshots, **Result** tab (summary, 3 root causes with citation chips, recovery steps, committed actions) |
-| Approvals | `/approvals` | Approval center; full-screen card on phones |
-| Audit | `/audit`, `/audit/<task>` | Stat tiles, PID and kind filters, chronological or grouped, hash snippets, "chain intact"/verified verdict |
-| Knowledge | `/knowledge?path=...` | Three panes: tree, document (links to / linked from), search rail; theme graph; Reindex |
-| Memory | `/memory` | Memories with sources; stale chip; teal "re-derived" chip and "replaces MEM-…"; invalidation toasts |
-| Agents | `/agents` | Read-only registry of manifests and tools |
-| System | `/system` | Bar gauges (CPU, RAM, GPU, VRAM), components and modes, models table, sandbox cards |
+### Console
+There are two branches:
+- **`main`**: the older page-based console (sidebar and pages), used in the recorded demo video and in the deck.
+- **`ui/desktop`**: the console as a desktop OS. Kamal is re-skinning it in phase 2 (Mac-like, light, colourful), but the **structure is stable**, so build on it.
 
-Key frontend pieces:
-- `components/global-events.tsx` is the one app-level WebSocket subscription. It handles approvals, knowledge changes, memory invalidation and re-derivation toasts.
-- `lib/mosaic-client.ts` is the API client.
-- `lib/gateway-url.ts` works out the gateway URL at runtime, from the page's host, so phones work.
-- `lib/tones.ts` is the colour-tone map.
-- `lib/process-layout.ts` lays out the process tree (tested).
-- `app/globals.css` holds the design tokens.
-- Unit tests use vitest: `npm test`.
-- UI revamp before/after screenshots are in `docs/ui-revamp/`.
+`ui/desktop` contains:
+- **Desktop:** a wallpaper, a menu bar, a dock and a composer on the empty desktop.
+- **Windows:** you can drag, resize, maximise, minimise and close them. Each app lays out by its **window's** width, using container queries (`@3xl:` and so on, not `md:`).
+- **The URL picks the window in front:** every existing link, deep link and demo script still works.
+- **Wallpaper mosaic:** one tile per /org document. Tiles flare on `knowledge.retrieved`, red when flagged and amber when stale.
+- **Launcher (Ctrl+K)** and **approval notifications** with Approve and Reject on the card.
+- **Terminal app:** `ai-ps`, `ai-top`, `ai-run`, `ai-approve`, `ai-kill`, `ai-audit`, and `ls`/`cd`/`cat`/`search` over /org.
+- **Thinking orbs** (`thinking-orbs`) for every loading state and on each process node, showing what that agent is doing.
+- **Boot screen:** a large live orb with the service checklist.
+- **Apps:** Tasks, Task (live run: timeline, process tree, inspector, result), Approvals, Knowledge, Memory, Audit, Agents, System, Terminal.
 
 ### Mobile (`apps/mobile`, Expo SDK 57)
-There are three tabs: Approvals (polls every 2 s), Compose, and Settings (gateway URL, headers). The web build was tested end to end against the real stack at a 390 px viewport (compose → approve → complete). `npm run typecheck` passes on 0.7.0. It has **not yet been tried in Expo Go on a real phone.**
+There are three tabs: Approvals, Compose and Settings (the gateway URL). It has safe areas, background-aware polling and a risk badge. It has **no login**. The web build was tested end to end against the real stack; it has **not been run on a real device or emulator**, and no APK has been built.
 
 ### Ops and scripts
 | Script | Purpose |
 |---|---|
-| `scripts/win/mosaic-boot.ps1` | Starts Docker services, Ollama with the 7B loaded, mosaicd, console; opens `/boot` in Edge kiosk |
-| `scripts/win/reset-demo.ps1` | Restarts mosaicd (resets mock Jira), empties memories/working sets, runs preflight |
-| `scripts/win/restart-ollama.ps1` | Kills orphan `llama-server.exe` runners holding VRAM, reloads the 7B, prints tok/s |
-| `scripts/win/start-mosaicd.ps1`, `start-console.ps1` | Individual starts (console rebuilds if stale) |
-| `scripts/win/phone-access.ps1` | (admin) LAN URL + QR, firewall rule for Private network; `-Remove` afterwards |
-| `scripts/win/mosaic-shutdown.ps1` | Stop (`-All` also stops Ollama and containers) |
-| `scripts/win/common.ps1` + `local.ps1` | Shared env; `local.ps1` is git-ignored per-machine overrides |
-| `scripts/preflight.py` | Checks readiness, components real, models, ≥ 25 tok/s fully on GPU, sandboxes, bundle, search. Must print "all green" |
-| `scripts/demo_run.py run --auto-approve` / `check <task>` | Runs and scores a task out of 8 |
-| `scripts/check_okf.py`, `ingest_raw.py`, `browser_smoke.py`, `context_pack.py` | Bundle validation, raw → OKF ingest, browser sandbox smoke, agent context pack |
+| `scripts/win/mosaic-boot.ps1` | Starts everything and opens `/boot` in kiosk mode |
+| `scripts/win/reset-demo.ps1` | Restarts mosaicd, empties memories |
+| `scripts/win/restart-ollama.ps1` | Clears orphan GPU runners |
+| `scripts/win/phone-access.ps1` | LAN URL and QR code for phones |
+| `scripts/preflight.py` | Must print "all green" |
+| `scripts/demo_run.py run --auto-approve` / `check <task>` | Runs or scores a task out of 8 |
+| `scripts/record_demo.py` | Records the captioned backup video through the console |
+
+The pitch kit is in `docs/pitch/`: `deck.html` and `RUNBOOK.md` (talk track, fallbacks, judge Q&A).
 
 ---
 
-## 4. The data bundle (`data/okf/`)
+## 4. The console's structure (`ui/desktop`), and how to add an app
 
-The data is a fictional company, "acme", with these folders:
-- `projects/`: apollo, atlas, hermes, iris, zeus;
-- `finance/`: apollo-budget, the cloud bills for 2026-08 and 2026-09, payroll, q3-forecast, vendor-contracts, zeus-budget;
-- `engineering/`: apollo status W36/W37, the backfill-failure postmortem, the reconciliation parity report;
-- `jira/`: APOLLO-12 … 35;
-- `decisions/`: ADR-039/042/045;
-- `meetings/`: two steering meetings;
-- `people/`, `playbooks/`, `policies/` (approvals, data-access, security), `systems/`;
-- `slack/`: apollo-eng, finance-ops, vendor-payco;
-- `inbox/`: the CTO escalation, the finance cloud alert, and the **vendor email carrying the injection**.
+| Piece | File |
+|---|---|
+| URL → app and window key; app titles and sizes | `apps/web/lib/desktop/routes.ts` (`STATIC`, `APPS`) |
+| Window manager (a pure reducer, tested) | `apps/web/lib/desktop/windows.ts` |
+| The desktop shell (URL sync, windows, dock, launcher) | `apps/web/components/desktop/desktop.tsx` (`AppBody` switch) |
+| Window chrome, dock, menu bar, notifications, launcher, wallpaper | `apps/web/components/desktop/*.tsx` |
+| App icons and tints | `apps/web/components/desktop/app-icons.tsx` |
+| The apps | `apps/web/components/apps/*.tsx` |
+| A window's own URL (use instead of `useSearchParams` and `useRouter`) | `apps/web/components/desktop/window-context.tsx` (`useWindowNav`, `useWindowParams`) |
+| Route markers (return null; the desktop reads the URL) | `apps/web/app/<route>/page.tsx` |
+| Orbs and loading states | `apps/web/components/desktop/orb.tsx` (`Orb`, `Loading`), `big-orb.tsx`, `lib/desktop/orb.ts` |
+| Design tokens (colours, radii, shadows) | `apps/web/app/globals.css`. Always use tokens: Kamal's re-skin changes their values |
 
-Each file has YAML front-matter (`type`, `trust`: verified/unverified/untrusted, links). Raw sources are in `data/raw/`, and demo swap files are in `data/demo-assets/`. Validate with `uv run python scripts/check_okf.py`. Don't edit `shared/fixtures/okf/`: it's frozen test data.
-
-Reset after the invalidation demo: `git checkout data/okf/finance/cloud-bill-2026-09.md`.
+**To add an app** (for example Organization, Connections, Ingest or Settings):
+1. Add an `AppId`, a `STATIC` route and an `APPS` entry in `routes.ts`, plus a test line in `windows.test.ts`.
+2. Add an icon and tint in `app-icons.tsx`.
+3. Create the component in `components/apps/<name>.tsx`. Use `useWindowNav().navigate(url)` for in-window navigation, and use container-query breakpoints.
+4. Add a route marker at `app/<route>/page.tsx` (copy an existing one).
+5. Add a case to the `AppBody` switch in `desktop.tsx`, and the app to `DOCK` in `dock.tsx`.
 
 ---
 
-## 5. API (gateway)
+## 5. API (gateway) and events
 
-Every request carries the headers `X-Mosaic-User` and `X-Mosaic-Org`. The OpenAPI spec is `shared/api/openapi.json`.
+Every request carries `X-Mosaic-User` and `X-Mosaic-Org` today; phase 2 adds real sessions. The OpenAPI spec is `shared/api/openapi.json`.
 
 | Group | Endpoints |
 |---|---|
 | System | `GET /health`, `/system/status`, `/system/resources`, `/models` |
-| Tasks | `POST /tasks` `{goal, priority}`, `GET /tasks`, `GET /tasks/{id}`, `POST /tasks/{id}/cancel`, `/resume`, `/checkpoint`, `GET /tasks/{id}/artifacts[/{name}]` |
-| Agents | `GET /agents`, `/agents/tree`, `POST /agents/spawn`, `GET /agents/{pid}`, `POST /agents/{pid}/pause`, `/resume`, `/kill`, `/checkpoint` |
+| Tasks | `POST /tasks {goal, priority}`, `GET /tasks`, `GET /tasks/{id}`, `POST /tasks/{id}/cancel`, `/resume`, `/checkpoint`, `GET /tasks/{id}/artifacts[/{name}]` |
+| Agents | `GET /agents[?task_id]`, `/agents/tree`, `POST /agents/spawn`, `GET /agents/{pid}`, `POST /agents/{pid}/pause`, `/resume`, `/kill`, `/checkpoint` |
 | Registry | `GET /registry/agents`, `/registry/tools` |
-| Knowledge | `GET /knowledge/search?q=&top_k=`, `/knowledge/tree`, `/knowledge/object?path=`, `/knowledge/graph`, `POST /knowledge/ingest`, `/knowledge/reindex`, `/knowledge/validate` |
-| Memory | `GET /memory[?task_id=]` |
-| Governance | `GET /approvals[?status=pending]`, `POST /approvals/{id}/approve`, `/reject`, `GET /audit/{task_id}`, `GET /policies` |
+| Knowledge | `GET /knowledge/search`, `/knowledge/tree?path` (one level), `/knowledge/object?path`, `/knowledge/graph`, `POST /knowledge/ingest {source_type, uri, target_path}`, `/knowledge/reindex`, `/knowledge/validate` |
+| Memory | `GET /memory[?owner&task_id]` |
+| Governance | `GET /approvals[?status]`, `POST /approvals/{id}/approve`, `/reject`, `GET /audit/{task_id}`, `GET /policies` |
 | Execution | `GET /sandboxes` |
-| Events | `WS /ws/events`. Event types are in `shared/catalogs/events.yaml`: task.*, process.*, agent.log, syscall.*, approval.*, transaction.*, audit.appended, ipc.message, knowledge.changed/reindexed/retrieved, memory.invalidated/consolidated, model.invoked, sandbox.*, tool.*, system.* |
+| Events | `WS /ws/events?types=...`, listed in `shared/catalogs/events.yaml`: task.*, process.*, agent.log, syscall.*, approval.*, transaction.*, audit.appended, ipc.message, knowledge.changed/reindexed/retrieved (`paths`, `flagged`), memory.invalidated/consolidated, model.invoked, sandbox.*, tool.*, system.* |
 
-**Mock gateway:** `uv run mosaic-mock-gateway --speed 4 --port 8080` replays a full Apollo run without models, Docker or a GPU. Use it for all UI work. It is also the demo fallback.
+`uv run mosaic-mock-gateway --speed 4 --port 8080` replays a full Apollo run without a GPU, Docker or models. Use it for UI work.
 
 ---
 
 ## 6. Running it
 
-### 6.1 Install (any machine)
-```bash
-uv sync --all-packages --all-extras        # Python 3.12 workspace (+ markitdown for the document converter)
-npm --prefix apps/web ci
-npm --prefix apps/mobile ci                # only if working on mobile
-cp .env.example .env                       # keep MOSAIC_DEFAULT_MODE=fake in .env; tests read it
-```
-
-### 6.2 UI work without a GPU (Person C)
-```bash
-uv run mosaic-mock-gateway --speed 4 --port 8080
-cd apps/web && NEXT_PUBLIC_MOSAIC_URL=http://localhost:8080 npx next dev -p 3002
-```
-
-### 6.3 Backend work: tests
-- `uv run pytest -q` runs everything. Real-model tests (retrieval QA with real embeddings, the firewall LLM test) **skip themselves when Ollama isn't reachable**. Real Postgres tests need `MOSAIC_DATABASE_URL` in `.env` pointing at a pgvector database (they create `mosaic_real` / `mosaic_qa` themselves).
-- Postgres + Redis without the whole stack: `docker compose -f infra/compose/docker-compose.yml up -d postgres redis`. Set `MOSAIC_PG_PORT` / `MOSAIC_REDIS_PORT` if 5432/6379 are taken.
-- Models (if you have a GPU with ≥ 8 GB): `ollama pull qwen2.5:7b-instruct` and `ollama pull nomic-embed-text`, and use `MOSAIC_MODELS_CONFIG=./models/models.7b-only.yaml`.
-
-### 6.4 The real stack (the demo laptop, Person A)
-- `scripts\win\mosaic-boot.ps1`; before each rehearsal `scripts\win\reset-demo.ps1`; `uv run python scripts/preflight.py --gateway http://127.0.0.1:8089`.
-- Laptop ports:
-  - Postgres **5434**, Redis **6380**;
-  - gateway **8089**;
-  - console **3000** (production build) and **3002** (dev);
-  - mock gateway **8080**;
-  - mobile web **8095**;
-  - Ollama **11434**.
-- Ollama env: `OLLAMA_KEEP_ALIVE=-1`, `OLLAMA_CONTEXT_LENGTH=8192`, `OLLAMA_MAX_LOADED_MODELS=2`, `OLLAMA_FLASH_ATTENTION=1`, `OLLAMA_KV_CACHE_TYPE=q8_0`.
-- If generation drops to ~10 tok/s (instead of 55–65), orphan runners hold VRAM: run `restart-ollama.ps1`.
-- `NEXT_PUBLIC_MOSAIC_URL` is baked in at build time, but the console also works out the gateway from the page host. Rebuild the console after pulling UI changes (`start-console.ps1` detects a stale build).
-- Full manual setup and the port-clash table are in `docs/HANDOFF-KAMAL.md` §2. The run sheet, fallbacks and QA checklist are in `docs/DEMO_SCRIPT.md`.
+- **Install:** `uv sync --all-packages --all-extras`, then `npm --prefix apps/web ci`, then `npm --prefix apps/mobile ci`, then `cp .env.example .env` (keep `MOSAIC_DEFAULT_MODE=fake` there; tests read it).
+- **No GPU:**
+  - `uv run mosaic-mock-gateway --port 8080`, then `cd apps/web && NEXT_PUBLIC_MOSAIC_URL=http://localhost:8080 npx next dev -p 3002`;
+  - or a fake-mode mosaicd: `MOSAIC_DEFAULT_MODE=fake uv run mosaicd`. This is the real kernel, gateway, policy, approvals and audit, with fake models, knowledge and sandboxes. Use it to develop backend features like auth, connectors, ingestion and config without a GPU.
+- **Tests:** `uv run pytest -q` and `uvx ruff check .`. Real-model tests skip without Ollama. Web: `npm --prefix apps/web run lint`, `npm --prefix apps/web test`, `npm --prefix apps/web run build`.
+- **The real stack (demo laptop):**
+  - `scripts\win\mosaic-boot.ps1`.
+  - Ports: Postgres 5434, Redis 6380, gateway 8089, console 3000 (kiosk, production build), dev console 3002, preview build 3005 (`NEXT_DIST_DIR=.next-preview`), mock gateway 8080, Ollama 11434.
+  - Ollama: qwen2.5:7b-instruct and nomic-embed-text, `MOSAIC_MODELS_CONFIG=./models/models.7b-only.yaml`.
+  - Full manual setup is in `docs/HANDOFF-KAMAL.md` §2.
 
 ---
 
-## 7. Rules (hackathon)
+## 7. Rules
 
-1. **Branches:** work on your own branch (`b/<topic>`, `c/<topic>`), `git pull --rebase origin main` often, and keep commits small, one logical change each, with a clear message prefixed by area (`p1:`, `p2:`, `p3:`, `p4:`, `ui:`, `docs:`, `contract:`, add `-fix` for fixes).
-2. **Getting into `main`:**
-   - push your branch and tell Kamal;
-   - Kamal (A) fast-forwards or merges it into `main` after a check on the demo laptop;
-   - `main` must always demo at 8/8.
-3. **Before every push:** `uv run pytest -q` and `uvx ruff check .` are green. For web changes, also run `npm --prefix apps/web run lint`, `npm --prefix apps/web test` and `npm --prefix apps/web run build`. **Never force-push. Never skip hooks.**
-4. **Contracts (`shared/`):**
-   - only Person B changes them;
-   - bump `CONTRACT_VERSION` in `shared/python/mosaic_contracts/__init__.py`;
-   - run `uv run mosaic-export-contracts` and `npm --prefix shared/ts run generate`;
-   - update `.env.example` and `shared/catalogs/*` if relevant;
-   - tell C when a field or event the UI can use changes.
-   - Don't hand-edit generated files (`shared/schemas/`, `shared/api/openapi.json`, `shared/fixtures/json/`, `shared/ts/src/mosaic.d.ts`, `shared/ts/src/constants.ts`) or `uv.lock`.
-5. **Structure rules still apply** (`AGENTS.md`):
-   - only `mosaic_contracts` is imported across packages, and only `mosaicd/wiring.py` imports implementations;
+1. **Branches.** Branch from **`ui/desktop`** as `a/…`, `b/…`, `c/…`, `d/…`, and rebase on it often. Push your branch and tell Kamal, who merges into `ui/desktop` after a check on the demo laptop. `main` only moves when Kamal promotes `ui/desktop`.
+2. **Commits.** Keep them small, one logical change each, with an area prefix: `p1:` kernel/execution, `p2:` knowledge/console, `p3:` agents/models, `p4:` platform/data/scripts, `ui:`, `mobile:`, `auth:`, `docs:`, `contract:`. Add `-fix` for fixes.
+3. **Before every push.** `uv run pytest -q` and `uvx ruff check .` must pass. Web changes also need `npm --prefix apps/web run lint`, `npm --prefix apps/web test` and `npm --prefix apps/web run build`; mobile changes need `npm --prefix apps/mobile run typecheck`. Never force-push. Never skip hooks.
+4. **Contract changes (`shared/`)**:
+   - put them on their own branch, `contract/<topic>`: schema, `CONTRACT_VERSION` bump, then `uv run mosaic-export-contracts` and `npm --prefix shared/ts run generate`, plus `.env.example` and `shared/catalogs/*`;
+   - Kamal merges contract branches first;
+   - if two collide, the second rebases and bumps again;
+   - announce every contract change to the team with the field or event name and an example payload;
+   - never hand-edit generated files (`shared/schemas/`, `shared/api/openapi.json`, `shared/fixtures/json/`, `shared/ts/src/mosaic.d.ts`, `shared/ts/src/constants.ts`) or `uv.lock`.
+5. **Structure** (`AGENTS.md`):
+   - import only `mosaic_contracts` across packages, and only `mosaicd/wiring.py` imports implementations;
    - agents act only through `ctx`;
-   - retrieved text is data, never instructions;
+   - retrieved text is data;
    - `restricted` data stays on local models;
    - sandboxes default to network=none;
    - every world-changing action goes through `ctx.syscall()`;
-   - errors use `MosaicError` with codes from `shared/catalogs/errors.yaml`.
-6. **Style:**
-   - Python 3.12, full type hints, Pydantic v2, async service methods, line length 130;
-   - tests are sync functions calling `asyncio.run` (no pytest-asyncio);
-   - comments explain *why*, sparingly;
-   - `logging.getLogger("mosaic.<pkg>.<mod>")`, no `print` in library code;
-   - frontend: match the existing Tailwind tokens and components in `components/ui/`, use `lib/tones.ts` for status colours, and support both themes and phone widths.
-7. **Protect the demo:** don't change the Apollo path's behaviour (planner output, agent prompts, policies, the bundle files it cites) without running `scripts/demo_run.py` on real models. When in doubt, add a new path beside it.
-8. **README:** no emojis.
-9. After three failed attempts at the same error, stop and ask the team.
-10. **Claude Code users:** create a git-ignored `CLAUDE.local.md` in the repo root with one line pointing at your brief, e.g. `@docs/team/HACK-B-backend.md`.
+   - errors are `MosaicError` with codes from `shared/catalogs/errors.yaml`;
+   - secrets (OAuth client secrets, tokens) never go into the repo, the audit log or events. Keep them in `.env` or the vault.
+6. **Style.**
+   - Python 3.12, type hints, Pydantic v2, async services, line length 130;
+   - tests are sync functions calling `asyncio.run`;
+   - comments explain *why*;
+   - `logging.getLogger("mosaic.<pkg>.<mod>")`, no `print`.
+   - Web: design tokens only (no hard-coded colours), container queries inside apps, orbs for loading, both themes, phone widths.
+7. **The demo is sacred.** `ui/desktop` must score 8/8 on real models after every merge. Anything that touches Apollo's retrieval, prompts, planner, policies or the bundle needs that check. If you have no GPU, ask Kamal to run it.
+8. **README and docs:** no emojis.
+9. **When stuck:** after three failed attempts at the same error, stop and ask the team.
+10. **Claude Code users:** create a git-ignored `CLAUDE.local.md` with one line, `@docs/team/PHASE2-<you>.md`.
 
 ---
 
-## 8. Open work (split)
+## 8. Phase 2: goals and work division
 
-**Person A (Kamal): demo, ops, pitch**. The pitch-day runbook (setup, timed talk track, fallback ladder, judge Q&A) is `docs/pitch/RUNBOOK.md`, and the deck is `docs/pitch/deck.html`. The backup video is recorded by `scripts/record_demo.py`.
-- Rehearse `docs/DEMO_SCRIPT.md` three times, including the invalidation and re-derivation moment, and time it.
-- Record a backup video.
-- Set up the venue: power, hotspot, `phone-access.ps1`, kiosk boot.
-- Prepare the pitch deck and judge Q&A.
-- Merge B's and C's branches into `main` and re-check 8/8 after each merge.
+The goal: turn a scripted demo into a product people can sign into, point at their own data and tools, and watch think.
+- Real orgs and roles.
+- Real ingestion.
+- Connected apps.
+- Agents that are created for the job.
+- A transparent thought process.
+- A phone app that works remotely.
+- A configuration centre.
+- A light, Mac-like, colourful desktop.
 
-**Person B: backend and agents** (brief: `docs/team/HACK-B-backend.md`)
-1. A setting to turn the LLM firewall classifier on (contract 0.8.0), wired through the knowledge factory. Visible in the demo.
-2. A second demo scenario beside Apollo, with its own goal, scoring and test.
-3. Robustness from rehearsals: timeouts, planner on non-Apollo goals, clear error events.
-4. Stretch: expose re-consolidation status via the API, or a kernel/CLI polish item.
+| Person | Area | GPU | Brief |
+|---|---|---|---|
+| **A: Kamal** | Desktop UI remake and the run visualisation (the "OS experience"); demo, merges | yes (demo laptop) | below |
+| **B** | Dynamic agents, a transparent thought process (events), SQL/database and browser (Playwright MCP) tools, multi-tool tasks | **yes** | `docs/team/PHASE2-B-agents.md` |
+| **C** | Identity (orgs, Google login, members, roles, RBAC), connectors (GitHub, Google Calendar/Meet), and real ingestion (uploads, URLs, connector sync) with its desktop apps | optional (fake mode is enough) | `docs/team/PHASE2-C-identity-connectors-ingestion.md` |
+| **D** | Mobile app (org login, RBAC, approvals, prompts, live tasks; Android emulator and APK) and the Settings / configuration centre | **no** (mock gateway, fake mode, Android emulator) | `docs/team/PHASE2-D-mobile-settings.md` |
 
-**Person C: frontend, mobile, README** (brief: `docs/team/HACK-C-frontend.md`)
-1. Refresh `README.md` with the new features (re-derivation, LLM firewall, NOOA, phone/mobile, kiosk boot). No emojis.
-2. Console polish for judges: empty, loading and error states on every page; firewall-flag visibility; re-derivation moment on the Memory page.
-3. Expo Go on a real phone against the laptop.
-4. Refresh the screenshots in `docs/ui-revamp/after/` and `docs/readme/screens/`.
+### A (Kamal): the desktop and the visible run
+- **Theme.** A Mac-like, light, colourful theme across the whole UI: the menu bar, windows with traffic-light controls, a dock with magnification, a new wallpaper and landing, and a "techy terminal" accent. Not dark by default.
+- **Shortcuts.** Switch apps (Cmd/Ctrl+Tab-style), open things, and **Alt+Space** opens a floating composer with a real entrance animation, replacing the plain composer box.
+- **Run visualisation.** When a task starts, the task drops to the left. The desktop then shows what is being referred to and opened: documents, tools, sandboxes and agents, as they happen.
+- **Agent faces.** Bigger orbs and **bot avatars** (`bot-avatars`, libraries.dev/bots) for agents: one shape per agent role, "working" while running and "sleeping" when idle.
+- **Transparent thought process.** Render B's new events as a readable story: prompt understanding → agent assignment → creation → sub-agents → SQL query → data.
+- **Integration.** Merge B, C and D, keep 8/8, and re-record the demo once the UI settles.
 
-**Known limits / not planned:**
-- The appliance installer (`infra/appliance/install.sh`) has never been run on a real node.
-- No OpenShell/microVM sandbox backend.
-- No login (use your own hotspot only).
-- The `preflight.sh` script is Linux-only; use `preflight.py`.
+### Interfaces between people (agree on these early)
+- **Principal and RBAC** (C, used by everyone):
+  - the gateway resolves a session (`Authorization: Bearer <token>`) to a Principal `{user, org, roles}`;
+  - `MOSAIC_AUTH=dev` keeps today's header behaviour for tests and the mock;
+  - roles: `owner`, `admin`, `approver`, `member`, `viewer`;
+  - permissions such as `task.create`, `approval.resolve`, `knowledge.ingest`, `connectors.manage`, `config.read`, `members.manage`.
+
+  B bounds dynamic agents by the requesting user's permissions. D's mobile app uses the same login. A shows the signed-in user and org in the menu bar.
+- **Thought-process events** (B defines them, A renders them): for example `task.understood` (intent, entities, capabilities needed), `agent.planned` (role, scope, reason), `agent.created` (the generated manifest), `agent.thought` (a short visible step), `tool.query` (for example SQL text and a row count), `task.data` (columns and rows). They're added to `shared/catalogs/events.yaml` and to the mock gateway's replay, so UI work can proceed without a GPU.
+- **Connectors as tools** (C builds them, B's agents use them): `github.*` and `calendar.*` capabilities are governed syscalls; writes need approval by default. The OAuth tokens live in C's vault and never reach agents.
+- **Config endpoint** (D): `GET /system/config` describes the stack, the models and routing, agents, tools, policies, connectors and versions. Secrets are redacted.
+- **Ingestion endpoints** (C): multipart upload, URL ingest and connector sync, with progress events. C also builds the Ingest desktop app. D may reuse the endpoints in mobile ("share a file into mOSaic").
 
 ---
 
-## 9. History (how we got here)
+## 9. History
 
-1. **M0–M3:** four splits built the kernel/execution (P1), knowledge/memory/console (P2), agents/models (P3) and platform/data/demo (P4) against shared contracts. Integration landed on `main` at contract 0.4.0 (see `docs/HANDOFF-KAMAL.md`).
-2. **Handoff (2026-09-28):** Kamal took over all four areas; the demo moved to his laptop (RTX 5070 Laptop, 8 GB) on qwen2.5:7b.
-3. **Demo hardening:**
+1. **M0–M3.** Four splits built the kernel and execution (P1), knowledge, memory and console (P2), agents and models (P3), and the platform, data and demo (P4) against shared contracts. They were integrated at contract 0.4.0 (`docs/HANDOFF-KAMAL.md`).
+2. **Handoff (2026-09-28).** Kamal took over; the demo moved to his laptop on qwen2.5:7b.
+3. **Hardening.**
    - top-3 root causes;
-   - grounded engineering slip;
-   - finance consults policies;
-   - configurable model file (0.5.0);
-   - Windows scripts and `preflight.py`;
-   - `demo_run.py` 8/8 gate;
-   - configurable compose ports.
-4. **UI revamp**, done in tiers on `ui/revamp` and merged: every page rebuilt; boot, tasks, audit, agents, knowledge and system screens; phone layouts; the gateway URL from the page host; the audit chain verdict (0.6.0).
-5. **Retrieval:** nomic prefixes (0.7.0), and a real-embeddings QA at 10/10.
-6. **Sandbox:** the browser has no internet access on Docker Desktop (relay).
-7. **Stretch items:** re-consolidation plus UI; the NOOA adapter; the mobile app exercised end to end; an improved LLM firewall classifier.
-8. **Public:**
-   - GitHub `github.com/Kamalllx/mOSaic`;
-   - website `mosaic-os-black.vercel.app`;
-   - the demo video and explainer are linked in `README.md`.
-
----
+   - a grounded engineering slip;
+   - finance consults the policies;
+   - a configurable models file (0.5.0);
+   - Windows scripts, `preflight.py`, and the `demo_run.py` 8/8 gate.
+4. **UI revamp in tiers** (merged into `main`), and the audit chain verdict (0.6.0).
+5. **Retrieval.** nomic prefixes (0.7.0) and a real-embeddings QA.
+6. **Sandbox.** The browser has no internet access on Docker Desktop (relay).
+7. **Stretch features.**
+   - re-derivation of memories, plus its UI;
+   - the NOOA adapter;
+   - the mobile web build tested;
+   - the LLM firewall classifier (0.8.0, the setting by Mishka).
+8. **Phase-1 team work.**
+   - Mishka: the firewall setting (0.8.0).
+   - Mayeraa: UI states, the Memory pairing, the mobile polish, the README.
+   - Kamal: integration, plus fixes for a duplicate Memory display, a flaky invalidation dependency and iOS safe areas.
+9. **`ui/desktop`.** The console as a desktop OS: windows, dock, launcher, the wallpaper mosaic, the Terminal, orbs, the boot screen. It scores 8/8 through the new UI.
+10. **Public links.** github.com/Kamalllx/mOSaic, mosaic-os-black.vercel.app, and the demo and explainer videos linked in `README.md`.
 
 ## 10. Where to read more
 | What | Where |
 |---|---|
-| Rules for any agent in the repo | `AGENTS.md`, nested `*/AGENTS.md` |
+| Rules for any agent in the repo | `AGENTS.md`, plus the nested `*/AGENTS.md` files |
 | Full design and plan | `Mosaic_Preoject_Description.md`, `docs/MASTER_PLAN.md`, `docs/FOLDER_STRUCTURE.md` |
-| Handoff, laptop setup, port clashes | `docs/HANDOFF-KAMAL.md` |
-| Demo run sheet, fallbacks, known limits | `docs/DEMO_SCRIPT.md` |
+| Laptop setup and port clashes | `docs/HANDOFF-KAMAL.md` |
+| Demo run sheet, fallbacks | `docs/DEMO_SCRIPT.md`; pitch kit in `docs/pitch/` |
+| Desktop direction | `docs/ui-os/DIRECTION.md` |
 | Per-area service status | `shared/services/P1…P4-*.md` |
-| Original per-area briefs | `docs/team/P1…P4-*.md` |
 | Contract rules | `shared/README.md` |
 | Env variables | `.env.example` |
-| UI revamp record | `docs/ui-revamp/README.md` |
-| Mobile | `apps/mobile/README.md` |
