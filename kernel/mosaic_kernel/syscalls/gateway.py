@@ -21,6 +21,7 @@ from mosaic_contracts.schema import (
 from mosaic_contracts.schema.common import new_id
 
 from ..policy.engine import max_risk
+from .sql_guard import check_sql
 
 if TYPE_CHECKING:
     from ..context.agent_context import KernelAgentContext
@@ -62,7 +63,12 @@ class SyscallGateway:
         elif op.capability != req.capability:
             decision = PolicyDecision(decision=Decision.DENY, policy="kernel", matched_rules=["capability-mismatch"],
                                       reason=f"{req.tool}.{req.operation} requires {op.capability}, not {req.capability}")
+        elif req.tool == "db" and req.operation in ("query", "write") and not (sql := check_sql(req.operation,
+                                                                                    str(req.arguments.get("sql", "")))).ok:
+            decision = PolicyDecision(decision=Decision.DENY, policy="kernel.sql", matched_rules=["sql-guard"], reason=sql.reason)
         else:
+            if req.tool == "db" and req.operation in ("query", "write"):  # the statement that runs is the checked one
+                req = req.model_copy(update={"arguments": {**req.arguments, "sql": sql.sql}})
             req = req.model_copy(update={"risk": max_risk(req.risk, op.risk)})
             decision = await k.services.require("policy").evaluate(req, ctx.principal)
 
