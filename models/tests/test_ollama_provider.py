@@ -46,6 +46,40 @@ def test_embed_errors_are_model_unavailable(response):
     assert e.value.code == "MODEL_UNAVAILABLE"
 
 
+def _raise(exc):
+    def handler(request):
+        raise exc
+
+    return handler
+
+
+def test_an_unreachable_ollama_says_so():
+    """An Ollama restart used to fail agents with "ollama qwen2.5:7b-instruct: " and nothing after it."""
+    from mosaic_contracts.schema import ChatMessage, ModelRequest, Role
+
+    req = ModelRequest(messages=[ChatMessage(role=Role.USER, content="hi")])
+    p, _ = provider(_raise(httpx.ConnectError("")))
+    with pytest.raises(MosaicError) as e:
+        asyncio.run(p.generate(req, "qwen2.5:7b-instruct"))
+    assert e.value.code == "MODEL_UNAVAILABLE"
+    assert e.value.message == "ollama qwen2.5:7b-instruct: cannot reach Ollama at http://ollama (ConnectError)"
+
+    p, _ = provider(_raise(httpx.ConnectError("")))
+    with pytest.raises(MosaicError) as e:
+        asyncio.run(p.embed(EmbedRequest(texts=["a"]), "nomic-embed-text"))
+    assert e.value.message == "ollama embed nomic-embed-text: cannot reach Ollama at http://ollama (ConnectError)"
+
+
+def test_a_model_that_does_not_answer_in_time_is_a_timeout():
+    from mosaic_contracts.schema import ChatMessage, ModelRequest, Role
+
+    p, _ = provider(_raise(httpx.ReadTimeout("")))
+    with pytest.raises(MosaicError) as e:
+        asyncio.run(p.generate(ModelRequest(messages=[ChatMessage(role=Role.USER, content="hi")]), "qwen2.5:7b-instruct"))
+    assert e.value.code == "TIMEOUT"
+    assert e.value.message == "ollama qwen2.5:7b-instruct: no answer within 180s (ReadTimeout)"
+
+
 def test_nomic_gets_its_task_prefix_and_other_models_do_not():
     from mosaic_models.providers.ollama import task_prefixed
 

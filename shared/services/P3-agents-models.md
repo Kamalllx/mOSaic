@@ -28,3 +28,4 @@ Full brief: [docs/team/P3-agents-models.md](../../docs/team/P3-agents-models.md)
 | Agents consult `/org/policies` (needed for the security-policy-v2 invalidation demo) | ☐ follow-up |
 | Review leftovers: `MOSAIC_MODELS_CONFIG` override (contract field, 0.5.0; `models/models.7b-only.yaml` for 8 GB GPUs) | ✅ |
 | Review leftovers: nomic `search_query:`/`search_document:` prefixes (`EmbedRequest.input_type`, contract 0.7.0; semantic MRR 0.83 → 0.90 on data/okf) | ✅ |
+| Projects other than Apollo: the planner passes `inputs["project"]` and anchors generic step goals ("Project Zeus: …"); tracker issue, Jira project, report name, memory tags and vendor page follow the project. Apollo's strings and queries are unchanged (`agents/tests/test_projects.py`) | ✅ Zeus scenario 8/8 on qwen2.5:7b |

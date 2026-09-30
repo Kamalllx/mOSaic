@@ -21,6 +21,12 @@ SEED: dict[str, dict] = {
                   "description": "Blocked on vendor certification. Support ticket open."},
     "ZEUS-7": {"summary": "Warehouse cost dashboard", "status": {"name": "Done"}, "labels": ["analytics"],
                "assignee": {"displayName": "Marco"}, "duedate": "2026-07-15", "description": "Shipped."},
+    "ZEUS-9": {"summary": "Per-team query budgets", "status": {"name": "Blocked"}, "labels": ["warehouse", "cost"],
+               "assignee": {"displayName": "Marco"}, "duedate": "2026-08-29",
+               "description": "Cost guardrails. Blocked on the warehouse role migration; three weeks behind schedule."},
+    "ZEUS-11": {"summary": "Q4 budget risk and warehouse renewal", "status": {"name": "In Progress"},
+                "labels": ["budget", "warehouse"], "assignee": {"displayName": "Ananya"}, "duedate": "2026-10-15",
+                "description": "Tracking issue for the Zeus Q4 budget risk ahead of the steering committee."},
 }
 
 

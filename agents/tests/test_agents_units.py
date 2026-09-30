@@ -109,7 +109,7 @@ def test_planner_runs_exactly_one_action_agent_last():
         {"step_id": "x", "agent": "hr-agent", "goal": "?", "depends_on": []},
         {"step_id": "a3", "agent": "action-agent", "goal": "update APOLLO-40", "depends_on": ["a1"]},
     ]}
-    ctx, spawned = _planner_ctx(plan)
+    ctx, spawned = _planner_ctx(plan, children=CHILDREN)  # specialists with findings: the action step runs
     asyncio.run(PlannerAgent().run("Why is Apollo late?", ctx))
     agents = [a for a, _ in spawned]
     assert agents.count("action-agent") == 1 and agents[-1] == "action-agent", agents

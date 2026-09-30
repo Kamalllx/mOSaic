@@ -25,9 +25,29 @@ BENIGN = [
 ]
 
 
+# The Zeus scenario's renewal email: a reworded injection in the bundle itself, there to show the classifier live.
+BUNDLE_INJECTION = "/org/inbox/vendor-email-2026-09-24"
+
+
 def _hit(text: str, path: str, trust: TrustLevel = TrustLevel.UNTRUSTED) -> SearchHit:
     return SearchHit(path=path, title="t", type="note", snippet=text[:300], body=text, score=1.0, scores={},
                      provenance=Provenance(source="email", trust=trust))
+
+
+def _bundle_docs() -> list[SearchHit]:
+    """The bundle's unverified/untrusted documents that the regex does not flag."""
+    docs = []
+    for f in (REPO_ROOT / "data" / "okf").rglob("*.md"):
+        m = re.match(r"---\n(.*?)\n---\n(.*)", f.read_text(encoding="utf-8"), re.S)
+        fm = yaml.safe_load(m.group(1)) if m else {}
+        if m and (fm or {}).get("trust") in ("unverified", "untrusted") and not any(p.search(m.group(2)) for p in _COMPILED):
+            path = "/org/" + f.relative_to(REPO_ROOT / "data" / "okf").as_posix().removesuffix(".md")
+            docs.append(_hit(m.group(2), path, TrustLevel(fm["trust"])))
+    return docs
+
+
+def test_the_bundles_reworded_injection_gets_past_the_regex():
+    assert BUNDLE_INJECTION in [d.path for d in _bundle_docs()]
 
 
 def test_llm_classifier_catches_paraphrased_injections_without_false_positives():
@@ -38,19 +58,14 @@ def test_llm_classifier_catches_paraphrased_injections_without_false_positives()
 
     fw = ContextFirewall(models=build_model_router(s, ServiceBundle(settings=s)), use_llm_classifier=True)
     assert not any(p.search(t) for t in INJECTIONS for p in _COMPILED), "these are the ones the regex misses"
-    docs = [_hit(t, f"/org/inbox/benign-{i}") for i, t in enumerate(BENIGN)]
-    for f in (REPO_ROOT / "data" / "okf").rglob("*.md"):
-        m = re.match(r"---\n(.*?)\n---\n(.*)", f.read_text(encoding="utf-8"), re.S)
-        fm = yaml.safe_load(m.group(1)) if m else {}
-        if m and (fm or {}).get("trust") in ("unverified", "untrusted") and not any(p.search(m.group(2)) for p in _COMPILED):
-            path = "/org/" + f.relative_to(REPO_ROOT / "data" / "okf").as_posix().removesuffix(".md")
-            docs.append(_hit(m.group(2), path, TrustLevel(fm["trust"])))
+    docs = [_hit(t, f"/org/inbox/benign-{i}") for i, t in enumerate(BENIGN)] + _bundle_docs()
 
     async def go():
         caught = [("instruction_like" in h.firewall_flags) for h in await fw.screen([_hit(t, "/org/inbox/x") for t in INJECTIONS])]
-        false_pos = [h.path for h in await fw.screen(docs) if "instruction_like" in h.firewall_flags]
-        return caught, false_pos
+        flagged = {h.path: h.firewall_flags for h in await fw.screen(docs) if "instruction_like" in h.firewall_flags}
+        return caught, flagged
 
-    caught, false_pos = asyncio.run(go())
+    caught, flagged = asyncio.run(go())
     assert sum(caught) >= 3, f"caught {sum(caught)}/5"  # qwen2.5:7b catches 3-4 of 5 run to run (2/5 with the earlier vaguer prompt)
-    assert false_pos == [], false_pos
+    assert "instruction_like_llm" in flagged.pop(BUNDLE_INJECTION, []), "the Zeus renewal email is caught, and by the LLM"
+    assert flagged == {}, f"false positives: {flagged}"

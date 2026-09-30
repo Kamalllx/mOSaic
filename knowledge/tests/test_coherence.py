@@ -2,6 +2,7 @@
 
 import asyncio
 import shutil
+from uuid import uuid4
 
 import pytest
 from mosaic_contracts.schema import MemoryKind, MemoryRecord, MemoryScope, SearchQuery
@@ -39,7 +40,13 @@ async def _wait_for(events: list, pred, timeout: float = 10.0):
 
 def test_manual_edit_invalidates_dependent_memories_and_reindexes(services):
     s, b = services
-    security = s.okf_dir / "policies" / "security.md"
+    # A document of this run's own: memories persist in the test database, and each run leaves a re-derived memory
+    # resting on the document it edited, so with a fixed path (policies/security) every later run invalidated one more.
+    name = f"key-rotation-{uuid4().hex[:8]}"
+    doc_path = f"/org/policies/{name}"
+    security = s.okf_dir / "policies" / f"{name}.md"
+    security.write_text("---\ntype: policy\ntitle: Key rotation\ndescription: How often keys rotate\ntrust: verified\n---\n\n"
+                        "# Key rotation\n\nQuasarcrypt keys rotate every 90 days.\n", encoding="utf-8")
 
     async def go():
         seen: list = []
@@ -49,7 +56,7 @@ def test_manual_edit_invalidates_dependent_memories_and_reindexes(services):
 
         b.event_bus.subscribe("*", h)
         b.models.responses["rests on documents that have since changed"] = "Quasarcrypt keys now rotate every 30 days."
-        await b.knowledge.read("/org/policies/security", user_principal())  # load + index the scratch bundle
+        await b.knowledge.read(doc_path, user_principal())  # load + index the scratch bundle
         summary = MemoryRecord(
             memory_id=new_id("MEM"),
             kind=MemoryKind.SEMANTIC,
@@ -57,7 +64,7 @@ def test_manual_edit_invalidates_dependent_memories_and_reindexes(services):
             org_id="acme",
             owner="finance-agent",
             content="security policy summary",
-            derived_from=["/org/policies/security"],
+            derived_from=[doc_path],
         )
         derived = summary.model_copy(
             update={"memory_id": new_id("MEM"), "owner": "compliance-agent", "derived_from": [summary.memory_id]}
@@ -72,9 +79,9 @@ def test_manual_edit_invalidates_dependent_memories_and_reindexes(services):
             security.read_text(encoding="utf-8") + "\n## v2\n\nQuasarcrypt keys rotate every 30 days.\n", encoding="utf-8"
         )
 
-        changed = await _wait_for(seen, lambda e: e.type == "knowledge.changed" and e.payload["path"] == "/org/policies/security")
+        changed = await _wait_for(seen, lambda e: e.type == "knowledge.changed" and e.payload["path"] == doc_path)
         invalidated = await _wait_for(
-            seen, lambda e: e.type == "memory.invalidated" and e.payload["source"] == "/org/policies/security"
+            seen, lambda e: e.type == "memory.invalidated" and e.payload["source"] == doc_path
         )
         await _wait_for(seen, lambda e: e.type == "knowledge.reindexed")
         hits = await b.knowledge.search(SearchQuery(text="Quasarcrypt keys rotate"), user_principal())
@@ -92,12 +99,12 @@ def test_manual_edit_invalidates_dependent_memories_and_reindexes(services):
     assert changed.payload["change"] == "updated"
     assert set(invalidated.payload["invalidated"]) == {summary.memory_id, derived.memory_id}
     assert invalidated.payload["affected_agents"] == ["compliance-agent", "finance-agent"]
-    assert hits.hits and hits.hits[0].path == "/org/policies/security", "the edit is searchable after coherence reindexed it"
+    assert hits.hits and hits.hits[0].path == doc_path, "the edit is searchable after coherence reindexed it"
     # re-consolidation: the memory resting on the edited document is re-derived from its new text
     assert invalidated.payload["reconsolidation_queued"] is True
     [new] = redone
     assert new["content"] == "Quasarcrypt keys now rotate every 30 days." and not new["stale"]
-    assert new["owner"] == "finance-agent" and new["derived_from"] == ["/org/policies/security"] and "reconsolidated" in new["tags"]
+    assert new["owner"] == "finance-agent" and new["derived_from"] == [doc_path] and "reconsolidated" in new["tags"]
     assert redone_derived == 0, "a memory derived only from other memories has no document to re-derive from"
 
 

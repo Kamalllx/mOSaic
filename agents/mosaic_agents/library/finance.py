@@ -15,7 +15,7 @@ from mosaic_contracts.schema.common import new_id
 from mosaic_contracts.schema.ipc import A2AMessage
 
 from mosaic_agents.prompts import FinanceOut
-from mosaic_agents.sdk import MosaicAgent, ask_json, cite, gather_evidence, keep_retrieved, remember_finding
+from mosaic_agents.sdk import MosaicAgent, ask_json, cite, gather_evidence, keep_retrieved, project_of, remember_finding
 
 log = logging.getLogger("mosaic.agents.finance")
 
@@ -122,7 +122,8 @@ class FinanceAgent(MosaicAgent):
         read = [h.path for h in evidence.hits if h.path.startswith("/org/finance/")]
         consulted = sorted(h.path for h in policies.hits)
         derived = list(dict.fromkeys([*(cited or sorted(retrieved)[:5]), *read, *consulted]))
-        await remember_finding(ctx, finance_out.summary or "finance finding", derived, tags=["finance", "apollo"])
+        await remember_finding(ctx, finance_out.summary or "finance finding", derived,
+                               tags=["finance", project_of(goal, ctx.inputs).lower()])
 
         return AgentResult(
             pid=ctx.pid,

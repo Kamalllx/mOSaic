@@ -129,12 +129,16 @@ There are three tabs: Approvals, Compose and Settings (the gateway URL). It has 
 ### Ops and scripts
 | Script | Purpose |
 |---|---|
-| `scripts/win/mosaic-boot.ps1` | Starts everything and opens `/boot` in kiosk mode |
-| `scripts/win/reset-demo.ps1` | Restarts mosaicd, empties memories |
-| `scripts/win/restart-ollama.ps1` | Clears orphan GPU runners |
-| `scripts/win/phone-access.ps1` | LAN URL and QR code for phones |
-| `scripts/preflight.py` | Must print "all green" |
-| `scripts/demo_run.py run --auto-approve` / `check <task>` | Runs or scores a task out of 8 |
+| `scripts/win/mosaic-boot.ps1` | Starts Docker services, Ollama with the 7B loaded, mosaicd, console; opens `/boot` in Edge kiosk |
+| `scripts/win/reset-demo.ps1` | Restarts mosaicd (resets mock Jira), empties memories/working sets, runs preflight |
+| `scripts/win/restart-ollama.ps1` | Kills orphan `llama-server.exe` runners holding VRAM, reloads the 7B, prints tok/s |
+| `scripts/win/start-mosaicd.ps1`, `start-console.ps1` | Individual starts (console rebuilds if stale) |
+| `scripts/win/phone-access.ps1` | (admin) LAN URL + QR, firewall rule for Private network; `-Remove` afterwards |
+| `scripts/win/mosaic-shutdown.ps1` | Stop (`-All` also stops Ollama and containers) |
+| `scripts/win/common.ps1` + `local.ps1` | Shared env; `local.ps1` is git-ignored per-machine overrides |
+| `scripts/preflight.py` | Checks readiness, components real, models, ≥ 25 tok/s fully on GPU, sandboxes, bundle, search. Must print "all green" |
+| `scripts/demo_run.py run --auto-approve` / `check <task>` | Runs and scores a task out of 8. `--scenario zeus` runs the second scenario (Project Zeus Q4 budget risk, its own 8 checks); with `MOSAIC_FIREWALL_LLM=true` add `--expect-llm-flag` for a ninth |
+| `scripts/check_okf.py`, `ingest_raw.py`, `browser_smoke.py`, `context_pack.py` | Bundle validation, raw → OKF ingest, browser sandbox smoke, agent context pack |
 | `scripts/record_demo.py` | Records the captioned backup video through the console |
 
 The pitch kit is in `docs/pitch/`: `deck.html` and `RUNBOOK.md` (talk track, fallbacks, judge Q&A).
@@ -251,6 +255,14 @@ The goal: turn a scripted demo into a product people can sign into, point at the
 | **B** | Dynamic agents, a transparent thought process (events), SQL/database and browser (Playwright MCP) tools, multi-tool tasks | **yes** | `docs/team/PHASE2-B-agents.md` |
 | **C** | Identity (orgs, Google login, members, roles, RBAC), connectors (GitHub, Google Calendar/Meet), and real ingestion (uploads, URLs, connector sync) with its desktop apps | optional (fake mode is enough) | `docs/team/PHASE2-C-identity-connectors-ingestion.md` |
 | **D** | Mobile app (org login, RBAC, approvals, prompts, live tasks; Android emulator and APK) and the Settings / configuration centre | **no** (mock gateway, fake mode, Android emulator) | `docs/team/PHASE2-D-mobile-settings.md` |
+
+**Already done by B (Mishka) on `b/hackathon`, merged:**
+- the LLM firewall classifier setting (`MOSAIC_FIREWALL_LLM`, 0.8.0);
+- the second scenario, Project Zeus Q4 budget risk (`demo_run.py --scenario zeus`, with its own 8 checks, and `--expect-llm-flag` for the reworded injection);
+- robustness: model outages are retried with backoff, clearer model errors, and wall-time quotas are enforced;
+- incomplete findings skip the tracker update and fail the task with a partial plan.
+
+See `docs/team/B-HANDOFF.md`.
 
 ### A (Kamal): the desktop and the visible run
 - **Theme.** A Mac-like, light, colourful theme across the whole UI: the menu bar, windows with traffic-light controls, a dock with magnification, a new wallpaper and landing, and a "techy terminal" accent. Not dark by default.

@@ -14,6 +14,11 @@ class KernelConfig:
     in the same task restarts the clock of the task's other pending approvals."""
     escalation_timeout_s: float = 0.0
     """>0: after an agent exhausts its retries, ask a human (approval center) whether to retry once more. 0 = off."""
+    retry_backoff_s: float = 5.0
+    """Wait before retrying an agent that failed on a backend error (MODEL_UNAVAILABLE, TIMEOUT); tripled each time
+    (5 s, then 15 s), so an Ollama restart is ridden out. Other failures retry at once. 0 = no wait."""
+    min_agent_wall_s: float = 1800.0
+    """Every agent's wall-time quota is at least this (a human approval can take a while), whatever the task's."""
     max_restarts: int = 2
     """How many kernel restarts an unfinished task survives (it is resumed from its root checkpoint on boot)."""
     policy_watch_interval_s: float = 2.0
