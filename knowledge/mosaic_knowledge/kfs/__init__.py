@@ -37,7 +37,7 @@ from mosaic_contracts.util import path_allowed, privacy_allows
 
 from ..coherence import watch_bundle
 from ..graph import GraphStore
-from ..indexing import Indexer, PgStore
+from ..indexing import EMBED_SCHEME, Indexer, PgStore
 from ..okf import OKFBundle
 from ..retrieval import HybridRetriever
 from ..validation import validate_bundle
@@ -80,8 +80,8 @@ class KnowledgeFS:
             if self.models is not None:
                 from mosaic_contracts.schema import EmbedRequest
 
-                probe = await self.models.embed(EmbedRequest(texts=["_dimension_probe_"]))
-                dim, model_name = probe.dim, probe.model
+                probe = await self.models.embed(EmbedRequest(texts=["_dimension_probe_"], input_type="document"))
+                dim, model_name = probe.dim, f"{probe.model}+{EMBED_SCHEME}"
             else:
                 dim, model_name = 64, "none"
             await self.store.migrate(dim, model_name)

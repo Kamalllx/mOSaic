@@ -9,6 +9,6 @@ TODO:
 """
 
 from .indexer import Indexer, chunk_body
-from .store import PgStore
+from .store import EMBED_SCHEME, PgStore
 
-__all__ = ["Indexer", "PgStore", "chunk_body"]
+__all__ = ["EMBED_SCHEME", "Indexer", "PgStore", "chunk_body"]

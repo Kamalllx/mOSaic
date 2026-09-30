@@ -57,7 +57,7 @@ class HybridRetriever:
         if SearchMode.SEMANTIC in query.modes and self.models is not None:
             from mosaic_contracts.schema import EmbedRequest
 
-            qvec = (await self.models.embed(EmbedRequest(texts=[query.text]))).vectors[0]
+            qvec = (await self.models.embed(EmbedRequest(texts=[query.text], input_type="query"))).vectors[0]
             rows = await self.store.semantic_search(qvec, query.scope, query.types, query.tags, min_trust_values, _PER_MODE_LIMIT)
             self._apply_mode(candidates, rows, "semantic")
 

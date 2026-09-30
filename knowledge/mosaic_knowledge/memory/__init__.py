@@ -27,7 +27,7 @@ from mosaic_contracts.schema import (
 from mosaic_contracts.schema.common import new_id, utcnow
 from mosaic_contracts.util import estimate_tokens
 
-from ..indexing.store import PgStore
+from ..indexing.store import EMBED_SCHEME, PgStore
 
 # A memory with no word in common with the query is recalled only if its cosine similarity reaches this.
 # Tuned on nomic-embed-text (768-dim): related paraphrases 0.375-0.839 (median 0.51), unrelated pairs 0.320-0.408.
@@ -55,23 +55,23 @@ class MemoryManager:
         if self.models is not None:
             from mosaic_contracts.schema import EmbedRequest
 
-            probe = await self.models.embed(EmbedRequest(texts=["_dimension_probe_"]))
-            dim, model_name = probe.dim, probe.model
+            probe = await self.models.embed(EmbedRequest(texts=["_dimension_probe_"], input_type="document"))
+            dim, model_name = probe.dim, f"{probe.model}+{EMBED_SCHEME}"
         else:
             dim, model_name = 64, "none"
         await self.pg.migrate(dim, model_name)
         self._migrated = True
 
-    async def _embed(self, text: str) -> list[float] | None:
+    async def _embed(self, text: str, input_type: str) -> list[float] | None:
         if self.models is None:
             return None
         from mosaic_contracts.schema import EmbedRequest
 
-        return (await self.models.embed(EmbedRequest(texts=[text]))).vectors[0]
+        return (await self.models.embed(EmbedRequest(texts=[text], input_type=input_type))).vectors[0]
 
     async def store(self, record: MemoryRecord) -> str:
         await self._ensure_ready()
-        vec = await self._embed(record.summary or record.content)
+        vec = await self._embed(record.summary or record.content, "document")
         async with self.pg.connection() as conn:
             await conn.execute(
                 "INSERT INTO memories(memory_id, kind, scope, org_id, owner, task_id, content, summary, "
@@ -104,7 +104,7 @@ class MemoryManager:
 
     async def recall(self, query: MemoryQuery) -> list[MemoryRecord]:
         await self._ensure_ready()
-        qvec = await self._embed(query.text) if query.text else None
+        qvec = await self._embed(query.text, "query") if query.text else None
         where = ["org_id = %s", "kind = ANY(%s)", "scope = ANY(%s)"]
         params: list[Any] = [query.org_id, [k.value for k in query.kinds], [s.value for s in query.scopes]]
         if query.owner:

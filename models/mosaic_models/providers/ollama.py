@@ -15,6 +15,16 @@ from mosaic_contracts.schema import EmbedRequest, EmbedResponse, ModelInfo, Mode
 log = logging.getLogger("mosaic.models.providers.ollama")
 
 
+# nomic-embed-text is trained with task prefixes; without them queries and documents land in one undifferentiated space.
+_NOMIC_PREFIX = {"query": "search_query: ", "document": "search_document: "}
+
+
+def task_prefixed(model: str, req: EmbedRequest) -> list[str]:
+    """The texts as the model expects them: nomic models get their task prefix when the request says what they are."""
+    prefix = _NOMIC_PREFIX.get(req.input_type or "") if model.split(":")[0].endswith("nomic-embed-text") else None
+    return [f"{prefix}{t}" for t in req.texts] if prefix else list(req.texts)
+
+
 class OllamaProvider:
     """One backend: Ollama HTTP API (POST /api/chat, POST /api/embed, GET /api/tags)."""
 
@@ -106,7 +116,7 @@ class OllamaProvider:
         if not req.texts:
             return EmbedResponse(model=model, dim=0, vectors=[])
         try:
-            r = await self.client.post("/api/embed", json={"model": model, "input": req.texts})
+            r = await self.client.post("/api/embed", json={"model": model, "input": task_prefixed(model, req)})
         except httpx.HTTPError as e:
             raise MosaicError("MODEL_UNAVAILABLE", f"ollama embed {model}: {e}") from e
         if r.status_code >= 400:

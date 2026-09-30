@@ -23,6 +23,9 @@ from psycopg.rows import dict_row
 logger = logging.getLogger("mosaic.knowledge.store")
 
 _SCHEMA_PATH = Path(__file__).parent / "schema.sql"
+# How texts are presented to the embedding model (qd1: query/document task prefixes). It is part of the key stored in
+# meta, so changing it drops the stored vectors and re-embeds everything, like a model change.
+EMBED_SCHEME = "qd1"
 
 
 def _to_psycopg_dsn(database_url: str) -> str:

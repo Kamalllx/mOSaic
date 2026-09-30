@@ -99,7 +99,7 @@ class Indexer:
                 continue
             from mosaic_contracts.schema import EmbedRequest
 
-            resp = await self.models.embed(EmbedRequest(texts=batch))
+            resp = await self.models.embed(EmbedRequest(texts=batch, input_type="document"))
             vectors.extend(resp.vectors)
 
         by_path: dict[str, list[tuple[str, int, str | None, str, list[float]]]] = {}

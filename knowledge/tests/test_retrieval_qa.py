@@ -40,7 +40,7 @@ def load_questions(path: Path) -> list[tuple[str, list[str]]]:
 def test_retrieval_qa_on_demo_bundle():
     if not QA.exists() or not OKF.exists() or sum(1 for _ in OKF.rglob("*.md")) < 30:
         pytest.skip("P4's demo bundle (data/okf, data/qa.yaml) isn't on this branch")
-    s = Settings.from_env(dotenv=None)
+    s = Settings.from_env()  # .env points tests at the test server
     if not _postgres_reachable(s.database_url):
         pytest.skip(f"Postgres unreachable at {s.database_url}")
     questions = load_questions(QA)
