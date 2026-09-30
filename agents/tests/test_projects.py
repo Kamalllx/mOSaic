@@ -122,3 +122,24 @@ def test_research_opens_the_projects_vendor_page():
         assert browser.arguments == {"url": url}
         assert result.output["urls_opened"] == [url]
     assert browser.justification == "Retrieve vendor SDK v5 documentation for research", "Apollo's wording is unchanged"
+
+
+def test_planner_warns_when_it_continues_without_a_failed_specialist():
+    from mosaic_contracts.schema import AgentResult, AgentResultStatus, ErrorInfo
+
+    from .test_agents_units import manifest
+
+    async def child(agent, goal, inputs):
+        if agent == "engineering-agent":
+            return AgentResult(pid=1, agent=agent, status=AgentResultStatus.FAILED, error=ErrorInfo(code="TIMEOUT", message="t"),
+                               summary="engineering-agent failed: ollama qwen2.5:7b-instruct: no answer within 180s (ReadTimeout)")
+        return AgentResult(pid=1, agent=agent, status=AgentResultStatus.COMPLETED, summary="ok")
+
+    from mosaic_contracts.testing.fakes import FakeAgentContext
+
+    ctx = FakeAgentContext(manifest=manifest("planner-agent"), responses={"produce a plan": GENERIC_PLAN}, child_runner=child)
+    asyncio.run(PlannerAgent().run(APOLLO, ctx))
+    warnings = [m for level, m, _ in ctx.logs if level == "warning" and "continuing without" in m]
+    assert warnings == ["planner: step s2 (engineering-agent) failed: engineering-agent failed: ollama qwen2.5:7b-instruct: "
+                        "no answer within 180s (ReadTimeout); continuing without its findings"]
+    assert not any("s1 (finance-agent) completed" in m for level, m, _ in ctx.logs if level == "warning")

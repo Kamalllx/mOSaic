@@ -187,7 +187,11 @@ class PlannerAgent(MosaicAgent):
                         upstream[step.step_id] = result.output
                         retrieved.update(p for p in result.evidence if isinstance(p, str))
                         completed_steps.add(step.step_id)
-                        await ctx.log(f"planner: step {step.step_id} ({step.agent}) completed: {result.status}")
+                        if result.status == AgentResultStatus.COMPLETED:
+                            await ctx.log(f"planner: step {step.step_id} ({step.agent}) completed: {result.status}")
+                        else:  # the synthesis goes on without it: say so where the timeline highlights it
+                            await ctx.log(f"planner: step {step.step_id} ({step.agent}) {result.status.value}: "
+                                          f"{result.summary[:300]}; continuing without its findings", level="warning")
                     except Exception as e:
                         await ctx.log(f"planner: wait for step {step.step_id} failed: {e}", level="warning")
                         upstream[step.step_id] = {}
