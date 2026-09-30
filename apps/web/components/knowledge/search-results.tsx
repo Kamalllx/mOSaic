@@ -13,9 +13,10 @@ const MODES: [string, string][] = [
   ["graph", "bg-ev-knowledge"],
 ];
 
-/** Returns "classifier" if the LLM classifier fired, "regex" if only the regex layer fired, null if not flagged. */
+/** Returns "classifier" if the LLM classifier fired, "regex" if only the regex layer fired, null if no instruction-like
+ *  text was found (an untrusted source alone is not a detection). */
 function firewallDetection(flags: string[] | null | undefined): "classifier" | "regex" | null {
-  if (!flags?.length) return null;
+  if (!flags?.includes("instruction_like")) return null;
   return flags.includes("instruction_like_llm") ? "classifier" : "regex";
 }
 
@@ -40,6 +41,7 @@ export function SearchResults({ text, onSelect }: { text: string; onSelect: (p: 
       {ev.hits.map((h, i) => {
         const detection = firewallDetection(h.firewall_flags);
         const flagged = detection !== null;
+        const untrusted = flagged || !!h.firewall_flags?.includes("untrusted_source");
         return (
           <button
             key={h.path}
@@ -53,7 +55,7 @@ export function SearchResults({ text, onSelect }: { text: string; onSelect: (p: 
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-mono text-xs text-text-2">#{i + 1}</span>
               <span className="font-semibold">{h.title}</span>
-              {flagged && <UntrustedBadge />}
+              {untrusted && <UntrustedBadge />}
               {flagged && (
                 <span className="inline-flex items-center gap-1 rounded border border-untrusted/40 px-1.5 py-0.5 font-mono text-xs text-untrusted">
                   {detection === "classifier" ? (
