@@ -32,7 +32,7 @@ Nested `AGENTS.md` files in each top-level folder repeat the local owner and rul
 
 ## Commands
 ```bash
-uv sync --all-packages                         # install the workspace (Python 3.12)
+uv sync --all-packages --all-extras            # install the workspace (Python 3.12); extras add the document converter (markitdown)
 uv run pytest -rs                              # everything; unimplemented contract suites show "skipped: not implemented yet"
 uv run pytest kernel/tests -rs                 # one split
 uvx ruff check . --fix                         # lint (config in pyproject.toml)
