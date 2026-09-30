@@ -14,6 +14,7 @@ Machine-specific ports go in `scripts/win/local.ps1` (git-ignored), e.g. `$env:M
 | Throwaway run, then score | `uv run python scripts/demo_run.py run --auto-approve --gateway http://127.0.0.1:8089` (prints 8/8) |
 | Score the live run | `uv run python scripts/demo_run.py check <task_id> --gateway http://127.0.0.1:8089` |
 | Phone access (optional) | `scripts\win\phone-access.ps1` as administrator: prints the LAN URL and a QR code, opens ports for the Private network only. Afterwards: `scripts\win\phone-access.ps1 -Remove` |
+| Record the backup video | `scripts\win\reset-demo.ps1 -SkipPreflight`, then `uv run python scripts/record_demo.py` (a real run through the console with captions, 1080p, invalidation included; writes `.data/video/*.mp4`) |
 | Stop | `scripts\win\mosaic-shutdown.ps1` (`-All` also stops Ollama and the containers) |
 
 ## Setup (T-30 min, Linux appliance)
