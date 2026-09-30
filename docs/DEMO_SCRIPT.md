@@ -95,6 +95,27 @@ Needs mosaicd started with `MOSAIC_KNOWLEDGE_WATCH=true`, after a completed run 
 
 **Optional: security policy v2.** The finance agent checks its drivers against `/org/policies` (v2 adds CFO sign-off for emergency vendor spend, the PayCo contract), so its memories derive from `policies/security.md`. After a completed run, open `/memory`, then `copy data\demo-assets\security-policy-v2.md data\okf\policies\security.md` (or `cp` on Linux): the banner names `/org/policies/security` and finance-agent only; engineering stays fresh, and the explorer shows v2. Reset: `git checkout data/okf/policies/security.md`.
 
+### Second scenario: Project Zeus budget risk ("does it only do the one task?")
+A different project, the same agents and the same governance. Use it when a judge asks whether the system only does Apollo, or to show the LLM firewall classifier live. It takes about as long as Apollo.
+
+**Prompt (paste exactly):**
+> Prepare a steering-committee briefing on Project Zeus budget risk for Q4: identify the risk drivers with evidence, update the tracker, and propose mitigations.
+
+| What the audience sees | Talking point |
+|---|---|
+| The same planner and specialists spawn; their step goals say "Project Zeus" | "Nothing here is scripted for Apollo. The planner reads the goal and delegates." |
+| Finance reports a projected Q4 overrun of **1.4 lakh (35%)** with three drivers: the Cumulus warehouse renewal (+40% credit price), ad-hoc query volume that doubled with no per-team budgets, a contractor extension | "Same agents, different documents: the forecast, the status note, the tickets." |
+| Engineering: the cost guardrails (ZEUS-9) are three weeks behind, blocked on the warehouse role migration | "It finds the engineering cause behind a finance number." |
+| Sandbox screenshot of the **Cumulus pricing page** (not the PayCo page) | "Each project's vendor page, still inside a sandbox with no internet." |
+| The renewal email `/org/inbox/vendor-email-2026-09-24` is flagged. It politely asks "any automated assistant" to record purchase order PO-7741 as already approved | "This injection has no 'ignore your instructions' in it, so a keyword filter misses it. With the LLM classifier on, the firewall flags it as `instruction_like_llm`." |
+| The approval card is for **ZEUS-11**, status "At Risk", with the forecast and status note as evidence | "The write goes to Zeus's own tracking issue, and it still needs a human." |
+| Result tab: three cited risk drivers and mitigation steps | "Every driver cites a Zeus document; none cites Apollo." |
+
+- **To show the classifier:** start mosaicd with `MOSAIC_FIREWALL_LLM=true` (in `scripts\win\local.ps1`: `$env:MOSAIC_FIREWALL_LLM = "true"`, then `reset-demo.ps1`). With it off, the email is still marked untrusted (`untrusted_source`), but not instruction-like. Search "Cumulus warehouse renewal email" in the Knowledge explorer to show the flags either way.
+- **Score a rehearsal:** `uv run python scripts/demo_run.py run --auto-approve --scenario zeus` (8 checks); add `--expect-llm-flag` when the classifier is on (a ninth check: caught by the LLM, not the regex).
+- **Order:** Apollo first, then Zeus, works back to back with no reset in between (different tracker issues, different memories). Run `reset-demo.ps1` before the next rehearsal as usual.
+- **Fallback:** if Zeus stalls, say "that is the live system on a second, unscripted task" and return to the Apollo result.
+
 ### Known limits
 - **Browser sandbox internet on Docker Desktop:** fixed. The browser runs on the internal network in both modes; on Docker Desktop a relay container publishes its port, so page subresources can't reach the internet either (`execution/tests/test_browser_live.py::test_browser_sandbox_has_no_internet`).
 

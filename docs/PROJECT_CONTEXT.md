@@ -159,7 +159,7 @@ There are three tabs: Approvals (polls every 2 s), Compose, and Settings (gatewa
 | `scripts/win/mosaic-shutdown.ps1` | Stop (`-All` also stops Ollama and containers) |
 | `scripts/win/common.ps1` + `local.ps1` | Shared env; `local.ps1` is git-ignored per-machine overrides |
 | `scripts/preflight.py` | Checks readiness, components real, models, ≥ 25 tok/s fully on GPU, sandboxes, bundle, search. Must print "all green" |
-| `scripts/demo_run.py run --auto-approve` / `check <task>` | Runs and scores a task out of 8 |
+| `scripts/demo_run.py run --auto-approve` / `check <task>` | Runs and scores a task out of 8. `--scenario zeus` runs the second scenario (Project Zeus Q4 budget risk, its own 8 checks); with `MOSAIC_FIREWALL_LLM=true` add `--expect-llm-flag` for a ninth |
 | `scripts/check_okf.py`, `ingest_raw.py`, `browser_smoke.py`, `context_pack.py` | Bundle validation, raw → OKF ingest, browser sandbox smoke, agent context pack |
 
 ---
@@ -286,8 +286,8 @@ cd apps/web && NEXT_PUBLIC_MOSAIC_URL=http://localhost:8080 npx next dev -p 3002
 - Merge B's and C's branches into `main` and re-check 8/8 after each merge.
 
 **Person B: backend and agents** (brief: `docs/team/HACK-B-backend.md`)
-1. A setting to turn the LLM firewall classifier on (contract 0.8.0), wired through the knowledge factory. Visible in the demo.
-2. A second demo scenario beside Apollo, with its own goal, scoring and test.
+1. Done on `b/hackathon`: a setting to turn the LLM firewall classifier on (`MOSAIC_FIREWALL_LLM`, contract 0.8.0).
+2. Done on `b/hackathon`: a second demo scenario, Project Zeus Q4 budget risk (`demo_run.py --scenario zeus`; talk track in `docs/DEMO_SCRIPT.md`).
 3. Robustness from rehearsals: timeouts, planner on non-Apollo goals, clear error events.
 4. Stretch: expose re-consolidation status via the API, or a kernel/CLI polish item.
 
