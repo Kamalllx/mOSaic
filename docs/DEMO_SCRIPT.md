@@ -102,6 +102,8 @@ Needs mosaicd started with `MOSAIC_KNOWLEDGE_WATCH=true`, after a completed run 
 ### Second scenario: Project Zeus budget risk ("does it only do the one task?")
 A different project, the same agents and the same governance. Use it when a judge asks whether the system only does Apollo, or to show the LLM firewall classifier live. It takes about as long as Apollo.
 
+On the desktop: Alt Space, then the "Brief the steering committee on Zeus risk" suggestion, then Run.
+
 **Prompt (paste exactly):**
 > Prepare a steering-committee briefing on Project Zeus budget risk for Q4: identify the risk drivers with evidence, update the tracker, and propose mitigations.
 

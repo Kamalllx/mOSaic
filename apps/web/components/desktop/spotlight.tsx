@@ -22,11 +22,15 @@ import { DOCK_APPS } from "./shortcuts";
 // The prompt from docs/DEMO_SCRIPT.md ("paste exactly").
 export const DEMO_PROMPT =
   "Investigate why Project Apollo is over budget and six weeks behind schedule. Identify root causes, update the tracker, and prepare a recovery plan.";
+// The second scenario from docs/DEMO_SCRIPT.md ("Project Zeus budget risk").
+export const ZEUS_PROMPT =
+  "Prepare a steering-committee briefing on Project Zeus budget risk for Q4: identify the risk drivers with evidence, update the tracker, and propose mitigations.";
 const SUGGESTIONS: [string, string][] = [
   ["Apollo demo prompt", DEMO_PROMPT],
-  ["What changed in the September cloud bill?", "What changed in the September cloud bill, and which decisions does it affect?"],
+  ["Zeus demo prompt", ZEUS_PROMPT],
   ["Who is blocked on Apollo this week?", "Who is blocked on Project Apollo this week, and on what?"],
 ];
+const CHIP_TEXT: Record<string, string> = { "Apollo demo prompt": "Investigate Project Apollo's overrun", "Zeus demo prompt": "Brief the steering committee on Zeus risk" };
 
 type Priority = NonNullable<TaskCreate["priority"]>;
 const PRIORITIES: Priority[] = ["high", "normal", "background"];
@@ -142,7 +146,7 @@ export function Spotlight({ open, onClose }: { open: boolean; onClose: () => voi
                 }}
                 className="rounded-full border border-hairline bg-surface-1/70 px-3 py-1 text-sm transition-colors hover:bg-surface-1"
               >
-                {label === "Apollo demo prompt" ? "Investigate Project Apollo's overrun" : label}
+                {CHIP_TEXT[label] ?? label}
               </button>
             ))}
           </div>
