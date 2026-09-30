@@ -80,14 +80,17 @@ def test_invalidation_cte_is_transitive_and_scoped():
 
 def test_stale_recalled_only_with_include_stale():
     tag = uuid4().hex[:8]
+    # Its own org: in TEST_ORG the other tests' records ("hop 1", "unrelated") are recalled whenever the random query
+    # token hashes onto one of their words in the fake 64-dim embedding (2 in 64 runs).
+    org = f"stale-{tag}"
 
     async def go():
         m = _manager()
-        r = _rec(f"zephyr{tag} ledger note", [f"/org/src-{tag}"])
+        r = _rec(f"zephyr{tag} ledger note", [f"/org/src-{tag}"], org_id=org)
         await m.store(r)
         await m.invalidate(f"/org/src-{tag}")
-        default = await m.recall(MemoryQuery(text=f"zephyr{tag}", org_id=TEST_ORG))
-        with_stale = await m.recall(MemoryQuery(text=f"zephyr{tag}", org_id=TEST_ORG, include_stale=True))
+        default = await m.recall(MemoryQuery(text=f"zephyr{tag}", org_id=org))
+        with_stale = await m.recall(MemoryQuery(text=f"zephyr{tag}", org_id=org, include_stale=True))
         return r, default, with_stale
 
     r, default, with_stale = asyncio.run(go())
