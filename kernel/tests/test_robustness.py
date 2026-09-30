@@ -20,6 +20,10 @@ async def _start(k, quota: ResourceQuota | None = None) -> str:
     return task.task_id
 
 
+# time.monotonic() ticks every ~15.6 ms on Windows, so a measured sleep can read up to one tick short of its length.
+TICK = 0.02
+
+
 def test_a_model_outage_is_ridden_out_with_backoff(make_kernel):
     """An Ollama restart makes calls fail for a few seconds; retrying at once burned all three attempts inside it."""
     attempts: list[float] = []
@@ -41,7 +45,7 @@ def test_a_model_outage_is_ridden_out_with_backoff(make_kernel):
     t = run(go)
     assert t.status == TaskStatus.COMPLETED
     gaps = [b - a for a, b in zip(attempts, attempts[1:], strict=False)]
-    assert gaps[0] >= 0.2 and gaps[1] >= 0.6, f"backoff 0.2 s, then 3x: {gaps}"
+    assert gaps[0] >= 0.2 - TICK and gaps[1] >= 0.6 - TICK, f"backoff 0.2 s, then 3x: {gaps}"
 
 
 def _failed(ctx, code: str = "MODEL_UNAVAILABLE", message: str = OUTAGE):
@@ -75,7 +79,7 @@ def test_a_returned_model_failure_is_retried_too(make_kernel):
 
     t = run(go)
     assert t.status == TaskStatus.COMPLETED and t.result.summary == "completed"
-    assert len(attempts) == 3 and attempts[1] - attempts[0] >= 0.1 and attempts[2] - attempts[1] >= 0.3
+    assert len(attempts) == 3 and attempts[1] - attempts[0] >= 0.1 - TICK and attempts[2] - attempts[1] >= 0.3 - TICK
 
 
 def test_returned_failures_are_not_rerun_where_that_would_repeat_work(make_kernel):
