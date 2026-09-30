@@ -6,8 +6,8 @@ import type { Win } from "@/lib/desktop/windows";
 import { cn } from "@/lib/utils";
 import { AppTile } from "./app-icons";
 
-/** The rail's apps, in order; Alt+1..9 opens the first nine. */
-export const DOCK_APPS: AppId[] = ["tasks", "approvals", "files", "memory", "journals", "programs", "monitor", "terminal", "organization", "connections", "ingest"];
+/** The rail's apps, in order; Alt+1..9 opens the first nine. The work first, then the machine, then the org's setup. */
+export const DOCK_APPS: AppId[] = ["tasks", "approvals", "files", "memory", "journals", "programs", "monitor", "terminal", "ingest", "connections", "organization", "settings"];
 
 /** One place for every shortcut, so the menus, the cheat sheet and the handler agree. Alt, not Ctrl or Cmd: the browser
  *  and the OS keep most Ctrl/Cmd combinations for themselves. */
@@ -19,6 +19,7 @@ export const KEYS = {
   zoom: "Alt Enter",
   desktop: "Alt D",
   terminal: "Alt T",
+  settings: "Alt ,",
   shortcuts: "Alt /",
 } as const;
 
@@ -27,6 +28,7 @@ export const SHEET: [string, string][] = [
   [KEYS.switch, "Switch windows (hold Alt, tap ` to move, release to open)"],
   ["Alt 1 … 9", "Open a rail app"],
   [KEYS.terminal, "Terminal"],
+  [KEYS.settings, "Settings"],
   [KEYS.close, "Close the front window"],
   [KEYS.minimize, "Minimise it"],
   [KEYS.zoom, "Zoom it (maximise or restore)"],

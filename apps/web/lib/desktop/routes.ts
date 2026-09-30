@@ -13,7 +13,8 @@ export type AppId =
   | "terminal"
   | "organization"
   | "connections"
-  | "ingest";
+  | "ingest"
+  | "settings";
 
 export interface AppRoute {
   app: AppId;
@@ -37,6 +38,7 @@ const STATIC: Record<string, AppId> = {
   "/organization": "organization",
   "/connections": "connections",
   "/ingest": "ingest",
+  "/settings": "settings",
 };
 
 /** Parse a console URL. `/`, `/boot` and unknown paths open no window (null). */
@@ -80,5 +82,6 @@ export const APPS: Record<AppId, AppMeta> = {
   terminal: { title: "Terminal", size: [0.5, 0.56], home: "/terminal" },
   organization: { title: "Organization", size: [0.68, 0.8], home: "/organization" },
   connections: { title: "Connections", size: [0.62, 0.78], home: "/connections" },
-  ingest: { title: "Ingest", size: [0.56, 0.72], home: "/ingest" },
+  ingest: { title: "Add knowledge", size: [0.62, 0.8], home: "/ingest" },
+  settings: { title: "Settings", size: [0.8, 0.86], home: "/settings" },
 };
