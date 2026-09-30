@@ -6,7 +6,8 @@ import { createContext, useContext, useState } from "react";
 import { GlobalEvents } from "@/components/global-events";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { createMosaicClient, type MosaicClient } from "@/lib/mosaic-client";
+import { resolveGatewayUrl } from "@/lib/gateway-url";
+import { DEFAULT_BASE_URL, createMosaicClient, type MosaicClient } from "@/lib/mosaic-client";
 
 const ClientContext = createContext<MosaicClient | null>(null);
 
@@ -20,7 +21,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
     () => new QueryClient({ defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false, staleTime: 1_000 } } }),
   );
-  const [client] = useState(() => createMosaicClient());
+  const [client] = useState(() =>
+    createMosaicClient(resolveGatewayUrl(DEFAULT_BASE_URL, typeof window === "undefined" ? undefined : window.location)),
+  );
   return (
     <ThemeProvider attribute="data-theme" defaultTheme="system" enableSystem storageKey="theme" disableTransitionOnChange>
       <ClientContext.Provider value={client}>
