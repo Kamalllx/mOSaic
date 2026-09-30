@@ -34,32 +34,36 @@ Machine-specific ports go in `scripts/win/local.ps1` (git-ignored), e.g. `$env:M
 **Models** (must match `models/models.yaml`; preflight checks them): `ollama pull qwen2.5:7b-instruct llama3.2:3b qwen2.5-coder:7b llava:7b nomic-embed-text`
 (one name per `ollama pull` on older Ollama versions). Planning, reasoning and extraction use qwen2.5:7b-instruct; the demo must run on it: on llama3.2:3b alone the root causes still appear (built from the specialists' findings) but the prose is weaker.
 
-**Console URLs** (gateway `http://<node>:8080`, console `http://<node>:3000`):
+**The console is a desktop** (`ui/desktop` and later). Every URL still works as a deep link and opens its window. Gateway `http://<node>:8080`, console `http://<node>:3000`.
 
-| Screen | URL |
+| Screen | How to open it |
 |---|---|
-| Boot checklist (open it first; it moves to Home when everything is up) | `/boot` |
-| Composer, pending approvals, running tasks, GPU | `/` |
-| Live run: timeline, process tree, inspector; **Result** tab when done | `/tasks/<task_id>` |
-| Every task | `/tasks` |
-| Approval center (the drawer opens by itself on the task page) | `/approvals` |
-| Audit journal (index at `/audit`) | `/audit/<task_id>` |
-| Knowledge explorer (the vendor email) | `/knowledge?path=/org/inbox/vendor-email-2026-09-12` |
-| Memory: findings with sources; the invalidation demo | `/memory` |
-| Agent registry and tools (read-only) | `/agents` |
-| System monitor (modes, GPU, models, sandboxes, screenshot) | `/system` |
+| Boot checklist (open it first; it moves to the desktop when everything is up) | `/boot` |
+| Desktop: greeting, system line, widgets, the knowledge constellation | `/`, or the Desktop icon in the rail (Alt D) |
+| Ask mOSaic (starts a task, or opens an app, task or document) | **Alt Space**, Ctrl K, the Ask bar, or the Ask button in the rail |
+| Live run: docked left with its story; the rest of the desktop is the run stage | `/tasks/<task_id>` (opens by itself after Run). Alt Enter zooms it to the full view (timeline, process tree, inspector, Result tab) |
+| Every task | `/tasks` (Alt 1) |
+| Approvals | `/approvals` (Alt 2). A notification appears by itself; the drawer opens on the task |
+| Knowledge explorer (the vendor email) | `/knowledge?path=/org/inbox/vendor-email-2026-09-12` (Alt 3), or click its node on the desktop |
+| Memory: the invalidation demo | `/memory` (Alt 4) |
+| Audit journal | `/audit/<task_id>` (Alt 5), or the Audit button on the task |
+| Agents, System, Terminal | `/agents`, `/system`, `/terminal` (Alt 6, 7, 8; Alt T for Terminal) |
+
+Other keys: Alt+` switches windows while Alt is held, Alt W closes, Alt M minimises, Alt / lists every shortcut.
 
 ### Screen tour: where each demo moment lives
 | Moment | Where to look |
 |---|---|
-| Agents as processes (steps 2–3) | Task page, **Live** tab: the process tree; click a node for the inspector (quota bars, capabilities, model) |
-| Firewall (4–5) | Task timeline: the retrieval opens by itself with a red **UNTRUSTED** chip and "treated as data, not instructions"; the Knowledge panel on the right repeats it |
-| Sandbox screenshot (8–9) | Right column of the task page (**Sandboxes**), later in the **Result** tab and on `/system` |
-| Approval (10–11) | The drawer opens by itself: plain headline, risk, policy, arguments, evidence chips, Approve / Reject. Missed it? The amber "1 approval waiting" button in the task header, or `/approvals`. On a phone the card is full screen |
-| Commit (12–14) | Timeline: green commit row; **Result** tab, "Actions committed" (verified, with the tracker change) |
-| Audit (15) | The **Audit** button in the task header: stat tiles and "chain intact" |
-| Result (17) | The **Result** tab opens by itself when the run ends: summary, 3 root causes with citation chips, recovery steps |
-| Invalidation (18) | `/memory`: the amber "Source changed" banner, the stale rows tagged "source changed"; a toast shows on every page |
+| Asking (step 1) | Alt Space, click "Investigate Project Apollo's overrun", Run. The Task window docks left |
+| Agents as processes (steps 2–3) | The run stage: each agent is a card with its bot face, PID, tokens and an orb for what it is doing now. The story on the left says "Created finance-agent, engineering-agent…" |
+| Documents read | The stage's "Referred to" card fills as agents read, and the matching nodes on the desktop flare |
+| Firewall (4–5) | The vendor email chip turns red ("untrusted"), its node flares red, and the story says the firewall flagged it: read as data, never as instructions |
+| Sandbox screenshot (8–9) | The stage's "Opened in a sandbox" card |
+| Approval (10–11) | The drawer opens by itself on the task (plain headline, risk, policy, arguments, evidence, Approve / Reject). A notification also appears. On a phone the card is full screen |
+| Commit (12–14) | The story ("Executed, verified and committed"); the stage's "Asked the kernel" card marks jira.write completed |
+| Audit (15) | The **Audit** button on the task: stat tiles and "chain intact" |
+| Result (17) | The stage shows the result when the run ends. Alt Enter zooms the task to its Result tab: summary, 3 root causes with citation chips, recovery steps |
+| Invalidation (18) | `/memory`: the amber "Source changed" banner, the stale rows, then the re-derived ones. The bill's node pulses amber on the desktop |
 
 For the invalidation demo (last row of the run sheet) start mosaicd with `MOSAIC_KNOWLEDGE_WATCH=true` (in `.env`).
 

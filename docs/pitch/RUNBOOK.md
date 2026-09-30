@@ -50,12 +50,12 @@ The run sheet with every demo step is `docs/DEMO_SCRIPT.md`. This page is the sh
 | 0:00 | Slide 1 | "mOSaic is an operating system for a company's AI. Knowledge is a filesystem, agents are processes, and every action they take is a system call the kernel can stop. It all runs on this laptop." |
 | 0:20 | Slide 2 | "Companies want AI that acts on private data. Today that means sending the data out, letting agents act unchecked, or getting answers nobody can trace. Operating systems solved the same problems for programs." |
 | 0:45 | Slide 3 [skip in 3 min] | Walk the table quickly: process = agent, syscall = governed action, kernel log = audit, cache coherence = memory. |
-| 1:05 | Slide 4, then switch to the console | Read the prompt aloud and click **Run**. |
-| 1:15 | Task page, Live tab | "The planner is PID 1 of this task. It forks finance, engineering, research and an action agent. Each is a process with quotas." Click a node to show the inspector. |
-| 1:35 | Timeline: the red UNTRUSTED chip | "One of the documents it found is a vendor email that tries to give the agents orders. The firewall marks it as data. Nothing it asks for will happen." |
-| 1:50 | Sandboxes panel: the screenshot | "Research opened the vendor's docs in a browser sandbox with no internet access." |
+| 1:05 | Slide 4, then switch to the console | Press **Alt Space**, pick "Investigate Project Apollo's overrun", read it aloud, press **Run**. The task drops to the left. |
+| 1:15 | The run stage | "The task tells its story on the left. On the right, every agent is a process: its own face, PID, token count, and what it's doing right now." |
+| 1:35 | Stage: the red "untrusted" chip, and the red node on the desktop | "One of the documents it found is a vendor email that tries to give the agents orders. The firewall marks it as data. Nothing it asks for will happen." |
+| 1:50 | Stage: "Opened in a sandbox" | "Research opened the vendor's docs in a browser sandbox with no internet access." |
 | 2:00 | The approval drawer opens | "Now the agent wants to write to Jira. That's a syscall, and policy says a human decides. The kernel has blocked it. I can see the exact change, the policy and the evidence." Approve (from the phone if it's set up). |
-| 2:20 | Commit row, then the Result tab | "Executed, verified, committed. Three root causes, each citing the documents behind it, and a recovery plan: 6.2 lakh, 31% over." |
+| 2:20 | Story: "Executed, verified and committed"; then Alt Enter for the Result tab | "Executed, verified, committed. Three root causes, each citing the documents behind it, and a recovery plan: 6.2 lakh, 31% over." |
 | 2:45 | Audit button | "Every decision is in a hash-chained journal, and the kernel verifies the chain." |
 | 3:00 | `/memory`, then paste the line into the cloud bill and save | "The agents remember what they learned and where it came from. Watch what happens when finance corrects the bill." Toast and stale chips: "Finance memories are stale; engineering's aren't, because they never read that bill." A few seconds later the teal chips appear: "and the local model has re-derived them from the new text." |
 | 3:40 | Slide 8 | "All measured on this laptop: under a minute, 8 of 8 checks every run, 57 tokens a second on an 8 GB GPU." |

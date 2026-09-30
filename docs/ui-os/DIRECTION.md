@@ -51,3 +51,19 @@ Kamal rejected the dark slate look. What changed:
   - The rest of the desktop becomes the **run stage**: agents as `bot-avatars` with orbs, every referred document (flagged ones red), kernel calls and their decisions, sandbox screenshots, data tables, and the result.
   - The story already reads Person B's thought-process events.
 - **Terminal.** Light, with a coloured prompt and output.
+
+## Revision 3 (2026-09-30, Kamal): "Signal": original, light, smooth
+
+Kamal found revision 2 laggy (especially the dock) and too literally Mac. Changes:
+- **Performance:**
+  - no blur except on the two small chrome strips;
+  - the dock no longer measures and re-renders on every pointer move;
+  - the wallpaper paints once, with flares on a small overlay that animates only while live;
+  - windows are memoised, so dragging never re-renders app contents.
+- **Background:** cool paper with a fine dot grid and soft colour washes, in pure CSS. Over it, the knowledge constellation: one coloured node per document, linked within each folder.
+- **Chrome:**
+  - a mono status strip (a shell-style path for the front window, a kernel health dot);
+  - windows with a 3px accent line in the app's colour and plain minimise / zoom / close;
+  - a bottom **command rail** that is both the Ask box and the app launcher; icons lift on hover with a compositor-only transform.
+- **Landing:** a greeting, a one-line system status in mono, and the Ask bar, left-aligned, with the constellation kept clear of them.
+- **Typing dots** mark the model writing (Spotlight while a task starts, thinking steps in the story, composing agents on the stage).
