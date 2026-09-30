@@ -31,7 +31,7 @@ from mosaic_contracts.schema import (
     Task,
     can_transition,
 )
-from mosaic_contracts.schema.common import new_id
+from mosaic_contracts.schema.common import new_id, utcnow
 from mosaic_contracts.util import has_capability, path_matches
 
 from ..context.agent_context import KernelAgentContext
@@ -42,7 +42,7 @@ if TYPE_CHECKING:
 log = logging.getLogger("mosaic.kernel.lifecycle")
 
 MAX_ATTEMPTS = 3          # first run + 2 retries (blueprint §49)
-MIN_AGENT_WALL_SECONDS = 1800  # human approvals can take a while
+BACKEND_ERRORS = frozenset({"MODEL_UNAVAILABLE", "TIMEOUT"})  # may clear up on their own: retried after a backoff
 
 
 # ---------------------------------------------------------------------------- scope helpers
@@ -107,7 +107,7 @@ class Lifecycle:
             caps = [c for c in caps if has_capability(c, req.capabilities)]
         quota = ResourceQuota(
             max_tokens=manifest.resources.max_tokens_per_task, max_tool_calls=manifest.resources.max_tool_calls,
-            max_wall_seconds=max(task.quota.max_wall_seconds, MIN_AGENT_WALL_SECONDS),
+            max_wall_seconds=max(task.quota.max_wall_seconds, int(k.config.min_agent_wall_s)),
             max_children=task.quota.max_children if manifest.capabilities.agents else 0,
             cpu=manifest.resources.cpu, memory_mb=parse_memory_mb(manifest.resources.memory), gpu=manifest.resources.gpu)
 
@@ -168,39 +168,21 @@ class Lifecycle:
                    restore_state: dict | None = None) -> None:
         k = self.k
         runtime = k.services.require("agent_runtime")
-        goal = k.procs.get(pid).goal
+        proc = k.procs.get(pid)
+        goal = proc.goal
+        # The wall-time quota holds while the agent is blocked too (a model call, a child, a backoff), not only when
+        # it next calls ctx.*, which is all QuotaManager.check_wall can see.
+        wall = proc.quota.max_wall_seconds
+        deadline = asyncio.get_running_loop().time() + wall - (utcnow() - proc.created_at).total_seconds()
         result: AgentResult | None = None
         try:
-            attempt, budget = 0, MAX_ATTEMPTS
-            while result is None:
-                error: ErrorInfo | None = None
-                try:
-                    state = restore_state if attempt == 0 else self._checkpoint_state(pid)
-                    if state:
-                        result = await runtime.restore(manifest, goal, ctx, state)
-                    else:
-                        result = await runtime.run(manifest, goal, ctx)
-                    break
-                except MosaicError as e:
-                    error = e.to_info()
-                    if e.code == "QUOTA_EXCEEDED":
-                        result = self._failed(pid, manifest, error)
-                        break
-                except asyncio.CancelledError:
-                    raise
-                except Exception as e:
-                    log.exception("agent %s (pid %s) crashed", manifest.name, pid)
-                    error = ErrorInfo(code="INTERNAL", message=f"{type(e).__name__}: {e}", retriable=True)
-                attempt += 1
-                await self._to(pid, AgentState.FAILED, reason=error.message, error=error)
-                k.procs.update(pid, attempt_count=attempt)
-                if attempt >= budget:
-                    if not await self._escalate(pid, manifest, error, attempt):
-                        result = self._failed(pid, manifest, error)
-                        break
-                    budget += 1  # a human granted one more attempt
-                await self._to(pid, AgentState.RETRYING, reason=f"attempt {attempt + 1}/{budget}")
-                await self._to(pid, AgentState.RUNNING)
+            async with asyncio.timeout_at(deadline):
+                result = await self._attempts(pid, manifest, ctx, goal, runtime, restore_state)
+        except TimeoutError:
+            error = ErrorInfo(code="QUOTA_EXCEEDED", message=f"pid {pid} exceeded {wall}s wall clock", retriable=False)
+            await self.k.emit(EventType.AGENT_LOG, {"level": "warning", "message": f"{manifest.name} stopped: {error.message}"},
+                              task_id=proc.task_id, pid=pid, source="kernel.lifecycle")
+            result = self._failed(pid, manifest, error)
         except asyncio.CancelledError:
             if self.suspending:
                 return  # kernel shutdown: leave the process unfinished; its task resumes on the next boot
@@ -212,6 +194,56 @@ class Lifecycle:
         if result.status == AgentResultStatus.CANCELLED:
             target = AgentState.TERMINATED
         await self._finish(pid, result, target)
+
+    async def _attempts(self, pid: int, manifest: AgentManifest, ctx: KernelAgentContext, goal: str, runtime,
+                        restore_state: dict | None) -> AgentResult:
+        k = self.k
+        attempt, budget = 0, MAX_ATTEMPTS
+        while True:
+            error: ErrorInfo | None = None
+            try:
+                state = restore_state if attempt == 0 else self._checkpoint_state(pid)
+                if state:
+                    result = await runtime.restore(manifest, goal, ctx, state)
+                else:
+                    result = await runtime.run(manifest, goal, ctx)
+                # The runtime returns a handled MosaicError as a FAILED result rather than raising it, so a model
+                # outage reaches us here. Re-run only where that repeats nothing (see _rerun_is_safe).
+                if not (result.status == AgentResultStatus.FAILED and result.error is not None
+                        and result.error.code in BACKEND_ERRORS and self._rerun_is_safe(pid, manifest)):
+                    return result
+                if attempt + 1 >= budget:
+                    return result
+                error = result.error
+            except MosaicError as e:
+                error = e.to_info()
+                if e.code == "QUOTA_EXCEEDED":
+                    return self._failed(pid, manifest, error)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                log.exception("agent %s (pid %s) crashed", manifest.name, pid)
+                error = ErrorInfo(code="INTERNAL", message=f"{type(e).__name__}: {e}", retriable=True)
+            attempt += 1
+            await self._to(pid, AgentState.FAILED, reason=error.message, error=error)
+            k.procs.update(pid, attempt_count=attempt)
+            if attempt >= budget:
+                if not await self._escalate(pid, manifest, error, attempt):
+                    return self._failed(pid, manifest, error)
+                budget += 1  # a human granted one more attempt
+            await self._to(pid, AgentState.RETRYING, reason=f"attempt {attempt + 1}/{budget}")
+            if error.code in BACKEND_ERRORS and k.config.retry_backoff_s > 0:
+                delay = k.config.retry_backoff_s * 3 ** (attempt - 1)
+                await k.emit(EventType.AGENT_LOG, {"level": "warning", "message": f"{manifest.name}: {error.message}; "
+                                                   f"retrying in {delay:g}s (attempt {attempt + 1}/{budget})"},
+                             task_id=k.procs.get(pid).task_id, pid=pid, source="kernel.lifecycle")
+                await asyncio.sleep(delay)
+            await self._to(pid, AgentState.RUNNING)
+
+    def _rerun_is_safe(self, pid: int, manifest: AgentManifest) -> bool:
+        """A re-run starts the agent over: fine for one that only reads and thinks, not for one that has spawned
+        children (their whole subtree would run again) or that holds approval-gated capabilities (a write could repeat)."""
+        return not manifest.approval.required and self.k.procs.get(pid).usage.children_spawned == 0
 
     def _checkpoint_state(self, pid: int) -> dict | None:
         cp = self.k.store.latest_checkpoint(pid)

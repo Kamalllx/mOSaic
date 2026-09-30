@@ -60,4 +60,6 @@ Full brief: [docs/team/P1-kernel-execution.md](../../docs/team/P1-kernel-executi
 | Quotas · suspend/resume across restarts · checkpoints | ✅ |
 | e2e: all-fake ✅ · every P1 component real on real containers ✅ | ✅ |
 | Scheduled agents (cron, `MOSAIC_KERNEL_SCHEDULES_FILE`) | ✅ |
+| Model outages: an agent whose run fails on `MODEL_UNAVAILABLE`/`TIMEOUT` (raised, or returned as a FAILED result by the runtime) is retried after 5 s, then 15 s (`MOSAIC_KERNEL_RETRY_BACKOFF_S`), unless it has spawned children or holds approval-gated capabilities (a re-run would repeat work or a write). Crashes still retry at once | ✅ live: an Ollama restart mid-run is ridden out; Ollama stopped for good → `task.failed` in 91 s with the reason |
+| Wall-time quota enforced while an agent is blocked (a model call, a child, a backoff), not only at its next `ctx.*` call; floor `MOSAIC_KERNEL_MIN_AGENT_WALL_S` (1800 s) | ✅ live: a 30 s task quota → `task.failed` (`QUOTA_EXCEEDED`) at 30.4 s, nothing left running |
 | Stretch not done: OpenShell/microVM sandbox backend | ☐ |
