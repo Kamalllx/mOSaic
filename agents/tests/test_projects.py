@@ -232,3 +232,20 @@ def test_when_every_specialist_has_findings_the_action_step_runs_as_before():
     assert inputs[-1][0] == "action-agent" and set(action_inputs["upstream"]) == {"s1", "s2", "s3"}
     assert result.status == AgentResultStatus.COMPLETED
     assert "Partial" not in _plan_text(ctx) and not any("skipping tracker update" in m for _, m, _ in ctx.logs)
+
+
+def test_a_specialist_the_model_forgot_is_added_back_before_the_action_step():
+    """A real Apollo run's plan had no research step: nobody read the vendor email or opened the vendor docs (6/8)."""
+    no_research = {"rationale": "r", "steps": [s for s in GENERIC_PLAN["steps"] if s["agent"] != "research-agent"]}
+    ctx, inputs = _planner_ctx(no_research, children=WITH_FINDINGS)
+    asyncio.run(PlannerAgent().run(APOLLO, ctx))
+    assert [a for a, _ in _spawned(ctx)] == ["finance-agent", "engineering-agent", "research-agent", "action-agent"]
+    assert ("research-agent", "Collect vendor SDK context") in _spawned(ctx)
+    assert inputs[-1][0] == "action-agent" and set(inputs[-1][1]["upstream"]) == {"s1", "s2", "s3"}
+
+
+def test_the_floor_adds_specialists_but_never_a_tracker_update_the_model_did_not_plan():
+    only_finance = {"rationale": "r", "steps": [GENERIC_PLAN["steps"][0]]}
+    ctx, _ = _planner_ctx(only_finance, children=WITH_FINDINGS)
+    asyncio.run(PlannerAgent().run(APOLLO, ctx))
+    assert [a for a, _ in _spawned(ctx)] == ["finance-agent", "engineering-agent", "research-agent"]

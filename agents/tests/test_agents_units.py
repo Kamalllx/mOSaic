@@ -113,8 +113,9 @@ def test_planner_runs_exactly_one_action_agent_last():
     asyncio.run(PlannerAgent().run("Why is Apollo late?", ctx))
     agents = [a for a, _ in spawned]
     assert agents.count("action-agent") == 1 and agents[-1] == "action-agent", agents
-    assert sorted(agents[:-1]) == ["engineering-agent", "finance-agent"]
-    assert set(spawned[-1][1]["upstream"]) == {"f", "e"}, "the action step gets every specialist's output"
+    # the plan had no research step: the planner adds the default one back (the default plan's specialists are the floor)
+    assert sorted(agents[:-1]) == ["engineering-agent", "finance-agent", "research-agent"]
+    assert set(spawned[-1][1]["upstream"]) == {"f", "e", "s3"}, "the action step gets every specialist's output"
 
 
 def test_action_agent_shows_the_root_cause_documents_to_the_approver():
@@ -142,6 +143,8 @@ CHILDREN = {
                                         {"issue": "APOLLO-31", "cause": "vendor SDK v5 certification",
                                          "evidence": ["/org/engineering/apollo-status"]}]},
                           ["/org/engineering/apollo-status"]),
+    # research counts as having findings when it opened a page (the planner adds it back when a plan leaves it out)
+    "research-agent": ({"findings": [], "urls_opened": ["http://vendor-docs/sdk-v5.html"]}, []),
 }
 
 

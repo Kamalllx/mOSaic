@@ -152,6 +152,21 @@ class PlannerAgent(MosaicAgent):
             await ctx.log("planner: using fallback plan (LLM output unusable)")
             steps = await self._validate_steps(ctx, default_plan(project), allowed)
 
+        # The default plan's specialists are the floor. The model sometimes drops one: a real Apollo run planned no
+        # research step, so nobody read the vendor email or opened the vendor docs. A missing specialist is added back
+        # before the action step; whether there is an action step at all stays the model's call.
+        present = {s.agent for s in steps}
+        missing = [d for d in default_plan(project) if d.agent != "action-agent" and d.agent in allowed and d.agent not in present]
+        if missing:
+            ids = {s.step_id for s in steps}
+            for d in missing:
+                while d.step_id in ids:
+                    d.step_id += "b"
+                ids.add(d.step_id)
+            await ctx.log(f"planner: adding {', '.join(d.agent for d in missing)} to the plan (every specialist contributes findings)")
+            specialists = [s for s in steps if s.agent != "action-agent"]
+            steps = await self._validate_steps(ctx, specialists + missing + [s for s in steps if s.agent == "action-agent"], allowed)
+
         # The 7B's step goals are often generic ("Analyze the budget variance"), and a specialist's search is its step
         # goal: fine for Apollo, which dominates the bundle, but any other project would retrieve Apollo's documents.
         # Apollo's goals are left exactly as planned so the demo run's queries do not change.
