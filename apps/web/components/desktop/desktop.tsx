@@ -11,6 +11,7 @@ import { JournalsApp } from "@/components/apps/journals";
 import { MemoryApp } from "@/components/apps/memory";
 import { MonitorApp } from "@/components/apps/monitor";
 import { ProgramsApp } from "@/components/apps/programs";
+import { SettingsApp } from "@/components/apps/settings";
 import { TaskApp } from "@/components/apps/task";
 import { TasksApp } from "@/components/apps/tasks";
 import { TerminalApp } from "@/components/apps/terminal";
@@ -49,6 +50,8 @@ function AppBody({ win }: { win: Win }) {
       return <MonitorApp />;
     case "terminal":
       return <TerminalApp />;
+    case "settings":
+      return <SettingsApp />;
   }
 }
 

@@ -18,6 +18,7 @@ import type {
   ResourceSnapshot,
   RunTimeline,
   SandboxInfo,
+  SystemConfig,
   SystemStatus,
   Task,
   TaskCreate,
@@ -112,6 +113,8 @@ export function createMosaicClient(baseUrl = DEFAULT_BASE_URL, user = "alice", o
     policies: () => call<PolicyDocument[]>("GET", "/policies"),
     // system
     status: () => call<SystemStatus>("GET", "/system/status"),
+    /** Read-only description of the running system; secrets are redacted server-side. */
+    systemConfig: () => call<SystemConfig>("GET", "/system/config"),
     resources: () => call<ResourceSnapshot>("GET", "/system/resources"),
     sandboxes: (taskId?: string) => call<SandboxInfo[]>("GET", `/sandboxes${q({ task_id: taskId })}`),
 
