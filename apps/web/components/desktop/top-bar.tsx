@@ -21,7 +21,7 @@ const subscribeClock = (tick: () => void) => {
   const t = setInterval(tick, 10_000);
   return () => clearInterval(t);
 };
-const clockNow = () => new Date().toLocaleString([], { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+const clockNow = () => new Date().toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false });
 
 export interface MenuActions {
   spotlight: () => void;
@@ -35,7 +35,7 @@ export interface MenuActions {
   boot: () => void;
 }
 
-const content = "material-strong z-[7000] min-w-56 rounded-[10px] p-1 text-[13px] text-chrome-ink shadow-window";
+const content = "panel z-[7000] min-w-56 rounded-[12px] p-1 text-[13px] text-foreground";
 const item =
   "flex cursor-default select-none items-center gap-2 rounded-[5px] px-2.5 py-1 outline-none data-[highlighted]:bg-brand data-[highlighted]:text-white data-[disabled]:opacity-40";
 
@@ -52,7 +52,7 @@ function Item({ label, keys, onSelect, disabled, icon }: { label: string; keys?:
 function Menu({ label, bold, children }: { label: React.ReactNode; bold?: boolean; children: React.ReactNode }) {
   return (
     <Menubar.Menu>
-      <Menubar.Trigger className={cn("rounded-[5px] px-2 py-0.5 outline-none data-[state=open]:bg-black/10 dark:data-[state=open]:bg-white/15", bold && "font-bold")}>{label}</Menubar.Trigger>
+      <Menubar.Trigger className={cn("rounded-md px-2 py-0.5 outline-none hover:bg-surface-3 data-[state=open]:bg-surface-3", bold && "font-semibold")}>{label}</Menubar.Trigger>
       <Menubar.Portal>
         <Menubar.Content className={content} align="start" sideOffset={5}>
           {children}
@@ -74,11 +74,14 @@ export function TopBar({ front, wins, actions, compact }: { front?: Win; wins: W
   const status = useQuery({ queryKey: ["system-status"], queryFn: () => client.status(), refetchInterval: 15_000 });
   const clock = useSyncExternalStore(subscribeClock, clockNow, () => "");
   const appName = front ? (front.app === "task" ? "Task" : APPS[front.app].title) : "Desktop";
+  // A shell-style path for the front window: ~/tasks/T-1c15, ~/knowledge?path=…
+  const crumb = front ? `~${front.url.split("?")[0]}` : "~";
+  const up = status.data?.ready;
 
   return (
-    <header className="material relative z-[5000] flex h-[28px] shrink-0 items-center gap-1 border-x-0 border-t-0 px-2.5 text-[13px] text-chrome-ink">
+    <header className="chrome relative z-[5000] flex h-[30px] shrink-0 items-center gap-1 border-x-0 border-t-0 px-2.5 text-[13px] text-foreground">
       <Menubar.Root className="flex items-center gap-0.5">
-        <Menu label={<Mark className="size-4" />}>
+        <Menu label={<span className="flex items-center gap-1.5"><Mark className="size-4" /><span className="font-mono text-[12px] font-semibold">mosaic</span></span>}>
           <Item label="About mOSaic" disabled />
           {status.data && <Item label={`Kernel ${status.data.version} · contract ${status.data.contract_version}`} disabled />}
           <Sep />
@@ -94,6 +97,7 @@ export function TopBar({ front, wins, actions, compact }: { front?: Win; wins: W
           <Item label="Keyboard shortcuts" keys={KEYS.shortcuts} onSelect={actions.shortcuts} />
           <Item label="Restart (boot screen)" onSelect={actions.boot} />
         </Menu>
+        <span className="mx-1 hidden max-w-[28vw] truncate font-mono text-[12px] text-text-2 md:inline" title={front?.url}>{crumb}</span>
         <Menu label={appName} bold>
           <Item label={`About ${appName}`} disabled />
           <Sep />
@@ -129,10 +133,13 @@ export function TopBar({ front, wins, actions, compact }: { front?: Win; wins: W
         )}
       </Menubar.Root>
 
-      <div className="ml-auto flex items-center gap-1">
-        <button type="button" onClick={actions.spotlight} className="bar-btn gap-1.5 px-2" aria-label="Ask mOSaic (Alt Space)">
+      <div className="ml-auto flex items-center gap-1 font-mono text-[12px]">
+        <span className="hidden items-center gap-1.5 px-1.5 text-text-2 lg:flex" title={up ? "kernel ready" : "kernel starting"}>
+          <span className={cn("size-1.5 rounded-full", up ? "bg-st-running" : "bg-st-waiting")} aria-hidden />
+          kernel {status.data?.version ?? ""}
+        </span>
+        <button type="button" onClick={actions.spotlight} className="bar-btn px-2" aria-label="Ask mOSaic (Alt Space)">
           <Search className="size-3.5" />
-          {!compact && <kbd className="font-mono text-[11px] opacity-70">Alt Space</kbd>}
         </button>
         {running > 0 && (
           <Link href="/tasks" className="bar-btn gap-1.5 px-2" title="Running tasks">
@@ -153,7 +160,7 @@ export function TopBar({ front, wins, actions, compact }: { front?: Win; wins: W
           <Bell className="size-3.5" />
           {pending > 0 && <span className="font-mono text-xs font-bold">{pending}</span>}
         </Link>
-        <span className="whitespace-nowrap px-1.5 text-[13px] tabular-nums">{clock}</span>
+        <span className="whitespace-nowrap px-1.5 tabular-nums">{clock}</span>
       </div>
     </header>
   );
