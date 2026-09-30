@@ -13,8 +13,9 @@ import { DOCK_APPS } from "./shortcuts";
 /** Windows that belong to a rail app (a task window counts as Tasks, a journal as Audit). */
 const FAMILY: Partial<Record<AppId, AppId[]>> = { tasks: ["tasks", "task"], journals: ["journals", "journal"] };
 
-/** The command rail: ask mOSaic on the left, the apps on the right. Hover lifts an icon with a compositor-only transform;
- *  nothing is measured or re-rendered as the pointer moves. */
+/** The command rail, centred under the desktop: ask mOSaic, the desktop, then the apps (Settings last). Every item is the
+ *  same size, so the rail is symmetric. Hover lifts an icon with a compositor-only transform; nothing is measured or
+ *  re-rendered as the pointer moves. */
 export function Dock({ wins, focusedKey, compact, onApp, onDesktop, onAsk }: { wins: Win[]; focusedKey?: string; compact: boolean; onApp: (app: AppId, home: string) => void; onDesktop: () => void; onAsk: () => void }) {
   const pending = usePendingApprovals().data?.length ?? 0;
   const running = (useTasks().data ?? []).some((t) => isActive(t.status));
@@ -45,18 +46,13 @@ export function Dock({ wins, focusedKey, compact, onApp, onDesktop, onAsk }: { w
   }
 
   return (
-    <nav aria-label="Command rail" className="chrome flex items-center gap-2 rounded-[18px] p-2 shadow-window">
-      <button
-        type="button"
-        onClick={onAsk}
-        aria-label="Ask mOSaic (Alt Space)"
-        className="flex h-11 w-64 items-center gap-2.5 rounded-[12px] bg-surface-2 px-3 text-left text-sm text-text-2 transition-colors hover:bg-surface-3"
-      >
-        <Orb state="breathing" label="mOSaic" />
-        <span className="flex-1 truncate">Ask mOSaic…</span>
-        <kbd className="rounded border border-hairline bg-surface-1 px-1.5 font-mono text-[11px]">Alt Space</kbd>
+    <nav aria-label="Command rail" className="chrome flex items-center gap-2 rounded-[20px] p-2 shadow-window">
+      <button type="button" onClick={onAsk} aria-label="Ask mOSaic (Alt Space)" className="rail-item group relative flex flex-col items-center">
+        <span className="rail-icon flex size-11 items-center justify-center rounded-[12px] bg-gradient-to-br from-[#0d9488] to-[#2563eb] shadow-[inset_0_1px_0_rgb(255_255_255/0.3)]">
+          <Orb state="breathing" size={32} theme="dark" label="Ask mOSaic" />
+        </span>
+        <Tip label="Ask mOSaic · Alt Space" />
       </button>
-      <span className="mx-1 h-8 w-px bg-hairline" aria-hidden />
       <button type="button" onClick={onDesktop} aria-label="Desktop" aria-current={!focusedKey ? "true" : undefined} className="rail-item group relative flex flex-col items-center">
         <span className="rail-icon flex size-11 items-center justify-center rounded-[12px] bg-surface-2 text-foreground">
           <LayoutGrid className="size-5" />
@@ -66,8 +62,10 @@ export function Dock({ wins, focusedKey, compact, onApp, onDesktop, onAsk }: { w
       {items.map((app) => {
         const family = FAMILY[app] ?? [app];
         const open = wins.some((w) => family.includes(w.app));
+        const divider = app === "ingest" ? <span key="sep" className="mx-0.5 h-8 w-px bg-hairline" aria-hidden /> : null;
         const active = wins.some((w) => w.key === focusedKey && family.includes(w.app));
-        return (
+        return [
+          divider,
           <button key={app} type="button" onClick={() => onApp(app, APPS[app].home)} aria-label={APPS[app].title} aria-current={active ? "true" : undefined} className="rail-item group relative flex flex-col items-center">
             <span className={cn("rail-icon relative", app === "approvals" && pending > 0 && "dock-bounce")}>
               <AppTile app={app} size={44} />
@@ -82,8 +80,8 @@ export function Dock({ wins, focusedKey, compact, onApp, onDesktop, onAsk }: { w
             </span>
             <span className="absolute -bottom-1.5 h-[3px] rounded-full transition-all duration-200" style={{ width: active ? 18 : open ? 5 : 0, background: active ? APP_TINT[app] : "var(--text-2)" }} aria-hidden />
             <Tip label={APPS[app].title} />
-          </button>
-        );
+          </button>,
+        ];
       })}
     </nav>
   );

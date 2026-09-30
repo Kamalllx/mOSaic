@@ -14,6 +14,11 @@ export const FOLDER_HUES: Record<string, string> = {
   projects: "#ff8a3d",
   slack: "#f5a623",
   systems: "#5c6bc0",
+  // Phase 2: what connectors, uploads and mounted folders bring in.
+  github: "#57606a",
+  calendar: "#1a73e8",
+  uploads: "#e8590c",
+  mnt: "#d9480f",
 };
 
 export const folderHue = (path: string) => FOLDER_HUES[folderOf(path)] ?? "#8a94a6";

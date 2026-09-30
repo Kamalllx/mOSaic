@@ -8,6 +8,7 @@ import { approvalHeadline } from "@/components/approval-card";
 import { TaskStatusBadge, duration } from "@/components/status";
 import { byNewest } from "@/components/task-row";
 import { isActive } from "@/lib/events";
+import { firstName, useSession } from "@/components/session";
 import { cn } from "@/lib/utils";
 import { AppTile } from "./app-icons";
 import { useAllDocs, useModels, usePendingApprovals, useResources, useTasks } from "./hooks";
@@ -22,9 +23,10 @@ const greeting = () => {
   return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
 };
 
-/** The empty desktop's way in: a greeting, one line on the state of the system, and the Ask bar. */
+/** The empty desktop's way in, centred on the mosaic: a greeting, one line on the state of the system, the Ask bar. */
 export function Hero({ onAsk, compact }: { onAsk: () => void; compact: boolean }) {
   const client = useClient();
+  const { me, can } = useSession();
   const hello = useSyncExternalStore(subscribe, greeting, () => "Hello");
   const status = useQuery({ queryKey: ["system-status"], queryFn: () => client.status(), refetchInterval: 15_000 });
   const agents = useQuery({ queryKey: ["registry-agents"], queryFn: () => client.registry(), staleTime: 60_000 });
@@ -42,11 +44,11 @@ export function Hero({ onAsk, compact }: { onAsk: () => void; compact: boolean }
     gpu ? gpu.name.replace(/^NVIDIA GeForce /, "") : null,
   ].filter(Boolean);
   return (
-    <div className={cn("w-full max-w-[640px]", compact && "text-center")}>
+    <div className="w-full max-w-[680px] text-center">
       <h1 className={cn("font-semibold tracking-[-0.03em] text-foreground", compact ? "text-4xl" : "text-[52px] leading-[1.05]")}>
-        {hello}, Alice.
+        {hello}, {firstName(me)}.
       </h1>
-      <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[13px] text-text-2" aria-label="System">
+      <p className="mt-3 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 font-mono text-[13px] text-text-2" aria-label="System">
         <span className={cn("size-2 rounded-full", status.data?.ready ? "bg-st-running" : "bg-st-waiting")} aria-hidden />
         {facts.map((f, i) => (
           <span key={i} className="flex items-center gap-2">
@@ -62,7 +64,7 @@ export function Hero({ onAsk, compact }: { onAsk: () => void; compact: boolean }
         aria-label="Ask mOSaic (Alt Space)"
       >
         <Orb state="breathing" size={32} label="mOSaic" />
-        <span className="flex-1 text-lg text-text-2">What should mOSaic work on?</span>
+        <span className="flex-1 text-lg text-text-2">{can("task.create") ? "What should mOSaic work on?" : "Search your organization's knowledge"}</span>
         <kbd className="rounded-md border border-hairline bg-surface-2 px-2 py-0.5 font-mono text-xs text-text-2">Alt Space</kbd>
       </button>
     </div>

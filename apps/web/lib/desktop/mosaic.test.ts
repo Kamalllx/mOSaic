@@ -40,4 +40,22 @@ describe("wallpaper mosaic", () => {
     expect(a.tiles).toHaveLength(docs.length);
     expect(a.tiles.every((t) => !(t.col >= 0.25 * a.cols && t.col <= 0.6 * a.cols && t.row >= 0.05 * a.rows && t.row <= 0.45 * a.rows))).toBe(true);
   });
+
+  it("keeps several boxes clear (the centred Ask bar and the widget column)", () => {
+    const hero: [number, number, number, number] = [0.27, 0.1, 0.73, 0.5];
+    const widgets: [number, number, number, number] = [0.78, 0, 1, 1];
+    const a = layoutMosaic(docs, 1600, 900, 28, { cx: 0.5, rx: 0.34, cy: 0.5, ry: 0.36, avoid: [hero, widgets] });
+    expect(a.tiles).toHaveLength(docs.length);
+    const inside = (t: { col: number; row: number }, [x0, y0, x1, y1]: number[]) =>
+      t.col >= x0 * a.cols && t.col <= x1 * a.cols && t.row >= y0 * a.rows && t.row <= y1 * a.rows;
+    expect(a.tiles.some((t) => inside(t, hero) || inside(t, widgets))).toBe(false);
+  });
+
+  it("can lay the patches out as a border round a frame, with names clear of the top bar", () => {
+    const a = layoutMosaic(docs, 1600, 900, 30, { frame: [0.06, 0.1, 0.72, 0.8], avoid: [[0.26, 0.17, 0.74, 0.5], [0.78, 0, 1, 1]] });
+    expect(a.tiles).toHaveLength(docs.length);
+    expect(a.labels.every((l) => l.y > 30)).toBe(true);
+    const cols = new Set(a.labels.map((l) => Math.round(l.x / 100)));
+    expect(cols.size).toBeGreaterThan(1);
+  });
 });

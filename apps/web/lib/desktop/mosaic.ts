@@ -35,14 +35,17 @@ export function hash2(a: number, b: number): number {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
 
-/** `cx`/`rx` place the ellipse the folder patches sit on, as fractions of the width (the default centres it); `avoid`
- *  keeps a box clear (fractions of width and height), for what the desktop draws over the wallpaper. */
+/** A box as fractions of the screen: [x0, y0, x1, y1]. */
+export type Box = [x0: number, y0: number, x1: number, y1: number];
+
+/** `cx`/`rx` (fractions of the width) and `cy`/`ry` (of the height) place the ellipse the folder patches sit on (the
+ *  default centres it); `avoid` keeps boxes clear, for what the desktop draws over the wallpaper. */
 export function layoutMosaic(
   docs: Doc[],
   width: number,
   height: number,
   cell = 26,
-  shape: { cx?: number; rx?: number; avoid?: [x0: number, y0: number, x1: number, y1: number] } = {},
+  shape: { cx?: number; rx?: number; cy?: number; ry?: number; avoid?: Box | Box[]; frame?: Box } = {},
 ): MosaicLayout {
   const cols = Math.max(1, Math.floor(width / cell));
   const rows = Math.max(1, Math.floor(height / cell));
@@ -56,18 +59,57 @@ export function layoutMosaic(
   const tiles: Tile[] = [];
   const labels: MosaicLayout["labels"] = [];
   const cx = cols * (shape.cx ?? 0.5);
-  const cy = rows * 0.47;
+  const cy = rows * (shape.cy ?? 0.47);
   const rx = cols * (shape.rx ?? 0.37);
-  const ry = rows * 0.33;
+  const ry = rows * (shape.ry ?? 0.33);
   // Rows kept clear: the top bar (first row) and the dock (last three rows).
-  const [ax0, ay0, ax1, ay1] = shape.avoid ?? [0, 0, 0, 0];
-  const avoided = (c: number, r: number) => c >= ax0 * cols && c <= ax1 * cols && r >= ay0 * rows && r <= ay1 * rows;
+  const boxes: Box[] = !shape.avoid ? [] : typeof shape.avoid[0] === "number" ? [shape.avoid as Box] : (shape.avoid as Box[]);
+  const avoided = (c: number, r: number) =>
+    boxes.some(([x0, y0, x1, y1]) => c >= x0 * cols && c <= x1 * cols && r >= y0 * rows && r <= y1 * rows);
   const free = (c: number, r: number) => c >= 0 && c < cols && r >= 1 && r < rows - 3 && !avoided(c, r) && !taken.has(`${c},${r}`);
 
-  folders.forEach((folder, i) => {
+  const room = (c: number, r: number) => {
+    let n = 0;
+    for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) n += free(c + dc, r + dr) ? 1 : 0;
+    return n;
+  };
+  // A seed that lands in a kept-clear box (or on another patch) moves to the nearest cell with room around it first;
+  // growing from inside a box would string the patch out along the box's edge.
+  const reseat = (c0: number, r0: number): [number, number] => {
+    if (free(c0, r0) && room(c0, r0) >= 7) return [c0, r0];
+    for (let ring = 1; ring < Math.max(cols, rows); ring++) {
+      let best: [number, number] | null = null;
+      for (let dr = -ring; dr <= ring; dr++) {
+        for (let dc = -ring; dc <= ring; dc++) {
+          if (Math.max(Math.abs(dr), Math.abs(dc)) !== ring) continue;
+          if (free(c0 + dc, r0 + dr) && room(c0 + dc, r0 + dr) >= 7 && (!best || dr * dr + dc * dc < (best[0] - c0) ** 2 + (best[1] - r0) ** 2)) best = [c0 + dc, r0 + dr];
+        }
+      }
+      if (best) return best;
+    }
+    return [c0, r0];
+  };
+
+  // `frame`: seeds evenly spaced round a rectangle (a mosaic border), clockwise from its top-left corner. Otherwise an
+  // ellipse, starting at the top.
+  const seed = (i: number): [number, number] => {
+    if (shape.frame) {
+      const [x0, y0, x1, y1] = shape.frame;
+      const w = (x1 - x0) * cols;
+      const h = (y1 - y0) * rows;
+      let d = ((i + 0.5) / folders.length) * 2 * (w + h);
+      const at = (x: number, y: number): [number, number] => [Math.round(x0 * cols + x), Math.round(y0 * rows + y)];
+      if (d < w) return at(d, 0);
+      if ((d -= w) < h) return at(w, d);
+      if ((d -= h) < w) return at(w - d, h);
+      return at(0, h - (d - w));
+    }
     const angle = -Math.PI / 2 + (2 * Math.PI * i) / folders.length;
-    const sc = Math.round(cx + rx * Math.cos(angle));
-    const sr = Math.round(cy + ry * Math.sin(angle));
+    return [Math.round(cx + rx * Math.cos(angle)), Math.round(cy + ry * Math.sin(angle))];
+  };
+
+  folders.forEach((folder, i) => {
+    const [sc, sr] = reseat(...seed(i));
     let minRow = Infinity;
     let sumCol = 0;
     const placed: Tile[] = [];
@@ -93,7 +135,9 @@ export function layoutMosaic(
       sumCol += t.col;
     }
     tiles.push(...placed);
-    if (placed.length) labels.push({ folder, x: ((sumCol / placed.length) + 0.5) * cell, y: minRow * cell - 6 });
+    // The name goes above the patch, or below it when the patch touches the top bar.
+    const maxRow = Math.max(...placed.map((t) => t.row));
+    if (placed.length) labels.push({ folder, x: (sumCol / placed.length + 0.5) * cell, y: minRow <= 1 ? (maxRow + 1) * cell + 12 : minRow * cell - 6 });
   });
   return { cell, cols, rows, tiles, labels };
 }

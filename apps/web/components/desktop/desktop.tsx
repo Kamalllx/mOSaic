@@ -14,9 +14,11 @@ import { MemoryApp } from "@/components/apps/memory";
 import { MonitorApp } from "@/components/apps/monitor";
 import { OrganizationApp } from "@/components/apps/organization";
 import { ProgramsApp } from "@/components/apps/programs";
+import { SettingsApp } from "@/components/apps/settings";
 import { TaskApp } from "@/components/apps/task";
 import { TasksApp } from "@/components/apps/tasks";
 import { TerminalApp } from "@/components/apps/terminal";
+import type { Box } from "@/lib/desktop/mosaic";
 import { APPS, type AppId, parseRoute } from "@/lib/desktop/routes";
 import { type Area, COMPACT_WIDTH, EMPTY, focused as topWindow, reduce, type Win } from "@/lib/desktop/windows";
 import { Boot } from "./boot";
@@ -60,6 +62,8 @@ function AppBody({ win }: { win: Win }) {
       return <ConnectionsApp />;
     case "ingest":
       return <IngestApp />;
+    case "settings":
+      return <SettingsApp />;
   }
 }
 
@@ -120,8 +124,8 @@ const WindowView = memo(function WindowView(props: {
   );
 });
 
-/** The part of the wallpaper the landing's greeting and Ask bar cover (fractions of the screen), kept free of nodes. */
-const HERO_BOX: [number, number, number, number] = [0.02, 0.04, 0.44, 0.36];
+/** The part of the wallpaper the centred greeting and Ask bar cover (fractions of the screen), kept free of documents. */
+const HERO_BOX: Box = [0.26, 0.17, 0.74, 0.5];
 
 function DesktopInner() {
   const pathname = usePathname();
@@ -136,6 +140,8 @@ function DesktopInner() {
   const [switcher, setSwitcher] = useState<number | null>(null);
   const compact = area.w < COMPACT_WIDTH;
   const top = topWindow(state);
+  // Keep the mosaic's documents out from under the Ask bar and the widget column.
+  const avoid = useMemo<Box[]>(() => (area.w >= 1100 ? [HERO_BOX, [1 - 340 / area.w, 0, 1, 1]] : [HERO_BOX]), [area.w]);
   // Windows for the Alt+` switcher, front first.
   const stack = useMemo(() => [...state.wins].sort((a, b) => Number(a.minimized) - Number(b.minimized) || b.z - a.z), [state.wins]);
 
@@ -225,6 +231,9 @@ function DesktopInner() {
       } else if (k === "t") {
         e.preventDefault();
         router.push("/terminal");
+      } else if (e.code === "Comma") {
+        e.preventDefault();
+        openApp("settings");
       } else if (e.code === "Slash") {
         e.preventDefault();
         setSheet((o) => !o);
@@ -277,10 +286,10 @@ function DesktopInner() {
 
   return (
     <div className="desktop fixed inset-0 flex flex-col overflow-hidden bg-grout text-foreground">
-      <Wallpaper avoid={HERO_BOX} />
+      <Wallpaper avoid={avoid} />
       <TopBar front={top} wins={state.wins} actions={actions} compact={compact} />
       <main ref={areaRef} className={`relative min-h-0 flex-1 ${compact ? "" : "mb-[90px]"}`} aria-label="Desktop">
-        <div className={`absolute inset-0 flex overflow-y-auto ${compact ? "flex-col items-center gap-6 px-4 pt-8 pb-6" : "items-start px-[5vw] pt-[8vh]"} ${docked ? "invisible" : ""}`}>
+        <div className={`absolute inset-0 flex overflow-y-auto ${compact ? "flex-col items-center gap-6 px-4 pt-8 pb-6" : "items-start justify-center px-6 pt-[20vh]"} ${docked ? "invisible" : ""}`}>
           <Hero onAsk={() => setSpotlight(true)} compact={compact} />
           {!compact && (
             <div className="absolute top-4 right-5 hidden min-[1100px]:block">
