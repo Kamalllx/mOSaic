@@ -19,6 +19,7 @@ import type {
   Org,
   OrgCreate,
   OrgRole,
+  PairCode,
   Session,
   SystemConfig,
   EvidenceSet,
@@ -148,6 +149,8 @@ export function createMosaicClient(baseUrl = DEFAULT_BASE_URL, user = "alice", o
     googleLogin: (idToken: string) => call<Session>("POST", "/auth/google", { id_token: idToken }),
     me: () => call<Me>("GET", "/auth/me"),
     logout: () => call<void>("POST", "/auth/logout"),
+    /** A one-time code that signs this person in on their phone. */
+    pair: () => call<PairCode>("POST", "/auth/pair"),
     createOrg: (body: OrgCreate) => call<Org>("POST", "/orgs", body),
     myOrg: () => call<Org>("GET", "/orgs/me"),
     members: (orgId: string) => call<Member[]>("GET", `${orgPath(orgId)}/members`),

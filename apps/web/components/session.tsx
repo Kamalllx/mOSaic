@@ -2,7 +2,7 @@
 
 import type { AuthConfig, Me, Session } from "@mosaic/contracts";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ArrowRight, Building2, LogOut } from "lucide-react";
+import { ArrowRight, Building2, LogOut, Smartphone, X } from "lucide-react";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useClient, useSessionState } from "@/app/providers";
 import { Mark, Wordmark } from "@/components/desktop/logo";
@@ -325,5 +325,66 @@ function Onboarding({ me, onDone, onSignOut }: { me: Me; onDone: () => void; onS
         </div>
       </main>
     </Floor>
+  );
+}
+
+/** Sign in on the phone: a one-time code from the gateway, typed into the mOSaic app with this server's address. */
+export function PairPhone({ onClose }: { onClose: () => void }) {
+  const client = useClient();
+  const code = useMutation({ mutationFn: () => client.pair() });
+  const [now, setNow] = useState(() => Date.now());
+  const { mutate } = code;
+  useEffect(() => mutate(), [mutate]);
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const left = code.data ? Math.max(0, Math.round((new Date(code.data.expires_at).getTime() - now) / 1000)) : 0;
+  const local = /localhost|127\.0\.0\.1/.test(client.baseUrl);
+  return (
+    <div className="fixed inset-0 z-[8000] flex items-center justify-center bg-[rgb(15_23_42/0.18)] p-4" onPointerDown={onClose}>
+      <section role="dialog" aria-modal="true" aria-label="Sign in on your phone" onPointerDown={(e) => e.stopPropagation()} className="panel spotlight-in w-full max-w-[420px] rounded-[22px] p-6 shadow-window">
+        <div className="flex items-center gap-3">
+          <span className="flex size-10 items-center justify-center rounded-xl bg-brand text-white">
+            <Smartphone className="size-5" />
+          </span>
+          <div className="flex-1">
+            <h2 className="font-semibold">Sign in on your phone</h2>
+            <p className="text-sm text-text-2">Open the mOSaic app and choose &ldquo;I have a code&rdquo;.</p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close" className="rounded-lg p-1.5 text-text-2 hover:bg-surface-3">
+            <X className="size-4" />
+          </button>
+        </div>
+        <div className="mt-5 rounded-2xl bg-surface-2 p-4 text-center">
+          {code.data ? (
+            <>
+              <p className="font-mono text-[34px] font-bold tracking-[0.18em]" aria-label="Pairing code">{code.data.code}</p>
+              <p className={cn("mt-1 font-mono text-xs", left < 60 ? "text-st-waiting" : "text-text-2")}>
+                {left > 0 ? `works once, for ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}` : "expired"}
+              </p>
+            </>
+          ) : code.isError ? (
+            <p className="text-sm text-st-failed">{code.error instanceof MosaicError ? code.error.message.replace(/^[A-Z_]+: /, "") : "Could not make a code."}</p>
+          ) : (
+            <Orb state="working" size={32} label="making a code" className="mx-auto" />
+          )}
+        </div>
+        <dl className="mt-4 space-y-1 text-sm">
+          <div className="flex justify-between gap-3">
+            <dt className="text-text-2">Server</dt>
+            <dd className="truncate font-mono text-xs">{client.baseUrl}</dd>
+          </div>
+        </dl>
+        {local && (
+          <p className="mt-2 text-xs text-text-2">
+            On a phone, use this computer&apos;s network address instead of localhost (<span className="font-mono">scripts\win\phone-access.ps1</span> prints it). The Android emulator reaches it as <span className="font-mono">10.0.2.2</span>.
+          </p>
+        )}
+        <button type="button" onClick={() => mutate()} disabled={code.isPending} className="mt-4 w-full rounded-xl border border-hairline py-2 text-sm hover:bg-surface-3 disabled:opacity-50">
+          New code
+        </button>
+      </section>
+    </div>
   );
 }

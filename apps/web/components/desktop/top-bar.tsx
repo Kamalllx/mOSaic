@@ -1,13 +1,13 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Bell, LogOut, Search, Settings2, UserRound, Users } from "lucide-react";
+import { Bell, LogOut, Search, Settings2, Smartphone, UserRound, Users } from "lucide-react";
 import Link from "next/link";
 import { useTheme } from "next-themes";
 import { Menubar } from "radix-ui";
-import { useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { useClient } from "@/app/providers";
-import { PersonAvatar, useSession } from "@/components/session";
+import { PairPhone, PersonAvatar, useSession } from "@/components/session";
 import { APPS, type AppId } from "@/lib/desktop/routes";
 import type { Win } from "@/lib/desktop/windows";
 import { isActive } from "@/lib/events";
@@ -79,6 +79,7 @@ export function TopBar({ front, wins, actions, compact }: { front?: Win; wins: W
   const crumb = front ? `~${front.url.split("?")[0]}` : "~";
   const up = status.data?.ready;
   const { me, signOut, switchUser } = useSession();
+  const [pairing, setPairing] = useState(false);
 
   return (
     <header className="chrome relative z-[5000] flex h-[30px] shrink-0 items-center gap-1 border-x-0 border-t-0 px-2.5 text-[13px] text-foreground">
@@ -189,6 +190,7 @@ export function TopBar({ front, wins, actions, compact }: { front?: Win; wins: W
                   <Item label="Organization" icon={<Users className="size-3.5" />} onSelect={() => actions.openApp("organization")} />
                   <Item label="Settings" keys={KEYS.settings} icon={<Settings2 className="size-3.5" />} onSelect={() => actions.openApp("settings")} />
                   <Sep />
+                  <Item label="Sign in on your phone…" icon={<Smartphone className="size-3.5" />} onSelect={() => setPairing(true)} />
                   <Item label="Switch user…" icon={<UserRound className="size-3.5" />} onSelect={switchUser} />
                   <Item label={me.mode === "google" ? "Sign out" : "Sign out (lock)"} icon={<LogOut className="size-3.5" />} onSelect={signOut} />
                 </Menubar.Content>
@@ -197,6 +199,7 @@ export function TopBar({ front, wins, actions, compact }: { front?: Win; wins: W
           </Menubar.Root>
         )}
       </div>
+      {pairing && <PairPhone onClose={() => setPairing(false)} />}
     </header>
   );
 }

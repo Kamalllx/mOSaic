@@ -1,7 +1,8 @@
 # Lets a phone on the laptop's hotspot (or the same private Wi-Fi) open the console and approve from it.
-# Prints the LAN URL (and a QR code), and opens the console and gateway ports in Windows Firewall for the
-# Private profile only. Run as administrator. -Remove deletes the rules again; do that after the demo.
-# The MVP has no login: use it on your own hotspot, never on a public network.
+# Prints the LAN URLs (console, and the server address the mOSaic phone app asks for) and a QR code, and opens the
+# console and gateway ports in Windows Firewall for the Private profile only. Run as administrator. -Remove deletes the
+# rules again; do that after the demo. In dev sign-in mode anyone who reaches the gateway is trusted: use your own
+# hotspot, never a public network (MOSAIC_AUTH=google requires a real sign-in).
 param([switch]$Remove)
 . "$PSScriptRoot\common.ps1"
 $rule = "mOSaic (console + gateway, private network)"
@@ -35,6 +36,7 @@ foreach ($ip in $ips) {
 $url = "http://$($ips[0].IPAddress):$ConsolePort/approvals"
 ""
 "Open on the phone: $url"
+"mOSaic app server: http://$($ips[0].IPAddress):$GatewayPort   (then 'I have a code': make one in the console's user menu)"
 Set-Location $Repo
 uv run --quiet --with qrcode python -c "import qrcode, sys; q = qrcode.QRCode(border=1); q.add_data(sys.argv[1]); q.print_ascii(invert=True)" $url 2>$null
 "If a network shows as Public, make it Private (Settings > Network) or the phone can't connect."
