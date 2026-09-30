@@ -145,7 +145,7 @@ Decisions made while building:
 - Alternative not taken: letting the model write `{role, scope, capabilities, why}` itself (changes the Apollo
   prompt). The planner builds them from its role table; the kernel narrows whatever is asked.
 
-Tests: 377 passed, 0 skipped; ruff clean; web build passed on the contract branch. New:
+Tests: 381 passed, 0 skipped (the first version of this entry said 377: a miscount); ruff clean; web build passed on the contract branch. New:
 `shared/python/tests/test_dynamic_agents_contract.py` (5), `kernel/tests/test_dynamic_agents.py` (8: bounded by the
 user, over-broad request narrowed with an audit entry, org policy through the template and the write overlay,
 sub-agents never wider, cleanup on success/failure/cancel, boot sweep, the role stub, alice can still run the demo),
@@ -180,5 +180,80 @@ Notes for Kamal (contract 0.11.0):
 Open issues: none blocking. The TemplateAgent is generic (no tools of its own yet); B3 gives `data-engineer`
 `db.query`.
 
+## B3: SQL tool + vendors scenario (done)
+
+Branches and commits:
+- `contract/db-tool` (pushed; cut from `b/dynamic-agents`, same chain rule as B2): `f6343d3` contract 0.12.0.
+- `b/sql-tool` (from the contract branch): `eced521` kernel SQL guard + `db.query` as tool.query/task.data;
+  `f532613` the db backend; `75d7fb1` seed script and the mosaicd URL; `2ba4ba1` data engineer, writer, the planner's
+  data path, `demo_run.py --scenario vendors`, the story checker's approval rule.
+
+What it does:
+- `db.query` (low, auto) and `db.write` (high, approval required) on `mosaic_demo_data`
+  (`MOSAIC_DEMO_DATA_URL`; `scripts/win/start-mosaicd.ps1` sets it on the stack's Postgres port).
+- The kernel checks every statement before policy (`kernel/mosaic_kernel/syscalls/sql_guard.py`): one statement; a
+  query is SELECT/WITH only, no write keyword anywhere, no DDL, no SELECT INTO / FOR UPDATE, no server functions, a
+  LIMIT of at most 200 (added, lowered, or the statement wrapped); a write is one INSERT/UPDATE/DELETE, UPDATE/DELETE
+  need WHERE. Refused: a DENY from policy `kernel.sql` with the reason. The statement that runs is the checked one.
+- The backend runs queries in a READ ONLY transaction with a 5 s statement timeout, 200 rows max; writes in their own
+  transaction. Timeout: `TIMEOUT`; unreachable: `TOOL_FAILED`; bad SQL: `BAD_REQUEST`.
+- `scripts/seed_demo_data.py` (idempotent; only ever touches a database named `mosaic_demo_data`): vendors,
+  contracts, invoices, cloud_costs, headcount, tickets, finance_notes, from `mosaic_contracts.testing.demo_data`
+  (consistent with the bundle: PayCo's licence + emergency contract, CloudCo's committed compute and the dual-run
+  bills, Cumulus's Q4 price rise). Messy on purpose: void and pending invoices, dates just outside Q3.
+  Expected Q3 overpaid: PayCo 42,350.00, CloudCo 143,550.75, TalentX 11,280.00.
+- The data engineer writes one SELECT from the schema (one retry with the kernel's or the database's reason); the
+  writer drafts the note (prose from the model, figures as a table from the rows) and files it through `db.write`.
+- The planner answers a data question (the goal's words offer the data-engineer role) on a path of its own:
+  understood, data-engineer then writer, nothing filed when the query returned nothing (the task then fails with a
+  partial answer), `answer.md`.
+
+Decisions:
+- **No SQL parser dependency** (none in `uv.lock`): conservative checks that refuse what they cannot read
+  (comments, `$` quoting, backslashes, a second statement). Session commands (SET, COPY, DO, ...) are refused by the
+  first-word rule, not by a keyword list, so `UPDATE ... SET` and a table alias `copy` are fine.
+- **One dataset for Postgres and the fake:** `mosaic_contracts.testing.demo_data` (the fake db runs it in SQLite),
+  so fake-mode tests, the seed and the scoring agree by construction.
+- **Read-only connection, not a separate DB role:** the backend's transaction is READ ONLY (a role would need a
+  password in the repo or in `.env`; noted as a follow-up).
+- **Sync psycopg in a thread:** psycopg's async mode needs a selector event loop; mosaicd on Windows runs the proactor
+  loop (`InterfaceError` otherwise).
+- **The note goes into `finance_notes` via `db.write`** (the governed write that needs a person); there is no email
+  tool. The figures in the note are rendered by code from the rows, not written by the model.
+- **The data path is separate from the investigation path** in the planner, and only data questions reach it: the
+  Apollo and Zeus plans, prompts and floors are untouched.
+- `mosaic-execution` now declares `psycopg[binary]` (`uv lock`, 2 lines).
+
+Tests: 412 passed, 0 skipped; ruff clean; web build passed on the contract branch. New: `test_db_tool_contract.py`
+(3), `kernel/tests/test_sql_guard.py` (19), `kernel/tests/test_db_syscalls.py` (guard → policy → approval → tool.query
++ task.data with the real policy files), `execution/tests/test_db_live.py` (4, against the seeded Postgres: the answer,
+read-only past the kernel, a clear TIMEOUT, placeholders), `agents/tests/test_data_agents.py` (4: only data questions
+take the data path, the scenario end to end in fake mode, one rewrite of a refused query, nothing filed from an
+unanswered question).
+
+Gates (`b/sql-tool` at `2ba4ba1`, after seeding):
+
+| Run | Score | Time | Story |
+|---|---|---|---|
+| Apollo | 8/8 | 105.5 s | PASS |
+| Zeus | 8/8 | 131.1 s | PASS |
+| Vendors | 8/8 | 19.6 s | PASS |
+| Zeus, classifier on, `--expect-llm-flag` | 9/9 | 104.0 s | PASS |
+
+A first vendors run before the gates: 8/8 in 18.1 s, correct SQL on the first attempt. `contract/db-tool` alone:
+Apollo 8/8 120.6 s, Zeus 8/8 102.5 s, Zeus classifier on 9/9 102.5 s, story PASS.
+
+Notes for Kamal (contract 0.12.0): no new event types. The vendors run streams `tool.query` with
+`"tool": "db.query"` and the SQL text, then `task.data` with `"source": "db.query"`:
+`{"columns": ["name", "contract_value", "total_paid", "overpayment"], "rows": [["CloudCo", 225000.0, 368550.75,
+143550.75], ...], "source": "db.query"}`. The approval is `db.write` by `writer@T-…` (risk high). New capabilities in
+the catalog: `db.query`, `db.write`. Command: `uv run python scripts/seed_demo_data.py`, then
+`uv run python scripts/demo_run.py run --auto-approve --check-story --scenario vendors`.
+
+Open issues:
+- Once, a full `pytest` run hung for over 40 minutes (its `timeout 1500` did not kill the grandchildren on Windows);
+  every folder passes on its own, and the next four full runs were green in about 3 minutes. Not reproduced.
+- A read-only database role (instead of a read-only transaction) needs a secret; left for Mishka to decide.
+
 ## Next
-B3 (SQL tool + vendors scenario) on `b/sql-tool` from `b/dynamic-agents`.
+B4 (Playwright MCP browser + multi-tool scenario) on `b/mcp-browser` from `b/sql-tool`, disk check first.
