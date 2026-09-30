@@ -80,8 +80,9 @@ NEVER fabricate citations. Only cite /org paths that actually appeared in the ev
 
 ACTION_AGENT = "action-agent"
 
-# How the planner announces each library specialist (agent.planned): why it is on the plan, its /org scope and its
-# capabilities. Mirrors agents/manifests/*.yaml (a test keeps them equal); B2's role templates replace this table.
+# The plan for each role (agent.planned, and the bounds it is spawned with): why it is on the plan, its /org scope and
+# its capabilities. The kernel generates the agent from its role template within these bounds. Mirrors
+# agents/manifests/*.yaml (a test keeps them equal): the planner reaches the templates only through ctx.spawn.
 SPECIALIST_ROLES: dict[str, tuple[str, list[str], list[str]]] = {
     "finance-agent": ("Explains the budget variance and its cost drivers with evidence",
                       ["/org/finance", "/org/projects", "/org/policies"], ["knowledge.read", "knowledge.search", "jira.read"]),
@@ -92,7 +93,28 @@ SPECIALIST_ROLES: dict[str, tuple[str, list[str], list[str]]] = {
                        ["/org"], ["knowledge.read", "knowledge.search", "browser.open"]),
     ACTION_AGENT: ("Records the root causes on the tracker once they are known; a person approves the write",
                    ["/org/projects"], ["knowledge.read", "knowledge.search", "jira.read", "jira.write", "fs.write"]),
+    "analyst": ("Answers the question from cited evidence across /org", ["/org"],
+                ["knowledge.read", "knowledge.search", "agent.spawn"]),
+    "data-engineer": ("Finds the exact figures the question needs in finance and project records",
+                      ["/org/finance", "/org/projects"], ["knowledge.read", "knowledge.search"]),
+    "writer": ("Drafts the note the goal asks for from the findings; sending it needs a person",
+               ["/org/projects", "/org/finance"], ["knowledge.read", "knowledge.search", "fs.write"]),
 }
+
+# The library specialists are always offered to the model; the other role templates only when the goal asks for what
+# they do (their manifest handles; a test keeps these equal). So the planning prompt for Apollo and Zeus is exactly what
+# it was before dynamic agents.
+LIBRARY_ROLES = ("finance-agent", "engineering-agent", "research-agent", ACTION_AGENT)
+EXTRA_HANDLES: dict[str, tuple[str, ...]] = {
+    "analyst": ("analyst", "analyse", "analyze", "compare", "comparison", "trend"),
+    "data-engineer": ("sql", "database", "query", "invoice", "invoices", "paid", "payments", "vendors", "spreadsheet"),
+    "writer": ("draft", "note", "memo", "email", "letter"),
+}
+
+
+def offered_roles(goal: str, allowed: list[str]) -> list[str]:
+    words = set(re.findall(r"[a-z]+", goal.lower()))
+    return [a for a in allowed if a in LIBRARY_ROLES or words & set(EXTRA_HANDLES.get(a, ()))]
 
 
 def _and(names: list[str]) -> str:
@@ -184,8 +206,11 @@ class PlannerAgent(MosaicAgent):
             return self.result(ctx, "cancelled before planning", status=AgentResultStatus.CANCELLED)
 
         # 2. Build plan via LLM
-        allowed = list(ctx.manifest.capabilities.agents)  # the kernel would refuse any other spawn anyway
+        allowed = offered_roles(goal, list(ctx.manifest.capabilities.agents))  # the kernel refuses any other spawn anyway
         agent_list = "\n".join(f"- {a}" for a in allowed)
+        extra = [a for a in allowed if a not in LIBRARY_ROLES and a in SPECIALIST_ROLES]
+        if extra:  # only for goals that ask for them: the Apollo and Zeus prompts are unchanged
+            agent_list += "\n\nAlso available for this goal:\n" + "\n".join(f"- {a}: {SPECIALIST_ROLES[a][0]}" for a in extra)
         user_prompt = (
             f"Goal: {goal}\n\n"
             f"Evidence:\n{evidence_text}\n\n"
@@ -265,8 +290,10 @@ class PlannerAgent(MosaicAgent):
                     completed_steps.add(step.step_id)
                     continue
                 inputs = {"upstream": {k: upstream[k] for k in step.depends_on if k in upstream}, "project": project}
+                bounds = planned(step)  # the kernel generates the agent from its role template within these bounds
                 try:
-                    pid = await ctx.spawn(step.agent, step.goal, inputs)
+                    pid = await ctx.spawn(step.agent, step.goal, inputs, capabilities=bounds.capabilities or None,
+                                          scope=[f"{s.rstrip('/')}/**" for s in bounds.scope] or None, why=bounds.why)
                     step_pids[step.step_id] = pid
                     await ctx.log(f"planner: spawned {step.agent} (step {step.step_id}) as pid {pid}")
                 except Exception as e:

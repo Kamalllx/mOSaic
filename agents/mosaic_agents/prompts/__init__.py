@@ -97,4 +97,16 @@ class ResearchOut(BaseModel):
     summary: str = ""
 
 
-__all__ = ["PlanStep", "PlanOut", "RootCause", "RootCausesOut", "SynthesisOut", "FinanceOut", "EngOut", "ResearchOut"]
+class Finding(BaseModel):
+    claim: str
+    evidence: list[str] = Field(default_factory=list, description="/org paths the claim rests on")
+
+
+class TemplateOut(BaseModel):
+    """What a generic template agent (analyst, data-engineer, writer) answers."""
+
+    findings: list[Finding] = Field(default_factory=list)
+    summary: str = ""
+
+
+__all__ = ["Finding", "TemplateOut", "PlanStep", "PlanOut", "RootCause", "RootCausesOut", "SynthesisOut", "FinanceOut", "EngOut", "ResearchOut"]

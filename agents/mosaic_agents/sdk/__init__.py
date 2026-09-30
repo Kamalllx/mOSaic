@@ -63,6 +63,12 @@ def project_of(goal: str, inputs: dict[str, Any] | None = None) -> str:
     return DEFAULT_PROJECT
 
 
+def role_of(ctx: Any) -> str:
+    """The agent's role: its template for a generated agent ("finance-agent@T-1" -> "finance-agent"), else its name.
+    Memories are owned by the role, so they carry across tasks."""
+    return getattr(ctx.manifest, "template", None) or ctx.manifest.name
+
+
 def tracking_issue(project: str) -> str:
     """The tracker issue a project's status updates go on."""
     return _TRACKING_ISSUES.get(project.lower(), f"{project.upper()}-1")
@@ -243,7 +249,7 @@ async def remember_finding(ctx: Any, content: str, derived_from: list[str], impo
     Best-effort: a memory failure never fails the task."""
     try:
         await ctx.remember(MemoryRecord(memory_id=new_id("MEM"), kind=MemoryKind.EPISODIC, scope=MemoryScope.AGENT,
-                                        org_id="", owner=ctx.manifest.name,  # the kernel fills org_id and task_id
+                                        org_id="", owner=role_of(ctx),  # the kernel fills org_id and task_id
                                         content=content[:1000], derived_from=derived_from, importance=importance,
                                         tags=tags or []))
     except Exception as e:
@@ -264,6 +270,7 @@ __all__ = [
     "project_of",
     "propose_action",
     "remember_finding",
+    "role_of",
     "think",
     "think_flagged",
     "tracking_issue",
