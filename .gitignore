@@ -31,3 +31,6 @@ Thumbs.db
 # coding-agent context
 CLAUDE.local.md
 .context/
+
+# machine-specific settings for scripts/win
+scripts/win/local.ps1

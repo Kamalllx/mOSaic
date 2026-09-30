@@ -2,7 +2,21 @@
 
 Target length is about 7 minutes. Rehearse it 3× at M3, and record one clean full run as the backup video.
 
-## Setup (T-30 min)
+## On the Windows demo laptop (the laptop is the node)
+Machine-specific ports go in `scripts/win/local.ps1` (git-ignored), e.g. `$env:MOSAIC_PG_PORT = "5434"`.
+
+| When | Run (PowerShell, repo root) |
+|---|---|
+| Start everything and open the console full screen | `scripts\win\mosaic-boot.ps1` (Docker, Postgres/Redis/vendor-docs, Ollama with the 7B loaded, mosaicd, the console, then `/boot` in Edge kiosk mode; Alt+F4 leaves it) |
+| Before each rehearsal | `scripts\win\reset-demo.ps1` (restarts mosaicd, which resets the mock Jira; empties memories and working sets; runs the preflight) |
+| Preflight only | `uv run python scripts/preflight.py --gateway http://127.0.0.1:8089` (must print "all green"; checks the 7B generates at >= 25 tok/s and is fully on the GPU) |
+| A run feels slow | `scripts\win\restart-ollama.ps1` (stops leftover model runners that hold VRAM, reloads the 7B, prints tok/s) |
+| Throwaway run, then score | `uv run python scripts/demo_run.py run --auto-approve --gateway http://127.0.0.1:8089` (prints 8/8) |
+| Score the live run | `uv run python scripts/demo_run.py check <task_id> --gateway http://127.0.0.1:8089` |
+| Phone access (optional) | `scripts\win\phone-access.ps1` as administrator: prints the LAN URL and a QR code, opens ports for the Private network only. Afterwards: `scripts\win\phone-access.ps1 -Remove` |
+| Stop | `scripts\win\mosaic-shutdown.ps1` (`-All` also stops Ollama and the containers) |
+
+## Setup (T-30 min, Linux appliance)
 1. The RTX node is on AC power and on the venue network. Its lid may stay closed.
 2. On the node, run `bash /opt/mosaic/scripts/preflight.sh`. **It must print "all green".** It checks:
    - services and `/system/status` ready, all components `real`;
@@ -13,7 +27,7 @@ Target length is about 7 minutes. Rehearse it 3× at M3, and record one clean fu
    - console `http://<node>:3000/` fullscreen;
    - a terminal beside it, SSH'd into the node, running `watch -n1 ai-ps` (switch to `ai-top` for the GPU moment);
    - the backup video open and paused on a second screen or tab.
-4. Phone: the mobile approve app is open (stretch), or the console approval page on the phone browser.
+4. Phone (optional): on the laptop's Mobile hotspot, run `scripts\win\phone-access.ps1` and open the printed URL (`/approvals`). The console finds the gateway on the same host by itself. There is no login in the MVP: use your own hotspot only, and run `phone-access.ps1 -Remove` after the demo.
 5. Paste the prompt into the composer but **do not submit** yet.
 
 **Models** (must match `models/models.yaml`; preflight checks them): `ollama pull qwen2.5:7b-instruct llama3.2:3b qwen2.5-coder:7b llava:7b nomic-embed-text`
@@ -95,10 +109,10 @@ Needs mosaicd started with `MOSAIC_KNOWLEDGE_WATCH=true`, after a completed run 
 | Anything else | Play the backup video from the matching timestamp and narrate over it |
 
 ## QA checklist before each rehearsal
-- [ ] `scripts/preflight.sh` all green
+- [ ] Preflight all green: `scripts/preflight.sh` on the appliance, `uv run python scripts/preflight.py` anywhere else
 - [ ] `uv run python scripts/check_okf.py` OK, and `data/okf` has been reindexed after its last edit (`POST /knowledge/reindex`)
 - [ ] One throwaway task run end to end (warms caches; clears first-run surprises)
 - [ ] Mock-Jira reset to the seed state (restart `mock-jira`)
-- [ ] Memories reset **after the throwaway run** (otherwise the step-18 toast counts memories from every earlier run): `docker compose -f infra/compose/docker-compose.yml exec postgres psql -U mosaic -d mosaic -c "TRUNCATE memories, working_sets;"`. For a different database, change `-d` (or run the same SQL against the database in `MOSAIC_DATABASE_URL`). No task should be running, since working sets are what a restarted task resumes from
+- [ ] Memories reset **after the throwaway run** (on the laptop: `scripts\win\reset-demo.ps1` does it) (otherwise the step-18 toast counts memories from every earlier run): `docker compose -f infra/compose/docker-compose.yml exec postgres psql -U mosaic -d mosaic -c "TRUNCATE memories, working_sets;"`. For a different database, change `-d` (or run the same SQL against the database in `MOSAIC_DATABASE_URL`). No task should be running, since working sets are what a restarted task resumes from
 - [ ] Phone and projector laptop logged into Tailscale; console and app open
 - [ ] Backup video file present locally (not streamed)

@@ -188,8 +188,8 @@ In priority order for the demo. Each item lists the files to look at and a sugge
 - [ ] **nomic-embed-text prefixes** (contract change, P3 review nit). The model retrieves better with `search_query: ` / `search_document: `.
   - *Files:* `shared/python/mosaic_contracts/schema/inference.py` (`EmbedRequest`), the Ollama provider in `models/mosaic_models/providers/ollama.py`, and P2's indexer (documents) and retriever (queries) under `knowledge/mosaic_knowledge/`.
   - *Fix:* add `input_type: Literal["query", "document"] | None`, have the provider prefix when the model is nomic, and pass the right type from the indexer and retriever. Also store the prefix scheme in the index metadata so the change forces a full re-embed. Then re-run `test_retrieval_qa.py`; it must stay at 10/10 or better.
-- [ ] **`preflight.sh` is Linux-only** (P4 area). *Fix:* use the PowerShell checks in §2.10, or port the script to Python (`scripts/preflight.py`) so it runs everywhere.
-- [ ] **The compose Postgres port is fixed at 5432** (P4 area). *File:* `infra/compose/docker-compose.yml`. *Fix:* `ports: ["127.0.0.1:${MOSAIC_PG_PORT:-5432}:5432"]`, like `MOSAIC_HOST_PORT`.
+- [x] **`preflight.sh` is Linux-only** (P4 area). Done: `scripts/preflight.py` runs anywhere and adds a generation-speed and fully-on-GPU check; `scripts/win/` has boot, reset, Ollama restart, shutdown and phone-access scripts, and `scripts/demo_run.py` runs and scores a task.
+- [x] **The compose Postgres port is fixed at 5432** (P4 area). Done: `MOSAIC_PG_PORT` and `MOSAIC_REDIS_PORT` in `infra/compose/docker-compose.yml`.
 - [ ] *(optional)* **Memory re-consolidation queue** (P2 area). Stale memories aren't re-summarized automatically. *Files:* `knowledge/mosaic_knowledge/memory/` and `coherence/`.
 - [ ] *(optional)* **LLM firewall classifier** (P2 area). It's built but off by default; the regex firewall catches the vendor email. *Files:* `knowledge/mosaic_knowledge/firewall/`.
 - [ ] *(optional, stretch)* **NOOA adapter.** `agents/mosaic_agents/adapters/nooa.py` is only a stub, although the manifests say `framework: nooa`.
