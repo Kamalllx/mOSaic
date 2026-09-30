@@ -38,6 +38,12 @@ All checks below ran on Mishka's laptop: RTX 3050 6 GB, **qwen2.5:7b-instruct** 
   - Not for an agent that has spawned children, or that holds approval-gated capabilities: a re-run would repeat work or a write. Crashes still retry at once.
   - The wall-time quota is now enforced around the whole run, not only when an agent next calls `ctx.*`.
 - `bb1463d` p3: the planner logs a **warning**, with the reason, when it carries on without a failed specialist.
+- `6dc08c7` p3: **no tracker update from incomplete findings.** Suppose a specialist fails (after the kernel's retries) or returns no usable findings. Then:
+  - the planner doesn't spawn the action agent, so there is no approval and no `jira.write`;
+  - it still writes the recovery plan from what exists, headed **"Partial: <agents> failed; tracker not updated."**;
+  - the task ends **failed**, with a reason naming the specialists.
+
+  When every specialist has findings, the action step runs exactly as before; tests pin the Apollo path.
 
 ## New settings (`.env.example`)
 ```
@@ -49,22 +55,25 @@ The defaults are what the demo needs. To show the classifier, add `$env:MOSAIC_F
 
 ## For C (UI)
 - `SearchHit.firewall_flags` can contain `instruction_like_llm`, always together with `instruction_like`. Example: `["instruction_like", "instruction_like_llm", "untrusted_source"]`.
-- There are no new event types. Three new `agent.log` warnings, which the timeline already highlights:
+- There are no new event types. New `agent.log` warnings, which the timeline already highlights:
   - `finance-agent: <reason>; retrying in 5s (attempt 2/3)`
   - `<agent> stopped: pid N exceeded Ns wall clock`
   - `planner: step s2 (engineering-agent) failed: <reason>; continuing without its findings`
+  - `planner: skipping tracker update: incomplete findings from engineering-agent, research-agent`
+- A partial run ends in `task.failed`, and it **still has a `recovery-plan.md` artifact**. Its first line after the title is `**Partial: <agents> failed; tracker not updated.**`, and `task.error.message` starts with `incomplete findings from <agents>: …`. The Result tab could show the plan for failed tasks too.
 
 ## Results on this branch
 
 | Check | Result |
 |---|---|
-| `uv run pytest -q` | 334 passed, no skips (Ollama and Postgres up) |
+| `uv run pytest -q` | 338 passed, no skips (Ollama and Postgres up) |
 | `uvx ruff check .` | clean |
 | `check_okf.py` | OK, 81 files; retrieval QA 10/10 with fake and real embeddings |
 | After a reset, classifier off | Apollo **8/8** in 119.5 s, then Zeus **8/8** in 111.4 s |
 | After a reset, `MOSAIC_FIREWALL_LLM=true` | Apollo **8/8** in 97.9 s, then Zeus **9/9** in 111.5 s (the renewal email is flagged `instruction_like_llm`) |
 | Ollama restarted 35 s into Apollo | finance retried after 5 s; all specialists completed; the task completed |
-| Ollama stopped for good mid-run | `task.failed` after 91 s: `MODEL_UNAVAILABLE: ollama qwen2.5:7b-instruct: cannot reach Ollama at http://127.0.0.1:11434 (ConnectError)` |
+| Ollama stopped for good mid-run | no approval, no `jira.write`; `task.failed` after 92.6 s: `incomplete findings from engineering-agent, research-agent: … cannot reach Ollama at http://127.0.0.1:11434 (ConnectError)`; partial plan written |
+| After the partial-findings change, after a reset, classifier off | Apollo **8/8** in 108.5 s, then Zeus **8/8** in 129.5 s |
 | Task with a 30 s wall quota | `task.failed` (`QUOTA_EXCEEDED`) at 30.4 s; nothing left running |
 | `taskkill /F` on mosaicd 25 s in, then restart | "Resumed after kernel restart #1", one `jira.write`, Apollo 8/8 |
 
@@ -82,7 +91,7 @@ uv run python scripts/demo_run.py run --auto-approve --scenario zeus --expect-ll
 If Zeus scores low on retrieval, run `POST /knowledge/reindex` once. The new files are indexed by content hash on boot, but a bundle that was indexed while the watcher was off may need it.
 
 ## Watch out for
-- **Open decision:** when specialists fail, the planner still runs the action step, and an approved `jira.write` is committed from partial findings before the task fails. This is existing behaviour, seen live with Ollama stopped; it's now visible as a warning, but not changed. Say if the action step should be skipped instead.
+- **Incomplete findings skip the tracker update** (`6dc08c7`). If a specialist fails or comes back empty, there is no approval card, the task fails, and a partial plan is written. On stage that shows as `task.failed` rather than a completed run. "Empty" means a finance agent with no drivers, an engineering agent with no blockers, or a research agent with no findings and no page opened. The 7B returned findings in every run here.
 - **Retries add time during an outage:** up to about 20 s per failing specialist (5 s + 15 s). On stage, an Ollama hiccup now costs seconds instead of silently dropping a specialist.
 - **Agents are now really stopped at their wall quota:** 1800 s at least, or the task's own quota if higher. A demo that waits more than 30 minutes on an approval fails with `QUOTA_EXCEEDED` instead of running on.
 - **`tests/integration/test_live_system.py` is still flaky and unresolved:** "redis mirror attached", about 1 in 9 full-suite runs. It didn't reproduce in about 50 attempts (idle, heavy CPU load, heavy disk load, replays of the real suite order). What's known: the kernel attaches the Redis mirror only if a single 0.5 s ping succeeds at boot, and the test's fixture never waits for its Redis container (the kernel's own Redis test does). This one test is all it affects; the demo mosaicd reported `event bus: redis-mirrored` on every boot here.
