@@ -1,0 +1,441 @@
+<title>mOSaic Pitch Deck</title>
+<meta name="description" content="mOSaic pitch: the operating system for organizational AI, on one box.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+  /* One deliberate look: the mOSaic console's dark palette, so the deck and the live product read as one thing on the projector. */
+  :root {
+    color-scheme: dark;
+    --bg: #0a0e13;
+    --slide: #0d1117;
+    --surface-1: #151a21;
+    --surface-2: #1b222b;
+    --line: #2a323d;
+    --text: #f1f5f9;
+    --text-2: #a9b3bf;
+    --muted: #7d8896;
+    --brand: #2bb8a3;
+    --brand-subtle: #103a35;
+    --running: #2fb344;
+    --waiting: #d99a25;
+    --paused: #6a9be3;
+    --failed: #eb6a6a;
+    --display: "Geist", "Segoe UI", system-ui, sans-serif;
+    --mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text); font-family: var(--display);
+    padding-inline: 16px; -webkit-font-smoothing: antialiased;
+  }
+  .deck { height: 100%; display: grid; grid-template-rows: 1fr auto; gap: 12px; padding-block: 16px; }
+  .stage { display: grid; place-items: center; min-height: 0; }
+
+  .slide {
+    container-type: inline-size;
+    width: min(100%, calc((100vh - 110px) * 16 / 9)); aspect-ratio: 16 / 9;
+    background: var(--slide); border: 1px solid var(--line); border-radius: 10px;
+    padding: 5cqi 6cqi; display: none; flex-direction: column; gap: 2.4cqi; position: relative; overflow: hidden;
+  }
+  .slide.on { display: flex; }
+  .slide::after { /* page number in the kernel's own style */
+    content: attr(data-n); position: absolute; right: 3cqi; bottom: 2.4cqi;
+    font: 500 1.3cqi/1 var(--mono); color: var(--muted); letter-spacing: .06em;
+  }
+
+  .eyebrow { font: 500 1.35cqi/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--brand); }
+  h1, h2 { margin: 0; text-wrap: balance; letter-spacing: -.02em; }
+  h1 { font-size: 7.4cqi; font-weight: 700; line-height: 1; }
+  h2 { font-size: 3.9cqi; font-weight: 650; line-height: 1.08; max-width: 34ch; }
+  p, li { font-size: 1.85cqi; line-height: 1.45; color: var(--text-2); margin: 0; }
+  strong { color: var(--text); font-weight: 600; }
+  .lede { font-size: 2.3cqi; line-height: 1.4; color: var(--text-2); max-width: 58ch; }
+  .mono { font-family: var(--mono); }
+  .grow { flex: 1; min-height: 0; }
+  .accent { color: var(--brand); }
+
+  /* title slide */
+  .title-grid { display: grid; grid-template-columns: 1.15fr 1fr; gap: 4cqi; align-items: center; flex: 1; }
+  .wordmark { font-size: 10cqi; font-weight: 700; letter-spacing: -.045em; line-height: .9; }
+  .wordmark b { color: var(--brand); font-weight: 700; }
+  .term {
+    background: #07090d; border: 1px solid var(--line); border-radius: 8px; padding: 1.8cqi 2cqi;
+    font: 400 1.32cqi/1.65 var(--mono); color: var(--text-2); white-space: pre; overflow: hidden;
+  }
+  .term .h { color: var(--muted); }
+  .term .run { color: var(--running); } .term .wait { color: var(--waiting); } .term .you { color: var(--text); }
+
+  /* three problems */
+  .cols3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.2cqi; }
+  .prob { border-top: 2px solid var(--failed); padding-top: 1.6cqi; display: grid; gap: 1cqi; align-content: start; }
+  .prob h3 { margin: 0; font-size: 2.2cqi; font-weight: 600; }
+  .answer { border-left: 3px solid var(--brand); padding: .6cqi 0 .6cqi 1.8cqi; font-size: 2.1cqi; color: var(--text); max-width: 62ch; }
+
+  /* OS mapping table */
+  .map { width: 100%; border-collapse: collapse; font-size: 1.75cqi; }
+  .map th { text-align: left; font: 500 1.2cqi/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); padding: 0 1.4cqi 1.2cqi 0; }
+  .map td { padding: 1.05cqi 1.4cqi 1.05cqi 0; border-top: 1px solid var(--line); vertical-align: top; color: var(--text-2); }
+  .map td:first-child { font-family: var(--mono); color: var(--text); white-space: nowrap; }
+  .map td:nth-child(2) { color: var(--brand); font-weight: 600; white-space: nowrap; }
+
+  /* syscall pipeline */
+  .pipe { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1.2cqi; }
+  .stage-box { background: var(--surface-1); border: 1px solid var(--line); border-radius: 8px; padding: 1.6cqi; display: grid; gap: .8cqi; align-content: start; position: relative; }
+  .stage-box .k { font: 700 1.2cqi/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+  .stage-box h3 { margin: 0; font-size: 2.1cqi; font-weight: 600; }
+  .stage-box p { font-size: 1.5cqi; }
+  .stage-box:not(:last-child)::after { content: "→"; position: absolute; right: -1.15cqi; top: 50%; transform: translate(50%, -50%); color: var(--muted); font-size: 1.8cqi; }
+  .k.policy { color: var(--paused); } .k.human { color: var(--waiting); } .k.box { color: var(--text-2); } .k.verify { color: var(--brand); } .k.commit { color: var(--running); }
+  .callout { white-space: pre-line; font: 400 1.4cqi/1.55 var(--mono); color: var(--text-2); background: var(--surface-1); border: 1px solid var(--line); border-radius: 8px; padding: 1.4cqi 1.8cqi; }
+  .callout .deny { color: var(--failed); } .callout .ok { color: var(--running); } .callout .wait { color: var(--waiting); }
+
+  /* demo run sheet */
+  .runsheet { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1cqi 3cqi; counter-reset: step; }
+  .runsheet li { list-style: none; display: grid; grid-template-columns: 5.4cqi 1fr; gap: 1.2cqi; align-items: baseline; padding: .9cqi 0; border-top: 1px solid var(--line); }
+  .runsheet .t { font: 500 1.4cqi/1 var(--mono); color: var(--brand); }
+  .runsheet ul { margin: 0; padding: 0; display: contents; }
+  .prompt { font: 400 1.7cqi/1.5 var(--mono); color: var(--text); background: var(--surface-1); border: 1px solid var(--line); border-left: 3px solid var(--brand); border-radius: 6px; padding: 1.4cqi 1.8cqi; }
+
+  /* coherence timeline */
+  .coh { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; position: relative; margin-top: 1cqi; }
+  .coh::before { content: ""; position: absolute; left: 0; right: 0; top: 1.1cqi; height: 2px; background: var(--line); }
+  .ev { position: relative; padding-top: 3.2cqi; padding-right: 2cqi; display: grid; gap: .7cqi; align-content: start; }
+  .ev::before { content: ""; position: absolute; top: .4cqi; left: 0; width: 1.5cqi; height: 1.5cqi; border-radius: 50%; background: var(--slide); border: 2px solid var(--c, var(--brand)); }
+  .ev .when { font: 700 1.9cqi/1 var(--mono); color: var(--c, var(--brand)); }
+  .ev p { font-size: 1.6cqi; }
+  .chips { display: flex; flex-wrap: wrap; gap: 1cqi; }
+  .chip { font: 700 1.2cqi/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; padding: .8cqi 1.1cqi; border-radius: 6px; border: 1px solid; }
+  .chip.untrusted { color: var(--failed); border-color: color-mix(in srgb, var(--failed) 55%, transparent); background: color-mix(in srgb, var(--failed) 12%, transparent); }
+  .chip.stale { color: var(--waiting); border-color: color-mix(in srgb, var(--waiting) 55%, transparent); background: color-mix(in srgb, var(--waiting) 12%, transparent); }
+  .chip.rederived { color: var(--brand); border-color: color-mix(in srgb, var(--brand) 55%, transparent); background: var(--brand-subtle); }
+
+  /* architecture */
+  .arch { display: grid; grid-template-columns: 1fr; gap: 1.2cqi; }
+  .arch .row { display: grid; gap: 1.2cqi; }
+  .box { background: var(--surface-1); border: 1px solid var(--line); border-radius: 8px; padding: 1.3cqi 1.6cqi; display: grid; gap: .5cqi; }
+  .box h4 { margin: 0; font: 600 1.7cqi/1.2 var(--display); }
+  .box p { font-size: 1.4cqi; }
+  .box.kernel { border-color: color-mix(in srgb, var(--brand) 60%, var(--line)); background: color-mix(in srgb, var(--brand) 7%, var(--surface-1)); }
+  .modules { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1cqi; }
+  .modules .box { background: var(--surface-2); }
+  .r4 { grid-template-columns: repeat(4, 1fr); }
+  .r2 { grid-template-columns: 1fr 1fr; }
+  .lbl { font: 500 1.15cqi/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+
+  /* numbers */
+  .nums { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2.4cqi 2.2cqi; }
+  .num { display: grid; gap: .6cqi; align-content: start; border-top: 1px solid var(--line); padding-top: 1.4cqi; }
+  .num .v { font: 700 4.6cqi/1 var(--display); letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+  .num .v small { font-size: 2cqi; font-weight: 600; color: var(--text-2); margin-left: .3cqi; letter-spacing: 0; }
+  .num p { font-size: 1.45cqi; }
+  .foot { font: 400 1.25cqi/1.4 var(--mono); color: var(--muted); }
+
+  /* comparison */
+  .cmp { width: 100%; border-collapse: collapse; font-size: 1.6cqi; }
+  .cmp th, .cmp td { padding: 1cqi 1.2cqi; border-top: 1px solid var(--line); text-align: left; color: var(--text-2); }
+  .cmp thead th { border-top: 0; font: 500 1.2cqi/1.2 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  .cmp tbody th { color: var(--text); font-weight: 500; }
+  .cmp td.us { color: var(--brand); font-weight: 600; background: color-mix(in srgb, var(--brand) 7%, transparent); }
+  .cmp thead th.us { color: var(--brand); }
+
+  .cols2 { display: grid; grid-template-columns: 1fr 1fr; gap: 4cqi; }
+  .list { margin: 0; padding: 0; display: grid; gap: 1.1cqi; }
+  .list li { list-style: none; padding-left: 2.2cqi; position: relative; }
+  .list li::before { content: ""; position: absolute; left: 0; top: .75em; width: 1cqi; height: 2px; background: var(--brand); }
+  .close { font-size: 4.2cqi; font-weight: 650; letter-spacing: -.02em; line-height: 1.12; max-width: 26ch; text-wrap: balance; }
+  .links { display: grid; gap: .9cqi; font: 400 1.7cqi/1.3 var(--mono); color: var(--text-2); }
+  .links a { color: var(--brand); text-decoration: none; }
+  .links a:hover, .links a:focus-visible { text-decoration: underline; }
+
+  /* controls */
+  .bar { display: flex; align-items: center; justify-content: center; gap: 14px; font: 500 13px/1 var(--mono); color: var(--muted); flex-wrap: wrap; }
+  .bar button {
+    font: inherit; color: var(--text); background: var(--surface-1); border: 1px solid var(--line); border-radius: 6px;
+    padding: 8px 12px; cursor: pointer;
+  }
+  .bar button:hover { border-color: var(--brand); }
+  .bar button:focus-visible, .links a:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+  .dots { display: flex; gap: 6px; }
+  .dots button { width: 9px; height: 9px; padding: 0; border-radius: 50%; background: var(--line); border: 0; }
+  .dots button[aria-current="true"] { background: var(--brand); }
+  .hint { color: var(--muted); }
+
+  /* Phones: read the deck as a scroll of slides with a readable type floor. */
+  @media (max-width: 760px) {
+    .deck { height: auto; display: block; }
+    .stage { display: grid; gap: 16px; }
+    .slide, .slide.on { display: flex; width: 100%; aspect-ratio: auto; padding: 22px 18px 34px; gap: 14px; }
+    .bar { display: none; }
+    h1 { font-size: 40px; } .wordmark { font-size: 52px; } h2 { font-size: 24px; }
+    p, li, .lede, .answer, .prompt, .map, .cmp, .stage-box p, .box p, .num p, .ev p, .links { font-size: 14px; }
+    .eyebrow, .lbl, .map th, .cmp thead th, .chip, .stage-box .k, .foot, .runsheet .t, .slide::after { font-size: 11px; }
+    .term { font-size: 11px; white-space: pre; overflow-x: auto; }
+    .stage-box h3, .prob h3, .box h4 { font-size: 16px; } .num .v { font-size: 30px; } .ev .when { font-size: 15px; }
+    .close { font-size: 26px; }
+    .title-grid, .cols3, .pipe, .runsheet, .coh, .modules, .r4, .r2, .nums, .cols2 { grid-template-columns: 1fr; }
+    .stage-box:not(:last-child)::after { display: none; }
+    .coh::before { display: none; }
+    .table-wrap { overflow-x: auto; }
+    .map td:first-child, .map td:nth-child(2) { white-space: normal; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .slide.on { animation: in .28s ease-out; }
+    @keyframes in { from { opacity: .4; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  }
+  @media (max-width: 760px) { .slide.on { animation: none; } }
+</style>
+
+<div class="deck">
+  <main class="stage" id="stage">
+
+    <!-- 1 -->
+    <section class="slide on" id="s1" data-n="01 / 11" aria-label="Title">
+      <div class="eyebrow">Hackathon pitch · self-hosted AI</div>
+      <div class="title-grid">
+        <div style="display:grid;gap:2.6cqi">
+          <div class="wordmark">m<b>OS</b>aic</div>
+          <p class="lede">The operating system for organizational AI. Knowledge is a filesystem, agents are processes, and every action is a governed syscall. <strong>All on one box.</strong></p>
+        </div>
+        <div class="term" aria-label="ai-ps output during a run"><span class="h">$ ai-ps T-c7fcc57b21</span>
+<span class="h">PID  PPID  AGENT             STATE      TOKENS  CALLS</span>
+101     -  planner-agent     <span class="run">running</span>    3.1k      4
+102   101  finance-agent     <span class="run">running</span>    2.4k      3
+103   101  engineering-agent <span class="run">running</span>    2.2k      3
+104   101  research-agent    <span class="run">running</span>    1.1k      2
+105   101  action-agent      <span class="wait">waiting</span>    0.6k      1
+<span class="h">      └ jira.write blocked: needs a human</span>
+<span class="you">$ █</span></div>
+      </div>
+    </section>
+
+    <!-- 2 -->
+    <section class="slide" id="s2" data-n="02 / 11" aria-label="The problem">
+      <div class="eyebrow">The problem</div>
+      <h2>Companies want AI that <span class="accent">acts</span> on their private knowledge. Today every option breaks one of three things.</h2>
+      <div class="cols3 grow">
+        <div class="prob"><h3>It leaves the building</h3><p>Cloud agents need the finance sheets, tickets and email in someone else's data centre. For regulated teams that ends the conversation.</p></div>
+        <div class="prob"><h3>It acts without asking</h3><p>An agent that can call tools can call the wrong one. One poisoned email can steer it, and "the model decided to" is not an audit trail.</p></div>
+        <div class="prob"><h3>It forgets where facts came from</h3><p>Answers arrive without sources, memories never expire, and when a document changes nobody knows which conclusions are now wrong.</p></div>
+      </div>
+      <p class="answer">Operating systems solved the same problems for programs: isolation, permissions, a kernel that mediates every privileged operation, and a journal. mOSaic applies them to AI agents.</p>
+    </section>
+
+    <!-- 3 -->
+    <section class="slide" id="s3" data-n="03 / 11" aria-label="The OS idea">
+      <div class="eyebrow">The idea</div>
+      <h2>Take the operating system, and make the programs AI agents.</h2>
+      <div class="table-wrap grow">
+        <table class="map">
+          <thead><tr><th>Classic OS</th><th>mOSaic</th><th>What it means in practice</th></tr></thead>
+          <tbody>
+            <tr><td>filesystem</td><td>/org knowledge</td><td>Docs, tickets, Slack, email mounted as <span class="mono">/org/finance/…</span>, with trust levels and links</td></tr>
+            <tr><td>process</td><td>agent</td><td>PID, parent, state, quotas on tokens, tool calls and wall time; pause, resume, kill</td></tr>
+            <tr><td>system call</td><td>governed action</td><td>Policy, human approval, sandbox, verify, then commit or roll back</td></tr>
+            <tr><td>kernel log</td><td>audit journal</td><td>Every decision hash-chained; the kernel verifies the chain</td></tr>
+            <tr><td>cache coherence</td><td>memory</td><td>Memories know their source documents and are re-derived when those change</td></tr>
+            <tr><td>protection ring</td><td>context firewall</td><td>Retrieved text is data, never instructions</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 4 -->
+    <section class="slide" id="s4" data-n="04 / 11" aria-label="Live demo">
+      <div class="eyebrow">Live demo · Project Apollo</div>
+      <h2>One prompt. Five agents. One human decision. About 50 seconds.</h2>
+      <div class="prompt">Investigate why Project Apollo is over budget and six weeks behind schedule. Identify root causes, update the tracker, and prepare a recovery plan.</div>
+      <ol class="runsheet grow" style="margin:0;padding:0">
+        <li><span class="t">0:05</span><p><strong>Planner forks specialists</strong>: finance, engineering, research, action, each a process</p></li>
+        <li><span class="t">0:15</span><p><strong>A vendor email tries to hijack the agents</strong>; the firewall flags it and nobody obeys</p></li>
+        <li><span class="t">0:25</span><p><strong>Research opens vendor docs</strong> in a browser sandbox with no internet</p></li>
+        <li><span class="t">0:35</span><p><strong>The kernel blocks <span class="mono">jira.write</span></strong> until a human approves, from the console or a phone</p></li>
+        <li><span class="t">0:45</span><p><strong>Executed, verified, committed</strong>, and every step in a verified hash chain</p></li>
+        <li><span class="t">0:50</span><p><strong>Three cited root causes</strong> and a recovery plan: 6.2 lakh, 31% over budget</p></li>
+        <li><span class="t">+0:10</span><p><strong>Edit the cloud bill</strong>: finance memories go stale and are re-derived</p></li>
+        <li><span class="t">any</span><p><strong>Kill the server mid-run</strong>: it resumes from its checkpoint</p></li>
+      </ol>
+    </section>
+
+    <!-- 5 -->
+    <section class="slide" id="s5" data-n="05 / 11" aria-label="Governed syscalls">
+      <div class="eyebrow">Governed syscalls</div>
+      <h2>Agent intent is not authorization.</h2>
+      <div class="pipe">
+        <div class="stage-box"><span class="k policy">1 · policy</span><h3>Decide</h3><p>YAML policy per agent: allow, deny or ask, by capability, path and risk.</p></div>
+        <div class="stage-box"><span class="k human">2 · approval</span><h3>Ask a human</h3><p>The approver sees the arguments, the policy and the cited evidence.</p></div>
+        <div class="stage-box"><span class="k box">3 · sandbox</span><h3>Contain</h3><p>Docker, non-root, read-only, <span class="mono">network=none</span> by default.</p></div>
+        <div class="stage-box"><span class="k verify">4 · verify</span><h3>Check</h3><p>Read back the world: did the change actually land?</p></div>
+        <div class="stage-box"><span class="k commit">5 · commit</span><h3>Commit or roll back</h3><p>A transaction, recorded in the hash-chained journal.</p></div>
+      </div>
+      <div class="callout grow">jira.write APOLLO-31 · policy default-v1 · <span class="wait">approval: required</span>
+human approves → run in sandbox → read back the comment → <span class="ok">committed</span>
+"drop the table" inside a retrieved email → <span class="deny">never becomes a syscall: retrieved text is data</span></div>
+    </section>
+
+    <!-- 6 -->
+    <section class="slide" id="s6" data-n="06 / 11" aria-label="Knowledge and memory">
+      <div class="eyebrow">Knowledge that remembers where it came from</div>
+      <h2>Change a document, and what was learned from it changes too.</h2>
+      <div class="chips"><span class="chip untrusted">untrusted · treated as data</span><span class="chip stale">source changed</span><span class="chip rederived">re-derived</span></div>
+      <div class="coh grow">
+        <div class="ev" style="--c:var(--paused)"><span class="when">t = 0</span><p><strong>Finance learns</strong> "dual-run cost drove the overrun", <span class="mono">derived_from</span> the cloud bill.</p></div>
+        <div class="ev" style="--c:var(--text-2)"><span class="when">edit</span><p><strong>Someone corrects the bill.</strong> The watcher reindexes that one file.</p></div>
+        <div class="ev" style="--c:var(--waiting)"><span class="when">0.1 s</span><p><strong>Finance memories go stale.</strong> Engineering's stay fresh: they never read it.</p></div>
+        <div class="ev" style="--c:var(--brand)"><span class="when">3.5 s</span><p><strong>The local model re-derives them</strong> from the new text.</p></div>
+      </div>
+      <p>Hybrid retrieval (lexical, vector, link graph), 10/10 on our retrieval test. Every hit carries its source and trust level.</p>
+    </section>
+
+    <!-- 7 -->
+    <section class="slide" id="s7" data-n="07 / 11" aria-label="Architecture">
+      <div class="eyebrow">Architecture · one box</div>
+      <h2>One Python kernel, local models, real sandboxes.</h2>
+      <div class="arch grow">
+        <div class="row r2">
+          <div class="box"><span class="lbl">clients</span><h4>Console (Next.js)</h4><p>Live process tree, approvals, audit, knowledge, memory, system</p></div>
+          <div class="box"><span class="lbl">clients</span><h4>Phone and CLI</h4><p>Approve from a phone on the hotspot; <span class="mono">ai-ps</span>, <span class="mono">ai-top</span>, <span class="mono">ai-kill</span></p></div>
+        </div>
+        <div class="box kernel"><span class="lbl">mosaicd · HTTP + WebSocket gateway</span>
+          <div class="modules">
+            <div class="box"><h4>kernel</h4><p>processes, scheduler, syscalls, policy, audit</p></div>
+            <div class="box"><h4>agents</h4><p>planner + specialists, IPC, NOOA adapter</p></div>
+            <div class="box"><h4>knowledge</h4><p>index, retrieval, firewall, memory</p></div>
+            <div class="box"><h4>models</h4><p>router by task class and privacy</p></div>
+            <div class="box"><h4>execution</h4><p>sandboxes, tools, connectors</p></div>
+          </div>
+        </div>
+        <div class="row r4">
+          <div class="box"><h4>Ollama</h4><p>qwen2.5 7B + nomic embeddings, on the GPU</p></div>
+          <div class="box"><h4>Postgres</h4><p>pgvector, process table, memories</p></div>
+          <div class="box"><h4>Docker</h4><p>sandbox and browser containers, internal network</p></div>
+          <div class="box"><h4>Redis</h4><p>events and queues</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 8 -->
+    <section class="slide" id="s8" data-n="08 / 11" aria-label="Measured">
+      <div class="eyebrow">Measured on the demo laptop · RTX 5070 Laptop, 8 GB</div>
+      <h2>It runs today, on hardware you can carry.</h2>
+      <div class="nums grow">
+        <div class="num"><span class="v">48<small>s</small></span><p>goal to cited recovery plan, all local</p></div>
+        <div class="num"><span class="v">8/8</span><p>checks on every scored rehearsal run</p></div>
+        <div class="num"><span class="v">57<small>tok/s</small></span><p>qwen2.5 7B, fully on the GPU</p></div>
+        <div class="num"><span class="v">0</span><p>actions taken on the injected email</p></div>
+        <div class="num"><span class="v">0.1<small>s</small></span><p>from document edit to stale memories</p></div>
+        <div class="num"><span class="v">3.5<small>s</small></span><p>to re-derive them from the new text</p></div>
+        <div class="num"><span class="v">10/10</span><p>retrieval questions answered (MRR 0.90)</p></div>
+        <div class="num"><span class="v">305</span><p>automated tests, against shared contracts</p></div>
+      </div>
+      <p class="foot">Scored by scripts/demo_run.py; audit chain verified on every run (78 entries in the last one).</p>
+    </section>
+
+    <!-- 9 -->
+    <section class="slide" id="s9" data-n="09 / 11" aria-label="Why it is different">
+      <div class="eyebrow">Why it is different</div>
+      <h2>Agent frameworks are libraries. mOSaic is the runtime underneath them.</h2>
+      <div class="table-wrap grow">
+        <table class="cmp">
+          <thead><tr><th></th><th>Cloud copilots</th><th>Agent frameworks</th><th class="us">mOSaic</th></tr></thead>
+          <tbody>
+            <tr><th>Where data lives</th><td>vendor cloud</td><td>wherever you wire it</td><td class="us">your box; restricted data never leaves local models</td></tr>
+            <tr><th>Can it act?</th><td>mostly read-only</td><td>tools with raw credentials</td><td class="us">governed syscalls with approval and rollback</td></tr>
+            <tr><th>Prompt injection</th><td>vendor's problem</td><td>your problem</td><td class="us">firewall in the kernel's retrieval path</td></tr>
+            <tr><th>Audit</th><td>chat logs</td><td>traces, if you add them</td><td class="us">hash-chained journal, verified by the kernel</td></tr>
+            <tr><th>Stale knowledge</th><td>not tracked</td><td>not tracked</td><td class="us">memories re-derived when sources change</td></tr>
+            <tr><th>Bring your agents</th><td>no</td><td>yes</td><td class="us">yes: adapters run them as governed processes</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 10 -->
+    <section class="slide" id="s10" data-n="10 / 11" aria-label="Who it is for and what is next">
+      <div class="eyebrow">Who it is for · what is next</div>
+      <div class="cols2 grow">
+        <div style="display:grid;gap:2cqi;align-content:start">
+          <h2 style="font-size:3.2cqi">Teams that can't send their data out, and can't let agents act unchecked.</h2>
+          <ul class="list">
+            <li><p><strong>Finance, healthcare, public sector</strong>: data residency and approval rules are the law</p></li>
+            <li><p><strong>Mid-size companies</strong>: one appliance instead of a cloud AI budget</p></li>
+            <li><p><strong>Engineering orgs</strong>: agents that update trackers and write reports, with a paper trail</p></li>
+          </ul>
+        </div>
+        <div style="display:grid;gap:2cqi;align-content:start">
+          <span class="lbl">Roadmap</span>
+          <ul class="list">
+            <li><p><strong>Appliance</strong>: installer and systemd units exist; boot to console on a dedicated box</p></li>
+            <li><p><strong>Stronger isolation</strong>: microVM sandboxes beside Docker</p></li>
+            <li><p><strong>More connectors</strong> through MCP: mail, drives, ticketing, chat</p></li>
+            <li><p><strong>Identity</strong>: SSO, per-team policies and approver roles</p></li>
+            <li><p><strong>More than one box</strong>: schedule agents across nodes</p></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- 11 -->
+    <section class="slide" id="s11" data-n="11 / 11" aria-label="Close">
+      <div class="eyebrow">mOSaic</div>
+      <p class="close grow" style="color:var(--text)">It doesn't just answer questions. It runs your organization's AI, <span class="accent">privately, on one box.</span></p>
+      <div class="cols2">
+        <div class="links">
+          <span>code&nbsp;&nbsp;&nbsp;<a href="https://github.com/Kamalllx/mOSaic">github.com/Kamalllx/mOSaic</a></span>
+          <span>site&nbsp;&nbsp;&nbsp;<a href="https://mosaic-os-black.vercel.app">mosaic-os-black.vercel.app</a></span>
+          <span>demo&nbsp;&nbsp;&nbsp;<a href="https://drive.google.com/file/d/1cpCgA5vv7mbLdbmAC9HnWPmupHSinxmr/view?usp=sharing">the recorded run</a></span>
+        </div>
+        <p style="align-self:end">Built by <strong>Mishka Tiwari</strong>, <strong>Kamal Karteek U</strong>, <strong>Manjunath Patil</strong> and <strong>Mayeraa Singh</strong>.</p>
+      </div>
+    </section>
+
+  </main>
+
+  <nav class="bar" aria-label="Slides">
+    <button type="button" id="prev" aria-label="Previous slide">←</button>
+    <div class="dots" id="dots"></div>
+    <button type="button" id="next" aria-label="Next slide">→</button>
+    <button type="button" id="full">Present</button>
+    <span class="hint">arrow keys · F full screen</span>
+  </nav>
+</div>
+
+<script>
+  (() => {
+    const slides = [...document.querySelectorAll(".slide")];
+    const dots = document.getElementById("dots");
+    let i = 0;
+    slides.forEach((s, n) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.setAttribute("aria-label", `Slide ${n + 1}: ${s.getAttribute("aria-label")}`);
+      b.addEventListener("click", () => go(n));
+      dots.appendChild(b);
+    });
+    function go(n) {
+      i = Math.max(0, Math.min(slides.length - 1, n));
+      slides.forEach((s, k) => s.classList.toggle("on", k === i));
+      [...dots.children].forEach((d, k) => d.setAttribute("aria-current", k === i ? "true" : "false"));
+      try { history.replaceState(null, "", "#s" + (i + 1)); } catch (e) {}
+    }
+    const fromHash = () => { const m = /^#s(\d+)$/.exec(location.hash); return m ? Number(m[1]) - 1 : 0; };
+    go(fromHash());
+    window.addEventListener("hashchange", () => go(fromHash()));
+    document.getElementById("prev").addEventListener("click", () => go(i - 1));
+    document.getElementById("next").addEventListener("click", () => go(i + 1));
+    const full = () => {
+      const el = document.documentElement;
+      if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+      else el.requestFullscreen?.().catch(() => {});
+    };
+    document.getElementById("full").addEventListener("click", full);
+    document.addEventListener("keydown", (e) => {
+      if (["ArrowRight", "PageDown", " "].includes(e.key)) { e.preventDefault(); go(i + 1); }
+      else if (["ArrowLeft", "PageUp"].includes(e.key)) { e.preventDefault(); go(i - 1); }
+      else if (e.key === "Home") go(0);
+      else if (e.key === "End") go(slides.length - 1);
+      else if (e.key === "f" || e.key === "F") full();
+    });
+  })();
+</script>
