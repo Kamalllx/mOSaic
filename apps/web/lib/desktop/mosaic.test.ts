@@ -34,4 +34,10 @@ describe("wallpaper mosaic", () => {
     expect(tileAt(m, t.col * m.cell + 3, t.row * m.cell + 3)?.path).toBe(t.path);
     expect(tileAt(m, 1, 1)).toBeUndefined();
   });
+
+  it("keeps the box the desktop draws over clear", () => {
+    const a = layoutMosaic(docs, 1600, 900, 26, { cx: 0.42, rx: 0.31, avoid: [0.25, 0.05, 0.6, 0.45] });
+    expect(a.tiles).toHaveLength(docs.length);
+    expect(a.tiles.every((t) => !(t.col >= 0.25 * a.cols && t.col <= 0.6 * a.cols && t.row >= 0.05 * a.rows && t.row <= 0.45 * a.rows))).toBe(true);
+  });
 });

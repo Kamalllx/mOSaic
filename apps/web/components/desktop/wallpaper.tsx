@@ -5,25 +5,25 @@ import { useTheme } from "next-themes";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useClient } from "@/app/providers";
 import { hash2, layoutMosaic, type MosaicLayout, tileAt } from "@/lib/desktop/mosaic";
+import { FOLDER_HUES } from "@/lib/desktop/palette";
 import { strList } from "@/lib/events";
 import { useAllDocs } from "./hooks";
 
-/** Folder hues: muted minerals, one per /org folder, tuned for each theme. */
-const HUES: Record<string, [dark: string, light: string]> = {
-  decisions: ["#4b6076", "#9fb3c8"],
-  engineering: ["#3d5f8a", "#93b1d6"],
-  finance: ["#3c6d60", "#8fc2b1"],
-  inbox: ["#7c4a44", "#d4a39c"],
-  jira: ["#58527f", "#aaa3cf"],
-  meetings: ["#6c6350", "#c7bb9d"],
-  people: ["#5a5561", "#b4aebb"],
-  playbooks: ["#4a6a62", "#9ec3b8"],
-  policies: ["#566b3d", "#b0c58f"],
-  projects: ["#6d5c4c", "#c9b19a"],
-  slack: ["#735f38", "#d0b27a"],
-  systems: ["#4c5664", "#a5afbd"],
-};
-const FALLBACK: [string, string] = ["#4d5561", "#a9b1bc"];
+/** The field behind the tesserae: a soft multicolour gradient, like a macOS wallpaper. */
+function paintField(ctx: CanvasRenderingContext2D, w: number, h: number, dark: boolean) {
+  ctx.fillStyle = dark ? "#141824" : "#eef2fb";
+  ctx.fillRect(0, 0, w, h);
+  const blobs: [number, number, number, string][] = dark
+    ? [[0.12, 0.1, 0.7, "rgba(47,124,246,0.35)"], [0.9, 0.12, 0.6, "rgba(197,108,240,0.30)"], [0.15, 0.95, 0.65, "rgba(20,168,154,0.30)"], [0.88, 0.9, 0.6, "rgba(255,138,61,0.22)"]]
+    : [[0.1, 0.08, 0.75, "rgba(122,190,255,0.85)"], [0.92, 0.1, 0.65, "rgba(255,170,214,0.8)"], [0.12, 0.98, 0.7, "rgba(140,232,196,0.85)"], [0.9, 0.92, 0.65, "rgba(255,200,140,0.85)"], [0.5, 0.5, 0.45, "rgba(200,184,255,0.55)"]];
+  for (const [x, y, r, c] of blobs) {
+    const g = ctx.createRadialGradient(x * w, y * h, 0, x * w, y * h, r * Math.max(w, h));
+    g.addColorStop(0, c);
+    g.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+  }
+}
 
 type Flare = { t0: number; kind: "read" | "flagged" | "stale" | "changed" };
 const FLARE_MS: Record<Flare["kind"], number> = { read: 2600, flagged: 9000, stale: 12000, changed: 3000 };
@@ -51,7 +51,8 @@ export function Wallpaper() {
   }, []);
 
   const layout: MosaicLayout | null = useMemo(
-    () => (docs && size.w ? layoutMosaic(docs, size.w, size.h, size.w < 700 ? 22 : 28) : null),
+    // On wide screens the widgets take the right edge, so the folder patches sit a little left of centre.
+    () => (docs && size.w ? layoutMosaic(docs, size.w, size.h, size.w < 700 ? 22 : 28, size.w >= 1100 ? { cx: 0.42, rx: 0.31, avoid: [0.24, 0.1, 0.61, 0.46] } : {}) : null),
     [docs, size.w, size.h],
   );
 
@@ -88,14 +89,15 @@ export function Wallpaper() {
     canvas.width = Math.round(size.w * dpr);
     canvas.height = Math.round(size.h * dpr);
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const grout = dark ? "#07090c" : "#d3d8de";
-    const labelInk = dark ? "rgba(169,179,191,0.55)" : "rgba(71,85,105,0.7)";
+    // Canvas fonts can't read CSS variables: resolve the bundled mono face's family name once.
+    const mono = getComputedStyle(document.documentElement).getPropertyValue("--font-jetbrains-mono").trim() || "monospace";
+    const labelInk = dark ? "rgba(226,232,240,0.7)" : "rgba(29,29,31,0.55)";
     const cell = layout?.cell ?? 28;
     const cols = Math.ceil(size.w / cell) + 1;
     const rows = Math.ceil(size.h / cell) + 1;
     const docAt = new Map((layout?.tiles ?? []).map((t) => [`${t.col},${t.row}`, t]));
 
-    const tess = (c: number, r: number, fill: string, lift = 0) => {
+    const tess = (c: number, r: number, fill: string | CanvasGradient, lift = 0, gloss = false) => {
       const j = hash2(c, r);
       const k = hash2(r + 7, c + 13);
       const inset = 2.2 + j * 1.6 - lift;
@@ -107,8 +109,17 @@ export function Wallpaper() {
       ctx.rotate((j - 0.5) * 0.07);
       ctx.fillStyle = fill;
       ctx.beginPath();
-      ctx.roundRect(-s / 2, -s / 2, s, s * (0.9 + k * 0.1), 3);
+      ctx.roundRect(-s / 2, -s / 2, s, s * (0.9 + k * 0.1), 4);
       ctx.fill();
+      if (gloss) {
+        // A glossy top half and a hairline highlight, like glazed glass tesserae.
+        const g = ctx.createLinearGradient(0, -s / 2, 0, s / 2);
+        g.addColorStop(0, "rgba(255,255,255,0.45)");
+        g.addColorStop(0.5, "rgba(255,255,255,0.05)");
+        g.addColorStop(1, "rgba(0,0,0,0.08)");
+        ctx.fillStyle = g;
+        ctx.fill();
+      }
       ctx.restore();
     };
 
@@ -116,20 +127,18 @@ export function Wallpaper() {
     const draw = () => {
       const now = performance.now();
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.fillStyle = grout;
-      ctx.fillRect(0, 0, size.w, size.h);
+      paintField(ctx, size.w, size.h, dark);
       // Filler tesserae: the field the organisation's documents sit in.
       for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
           if (docAt.has(`${c},${r}`)) continue;
           const v = hash2(c * 3 + 1, r * 5 + 2);
-          const l = dark ? 8 + v * 5 : 88 + v * 5;
-          tess(c, r, `hsl(214 ${dark ? 14 : 12}% ${l}%)`);
+          tess(c, r, dark ? `rgba(255,255,255,${0.03 + v * 0.05})` : `rgba(255,255,255,${0.2 + v * 0.22})`);
         }
       }
       let live = false;
       for (const t of layout?.tiles ?? []) {
-        const hue = (HUES[t.folder] ?? FALLBACK)[dark ? 0 : 1];
+        const hue = FOLDER_HUES[t.folder] ?? "#8a94a6";
         const f = flares.current.get(t.path);
         const age = f ? now - f.t0 : Infinity;
         if (f && age < FLARE_MS[f.kind]) {
@@ -137,7 +146,7 @@ export function Wallpaper() {
           const p = age / FLARE_MS[f.kind];
           const pulse = f.kind === "flagged" || f.kind === "stale" ? 0.55 + 0.45 * Math.cos(age / 260) : 1;
           const a = (1 - p) * pulse;
-          tess(t.col, t.row, hue, 0);
+          tess(t.col, t.row, hue, 0, true);
           ctx.save();
           ctx.shadowColor = `rgba(${FLARE_COLOR[f.kind]},${0.9 * a})`;
           ctx.shadowBlur = 18 * a;
@@ -154,10 +163,10 @@ export function Wallpaper() {
           }
         } else {
           if (f) flares.current.delete(t.path);
-          tess(t.col, t.row, hue);
+          tess(t.col, t.row, hue, 0, true);
         }
       }
-      ctx.font = "500 11px var(--font-jetbrains-mono), ui-monospace, monospace";
+      ctx.font = `600 11px ${mono}, ui-monospace, monospace`;
       ctx.textAlign = "center";
       ctx.fillStyle = labelInk;
       for (const l of layout?.labels ?? []) ctx.fillText(l.folder, l.x, l.y);

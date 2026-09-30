@@ -35,7 +35,15 @@ export function hash2(a: number, b: number): number {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
 
-export function layoutMosaic(docs: Doc[], width: number, height: number, cell = 26): MosaicLayout {
+/** `cx`/`rx` place the ellipse the folder patches sit on, as fractions of the width (the default centres it); `avoid`
+ *  keeps a box clear (fractions of width and height), for what the desktop draws over the wallpaper. */
+export function layoutMosaic(
+  docs: Doc[],
+  width: number,
+  height: number,
+  cell = 26,
+  shape: { cx?: number; rx?: number; avoid?: [x0: number, y0: number, x1: number, y1: number] } = {},
+): MosaicLayout {
   const cols = Math.max(1, Math.floor(width / cell));
   const rows = Math.max(1, Math.floor(height / cell));
   const groups = new Map<string, Doc[]>();
@@ -47,12 +55,14 @@ export function layoutMosaic(docs: Doc[], width: number, height: number, cell = 
   const taken = new Set<string>();
   const tiles: Tile[] = [];
   const labels: MosaicLayout["labels"] = [];
-  const cx = cols / 2;
+  const cx = cols * (shape.cx ?? 0.5);
   const cy = rows * 0.47;
-  const rx = cols * 0.37;
+  const rx = cols * (shape.rx ?? 0.37);
   const ry = rows * 0.33;
   // Rows kept clear: the top bar (first row) and the dock (last three rows).
-  const free = (c: number, r: number) => c >= 0 && c < cols && r >= 1 && r < rows - 3 && !taken.has(`${c},${r}`);
+  const [ax0, ay0, ax1, ay1] = shape.avoid ?? [0, 0, 0, 0];
+  const avoided = (c: number, r: number) => c >= ax0 * cols && c <= ax1 * cols && r >= ay0 * rows && r <= ay1 * rows;
+  const free = (c: number, r: number) => c >= 0 && c < cols && r >= 1 && r < rows - 3 && !avoided(c, r) && !taken.has(`${c},${r}`);
 
   folders.forEach((folder, i) => {
     const angle = -Math.PI / 2 + (2 * Math.PI * i) / folders.length;
