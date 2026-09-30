@@ -20,7 +20,7 @@ import re
 from typing import Any
 
 from mosaic_contracts.errors import MosaicError
-from mosaic_contracts.schema import AgentResult, AgentResultStatus, ErrorInfo
+from mosaic_contracts.schema import AgentPlanned, AgentResult, AgentResultStatus, ErrorInfo, TaskUnderstood
 
 from mosaic_agents.prompts import PlanOut, PlanStep, RootCausesOut, SynthesisOut
 from mosaic_agents.sdk import (
@@ -30,7 +30,11 @@ from mosaic_agents.sdk import (
     cite,
     gather_evidence,
     keep_retrieved,
+    narrate,
+    plural,
     project_of,
+    think,
+    think_flagged,
     tracking_issue,
 )
 
@@ -75,6 +79,41 @@ NEVER fabricate citations. Only cite /org paths that actually appeared in the ev
 """
 
 ACTION_AGENT = "action-agent"
+
+# How the planner announces each library specialist (agent.planned): why it is on the plan, its /org scope and its
+# capabilities. Mirrors agents/manifests/*.yaml (a test keeps them equal); B2's role templates replace this table.
+SPECIALIST_ROLES: dict[str, tuple[str, list[str], list[str]]] = {
+    "finance-agent": ("Explains the budget variance and its cost drivers with evidence",
+                      ["/org/finance", "/org/projects", "/org/policies"], ["knowledge.read", "knowledge.search", "jira.read"]),
+    "engineering-agent": ("Finds the engineering blockers behind the schedule slip",
+                          ["/org/engineering", "/org/projects", "/org/systems", "/org/decisions"],
+                          ["knowledge.read", "knowledge.search", "jira.read"]),
+    "research-agent": ("Brings in vendor context from the knowledge base and the vendor's docs",
+                       ["/org"], ["knowledge.read", "knowledge.search", "browser.open"]),
+    ACTION_AGENT: ("Records the root causes on the tracker once they are known; a person approves the write",
+                   ["/org/projects"], ["knowledge.read", "knowledge.search", "jira.read", "jira.write", "fs.write"]),
+}
+
+
+def _and(names: list[str]) -> str:
+    return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
+
+
+def understood(goal: str, project: str, steps: list[PlanStep]) -> TaskUnderstood:
+    """task.understood, written by code from the goal and the validated plan (never from the model's rationale)."""
+    first = re.split(r"(?<=[.!?])\s", goal.strip(), maxsplit=1)[0]
+    caps = dict.fromkeys(c for s in steps for c in SPECIALIST_ROLES.get(s.agent, ("", [], []))[2])
+    specialists = [s.agent for s in steps if s.agent != ACTION_AGENT]
+    summary = f"{_and(specialists)} investigate{'s' if len(specialists) == 1 else ' in parallel'}" if specialists else "No specialists"
+    if any(s.agent == ACTION_AGENT for s in steps):
+        summary += f"; {ACTION_AGENT} then records the root causes on {tracking_issue(project)}"
+    return TaskUnderstood(intent=first[:240], entities=[f"Project {project}", tracking_issue(project)],
+                          capabilities_needed=list(caps)[:20], plan_summary=f"{summary}."[:240])
+
+
+def planned(step: PlanStep) -> AgentPlanned:
+    why, scope, caps = SPECIALIST_ROLES.get(step.agent, (f"Assigned by the plan as step {step.step_id}", [], []))
+    return AgentPlanned(role=step.agent, why=why, scope=scope, capabilities=caps)
 # What each library specialist's findings are in: research counts when it opened a page even if it listed no findings.
 _FINDINGS_KEYS = ("drivers", "blockers", "findings", "urls_opened")
 
@@ -120,11 +159,13 @@ class PlannerAgent(MosaicAgent):
     async def run(self, goal: str, ctx: Any) -> AgentResult:
         await ctx.log("planner: starting", data={"goal": goal[:200]})
         project = project_of(goal, getattr(ctx, "inputs", None))
+        await think(ctx, "search", f"Searching /org for evidence on Project {project}.")
 
         # 1. Gather evidence
         evidence = await gather_evidence(ctx, goal, scope=["/org"], top_k=8)
         evidence_text = cite(evidence)
         await ctx.log(f"planner: gathered {len(evidence.hits)} evidence hits")
+        await think_flagged(ctx, evidence)
 
         if ctx.cancelled():
             return self.result(ctx, "cancelled before planning", status=AgentResultStatus.CANCELLED)
@@ -176,6 +217,9 @@ class PlannerAgent(MosaicAgent):
                     s.goal = f"Project {project}: {s.goal}"
 
         await ctx.log(f"planner: executing {len(steps)} steps")
+        await narrate(ctx, understood(goal, project, steps))
+        for s in steps:
+            await narrate(ctx, planned(s))
 
         # 5 & 6. Execute steps respecting depends_on (parallel where possible)
         upstream: dict[str, Any] = {}
@@ -204,6 +248,7 @@ class PlannerAgent(MosaicAgent):
                 if step.agent == ACTION_AGENT and incomplete:
                     await ctx.log(f"planner: skipping tracker update: incomplete findings from {', '.join(incomplete)}",
                                   level="warning")
+                    await think(ctx, "act", f"Skipping the tracker update: findings from {_and(list(incomplete))} are incomplete.")
                     completed_steps.add(step.step_id)
                     continue
                 inputs = {"upstream": {k: upstream[k] for k in step.depends_on if k in upstream}, "project": project}
@@ -290,6 +335,9 @@ class PlannerAgent(MosaicAgent):
                 f"{len(synthesis.root_causes)} root causes: " + "; ".join(rc["cause"] for rc in synthesis.root_causes)
                 if synthesis.root_causes else f"Investigation complete for: {goal[:100]}")
         await ctx.log(f"planner: synthesis complete ({len(synthesis.root_causes)} root causes)")
+
+        await think(ctx, "synthesize", f"Combined the findings into {plural(len(synthesis.root_causes), 'cited root cause')} "
+                                       "and a recovery plan.")
 
         # 8. Write artifact
         recovery_md = self._make_recovery_md(goal, synthesis, upstream, partial)

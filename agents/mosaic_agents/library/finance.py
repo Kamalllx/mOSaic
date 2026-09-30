@@ -15,7 +15,18 @@ from mosaic_contracts.schema.common import new_id
 from mosaic_contracts.schema.ipc import A2AMessage
 
 from mosaic_agents.prompts import FinanceOut
-from mosaic_agents.sdk import MosaicAgent, ask_json, cite, gather_evidence, keep_retrieved, project_of, remember_finding
+from mosaic_agents.sdk import (
+    MosaicAgent,
+    ask_json,
+    cite,
+    gather_evidence,
+    keep_retrieved,
+    plural,
+    project_of,
+    remember_finding,
+    think,
+    think_flagged,
+)
 
 log = logging.getLogger("mosaic.agents.finance")
 
@@ -40,6 +51,7 @@ class FinanceAgent(MosaicAgent):
 
     async def run(self, goal: str, ctx: Any) -> AgentResult:
         await ctx.log("finance-agent: starting", data={"goal": goal[:200]})
+        await think(ctx, "search", f"Searching finance records for Project {project_of(goal, ctx.inputs)}'s budget variance.")
 
         # Gather financial evidence
         evidence = await gather_evidence(
@@ -52,6 +64,7 @@ class FinanceAgent(MosaicAgent):
         evidence_text = cite(evidence)
         policy_text = cite(policies)
         await ctx.log(f"finance-agent: gathered {len(evidence.hits)} evidence hits and {len(policies.hits)} policies")
+        await think_flagged(ctx, evidence, policies)
 
         if ctx.cancelled():
             return self.result(ctx, "cancelled", status=AgentResultStatus.CANCELLED)
@@ -82,6 +95,8 @@ class FinanceAgent(MosaicAgent):
             )
 
         await ctx.log(f"finance-agent: analysis complete — overrun {finance_out.overrun_lakh}L ({finance_out.overrun_pct}%)")
+        await think(ctx, "analyze", f"Found {plural(len(finance_out.drivers), 'cost driver')}; "
+                                    f"overrun {finance_out.overrun_lakh:g} lakh ({finance_out.overrun_pct:g}%).")
 
         retrieved = {h.path for h in evidence.hits} | {h.path for h in policies.hits}
         for d in finance_out.drivers:

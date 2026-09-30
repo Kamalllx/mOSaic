@@ -15,7 +15,18 @@ from mosaic_contracts.schema.common import new_id
 from mosaic_contracts.schema.ipc import A2AMessage
 
 from mosaic_agents.prompts import ResearchOut
-from mosaic_agents.sdk import MosaicAgent, ask_json, cite, gather_evidence, keep_retrieved, project_of, propose_action
+from mosaic_agents.sdk import (
+    MosaicAgent,
+    ask_json,
+    cite,
+    gather_evidence,
+    keep_retrieved,
+    plural,
+    project_of,
+    propose_action,
+    think,
+    think_flagged,
+)
 
 log = logging.getLogger("mosaic.agents.research")
 
@@ -48,6 +59,7 @@ class ResearchAgent(MosaicAgent):
         await ctx.log("research-agent: starting", data={"goal": goal[:200]})
         project = project_of(goal, ctx.inputs)
         vendor_url, vendor_query, vendor_purpose = VENDORS.get(project.lower(), (VENDOR_DOCS_URL, VENDOR_QUERY, VENDOR_PURPOSE))
+        await think(ctx, "search", f"Looking for vendor context on Project {project}.")
 
         # Gather knowledge base evidence (all scopes): the goal, plus the vendor's side of the story
         evidence = await gather_evidence(ctx, goal, scope=["/org"], top_k=8)
@@ -56,6 +68,7 @@ class ResearchAgent(MosaicAgent):
         evidence = evidence.model_copy(update={"hits": [*evidence.hits, *(h for h in vendor.hits if h.path not in seen)]})
         evidence_text = cite(evidence)
         await ctx.log(f"research-agent: gathered {len(evidence.hits)} evidence hits")
+        await think_flagged(ctx, evidence)
 
         if ctx.cancelled():
             return self.result(ctx, "cancelled", status=AgentResultStatus.CANCELLED)
@@ -75,6 +88,7 @@ class ResearchAgent(MosaicAgent):
                     evidence=[h.path for h in evidence.hits[:3]],
                     risk=Risk.LOW,
                 )
+                await think(ctx, "browse", "Opening the vendor docs in a sandboxed browser.")
                 result = await ctx.syscall(req)
                 if result.tool_result and result.tool_result.output:
                     page_text = result.tool_result.output.get("text", "")
@@ -124,6 +138,8 @@ class ResearchAgent(MosaicAgent):
             research_out.urls_opened.extend(urls_opened)
 
         await ctx.log(f"research-agent: found {len(research_out.findings)} findings, opened {len(research_out.urls_opened)} URLs")
+        await think(ctx, "analyze", f"Found {plural(len(research_out.findings), 'finding')} from "
+                                    f"{plural(len(research_out.urls_opened), 'vendor page')}.")
 
         # Send evidence to parent
         if ctx.ppid:

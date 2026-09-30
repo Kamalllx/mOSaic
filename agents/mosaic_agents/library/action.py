@@ -17,7 +17,7 @@ from typing import Any
 
 from mosaic_contracts.schema import AgentResult, AgentResultStatus, Risk, SyscallStatus
 
-from mosaic_agents.sdk import MosaicAgent, gather_evidence, project_of, propose_action, tracking_issue
+from mosaic_agents.sdk import MosaicAgent, gather_evidence, project_of, propose_action, think, tracking_issue
 
 log = logging.getLogger("mosaic.agents.action")
 
@@ -73,6 +73,7 @@ class ActionAgent(MosaicAgent):
                 )
 
                 await ctx.log("action-agent: issuing jira.write syscall (may require approval)")
+                await think(ctx, "act", f"Asking to record the root causes on {issue}; this needs a person's approval.")
                 result = await ctx.syscall(req)
 
                 syscall_results.append({
@@ -82,6 +83,7 @@ class ActionAgent(MosaicAgent):
                 })
 
                 status_msg = result.status.value
+                await think(ctx, "act", f"The update to {issue} ended {status_msg.lower().replace('_', ' ')}.")
                 await ctx.log(f"action-agent: jira.write syscall completed with status={status_msg}")
 
                 if result.status == SyscallStatus.DENIED:

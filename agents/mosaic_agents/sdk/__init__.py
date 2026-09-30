@@ -16,14 +16,17 @@ import re
 from typing import Any, TypeVar
 
 from mosaic_contracts.schema import (
+    MAX_THOUGHT_CHARS,
     AgentResult,
     AgentResultStatus,
+    AgentThought,
     ChatMessage,
     EvidenceSet,
     MemoryKind,
     MemoryRecord,
     MemoryScope,
     ModelRequest,
+    NarrationPayload,
     Risk,
     Role,
     SearchQuery,
@@ -197,6 +200,42 @@ async def keep_retrieved(ctx: Any, cited: Any, retrieved: set[str], where: str) 
     return kept
 
 
+async def narrate(ctx: Any, payload: NarrationPayload) -> None:
+    """ctx.narrate, best-effort: the story shown in the UI must never fail a run. A context without narrate (an old
+    stub) or a payload that fails validation is logged and skipped; kernel errors (a kill, a pause) still propagate."""
+    try:
+        await ctx.narrate(payload)
+    except (AttributeError, ValidationError) as e:
+        log.debug("narration skipped: %s", e)
+
+
+async def think(ctx: Any, step: str, text: str) -> None:
+    """One agent.thought: a short sentence written by agent code from counts and names, never model output or
+    retrieved text (the firewall's reason for flagging a document included)."""
+    try:
+        payload = AgentThought(step=step[:40], text=text[:MAX_THOUGHT_CHARS])
+    except ValidationError as e:
+        log.debug("thought skipped: %s", e)
+        return
+    await narrate(ctx, payload)
+
+
+def flagged_count(*evidence: EvidenceSet) -> int:
+    """How many distinct retrieved documents the context firewall flagged."""
+    return len({h.path for ev in evidence for h in ev.hits if h.firewall_flags})
+
+
+def plural(n: int, word: str) -> str:
+    return f"{n} {word}{'' if n == 1 else 's'}"
+
+
+async def think_flagged(ctx: Any, *evidence: EvidenceSet) -> None:
+    """Says that flagged documents are data, when there are any. Counts only: a flagged document's text is untrusted."""
+    n = flagged_count(*evidence)
+    if n:
+        await think(ctx, "firewall", f"Treating {plural(n, 'flagged document')} as data, not instructions.")
+
+
 async def remember_finding(ctx: Any, content: str, derived_from: list[str], importance: float = 0.7,
                            tags: list[str] | None = None) -> None:
     """Store this run's finding as an episodic memory. derived_from = the documents it rests on, so the memory goes
@@ -217,10 +256,15 @@ __all__ = [
     "SYSTEM_RULES",
     "ask_json",
     "cite",
+    "flagged_count",
     "gather_evidence",
     "keep_retrieved",
+    "narrate",
+    "plural",
     "project_of",
     "propose_action",
     "remember_finding",
+    "think",
+    "think_flagged",
     "tracking_issue",
 ]
