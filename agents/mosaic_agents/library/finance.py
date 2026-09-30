@@ -115,10 +115,13 @@ class FinanceAgent(MosaicAgent):
             "summary": finance_out.summary,
         }
 
-        # Remember the finding, derived from the documents it rests on (they going stale invalidates it)
+        # Remember the finding, derived from the documents it rests on (they going stale invalidates it): what it cited,
+        # every finance document it read (the model often uses a figure without citing its source, such as the cloud
+        # bill behind the dual-run cost), and the policies it checked against.
         cited = sorted({q for d in finance_out.drivers if isinstance(d, dict) for q in d.get("evidence", [])} & retrieved)
+        read = [h.path for h in evidence.hits if h.path.startswith("/org/finance/")]
         consulted = sorted(h.path for h in policies.hits)
-        derived = list(dict.fromkeys([*(cited or sorted(retrieved)[:5]), *consulted]))
+        derived = list(dict.fromkeys([*(cited or sorted(retrieved)[:5]), *read, *consulted]))
         await remember_finding(ctx, finance_out.summary or "finance finding", derived, tags=["finance", "apollo"])
 
         return AgentResult(

@@ -32,8 +32,24 @@ def test_finance_and_engineering_remember_their_findings():
         assert mem.owner == name and mem.kind == MemoryKind.EPISODIC and mem.importance >= 0.5
         assert mem.content == reply["summary"]
         cited = [reply["drivers" if "drivers" in reply else "blockers"][0]["evidence"][0]]
+        if name == "engineering-agent":
+            assert mem.derived_from == cited
+            continue
         # finance also rests on the policies it checked its drivers against (a policy change invalidates it)
-        assert mem.derived_from == (cited + ["/org/policies/security"] if name == "finance-agent" else cited)
+        assert mem.derived_from[0] == cited[0] and mem.derived_from[-1] == "/org/policies/security"
+
+
+def test_finance_finding_depends_on_every_finance_document_it_read():
+    # The model often uses a figure without citing its source (the September cloud bill); an edit there must still
+    # invalidate the finding, or the live invalidation demo depends on what the model chose to cite.
+    cites_project_only = {**FINANCE_REPLY, "drivers": [{**FINANCE_REPLY["drivers"][0], "evidence": ["/org/projects/apollo"]}]}
+    ctx = ctx_for("finance-agent", {"financial analysis": cites_project_only})
+    result = asyncio.run(FinanceAgent().run("Why is Apollo over budget?", ctx))
+    [mem] = ctx.memory.records.values()
+    read = [p for p in result.evidence if p.startswith("/org/finance/")]
+    assert read == ["/org/finance/apollo-budget"]  # read, never cited
+    assert mem.derived_from[0] == "/org/projects/apollo" and set(read) <= set(mem.derived_from)
+    assert not any(p.startswith("/org/engineering") for p in mem.derived_from)
 
 
 def test_finance_checks_its_drivers_against_the_policies():
