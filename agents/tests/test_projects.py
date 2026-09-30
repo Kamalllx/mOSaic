@@ -8,6 +8,7 @@ from mosaic_agents.library.finance import FinanceAgent
 from mosaic_agents.library.planner import PlannerAgent
 from mosaic_agents.library.research import ResearchAgent
 from mosaic_agents.sdk import project_of, tracking_issue
+from mosaic_contracts.schema import AgentResultStatus
 
 from .test_agents_units import ENG_REPLY, FINANCE_REPLY, _planner_ctx, ctx_for
 
@@ -24,6 +25,16 @@ GENERIC_PLAN = {"rationale": "r", "steps": [
 ]}
 
 
+# Specialists that come back with findings (what the canned children return when a test isn't about failures).
+WITH_FINDINGS = {
+    "finance-agent": ({"drivers": [{"item": "Cloud", "cause": "dual-run", "evidence": ["/org/finance/apollo-budget"]}]},
+                      ["/org/finance/apollo-budget"]),
+    "engineering-agent": ({"blockers": [{"issue": "APOLLO-12", "cause": "backfill failed",
+                                         "evidence": ["/org/engineering/apollo-status"]}]}, ["/org/engineering/apollo-status"]),
+    "research-agent": ({"findings": [], "urls_opened": ["http://vendor-docs/sdk-v5.html"]}, []),
+}
+
+
 def _spawned(ctx) -> list[tuple[str, str]]:
     return [(agent, goal) for agent, goal, _ in ctx.spawned.values()]
 
@@ -36,7 +47,7 @@ def test_project_of_and_tracking_issue():
 
 
 def test_planner_plans_the_zeus_goal_and_anchors_generic_steps_to_the_project():
-    ctx, inputs = _planner_ctx(GENERIC_PLAN)
+    ctx, inputs = _planner_ctx(GENERIC_PLAN, children=WITH_FINDINGS)
     result = asyncio.run(PlannerAgent().run(ZEUS, ctx))
     assert result.output["steps_executed"] == 4
     assert _spawned(ctx) == [
@@ -49,7 +60,7 @@ def test_planner_plans_the_zeus_goal_and_anchors_generic_steps_to_the_project():
 
 
 def test_planner_leaves_apollo_step_goals_untouched():
-    ctx, inputs = _planner_ctx(GENERIC_PLAN)
+    ctx, inputs = _planner_ctx(GENERIC_PLAN, children=WITH_FINDINGS)
     asyncio.run(PlannerAgent().run(APOLLO, ctx))
     assert [g for _, g in _spawned(ctx)] == [s["goal"] for s in GENERIC_PLAN["steps"]]
     assert all(i["project"] == "Apollo" for _, i in inputs)
@@ -57,13 +68,13 @@ def test_planner_leaves_apollo_step_goals_untouched():
 
 def test_fallback_plan_names_the_project_and_its_tracking_issue():
     unusable = {"rationale": "r", "steps": []}
-    ctx, _ = _planner_ctx(unusable)
+    ctx, _ = _planner_ctx(unusable, children=WITH_FINDINGS)
     asyncio.run(PlannerAgent().run(ZEUS, ctx))
     goals = dict(_spawned(ctx))
     assert set(goals) == {"finance-agent", "engineering-agent", "research-agent", "action-agent"}
     assert "Zeus" in goals["finance-agent"] and "ZEUS-11" in goals["action-agent"]
 
-    ctx, _ = _planner_ctx(unusable)
+    ctx, _ = _planner_ctx(unusable, children=WITH_FINDINGS)
     asyncio.run(PlannerAgent().run(APOLLO, ctx))
     assert _spawned(ctx) == [
         ("finance-agent", "Explain the Apollo budget variance with evidence"),
@@ -143,3 +154,81 @@ def test_planner_warns_when_it_continues_without_a_failed_specialist():
     assert warnings == ["planner: step s2 (engineering-agent) failed: engineering-agent failed: ollama qwen2.5:7b-instruct: "
                         "no answer within 180s (ReadTimeout); continuing without its findings"]
     assert not any("s1 (finance-agent) completed" in m for level, m, _ in ctx.logs if level == "warning")
+
+
+def _plan_text(ctx) -> str:
+    [ref] = [r for r in ctx.artifacts._data if r.endswith("/recovery-plan.md")]
+    return ctx.artifacts._data[ref].decode()
+
+
+def _with(**replace):
+    """WITH_FINDINGS, with some specialists' results replaced by AgentResults."""
+    from mosaic_contracts.schema import AgentResult
+
+    async def child(agent, goal, inputs):
+        if agent in replace:
+            return replace[agent](agent)
+        out, ev = WITH_FINDINGS.get(agent, ({}, []))
+        return AgentResult(pid=1, agent=agent, status=AgentResultStatus.COMPLETED, summary=f"{agent} done", output=out,
+                           evidence=ev)
+    return child
+
+
+def _failed_child(agent):
+    from mosaic_contracts.schema import AgentResult, ErrorInfo
+
+    reason = "ollama qwen2.5:7b-instruct: cannot reach Ollama at http://127.0.0.1:11434 (ConnectError)"
+    return AgentResult(pid=1, agent=agent, status=AgentResultStatus.FAILED, summary=f"{agent} failed: {reason}",
+                       error=ErrorInfo(code="MODEL_UNAVAILABLE", message=reason, retriable=True))
+
+
+def _planner(child):
+    from mosaic_contracts.testing.fakes import FakeAgentContext
+
+    from .test_agents_units import manifest
+
+    return FakeAgentContext(manifest=manifest("planner-agent"), responses={"produce a plan": GENERIC_PLAN}, child_runner=child)
+
+
+def test_a_failed_specialist_means_no_tracker_update_and_a_partial_plan():
+    from mosaic_contracts.schema import AgentResultStatus as S
+
+    ctx = _planner(_with(**{"engineering-agent": _failed_child}))
+    result = asyncio.run(PlannerAgent().run(APOLLO, ctx))
+    assert "action-agent" not in [a for a, _ in _spawned(ctx)], "no action agent, so no jira.write can happen"
+    assert ctx.syscalls == []
+    assert ("warning", "planner: skipping tracker update: incomplete findings from engineering-agent") in \
+        [(level, m) for level, m, _ in ctx.logs]
+    plan = _plan_text(ctx)
+    assert plan.splitlines()[:3] == ["# Recovery Plan", "", "**Partial: engineering-agent failed; tracker not updated.**"]
+    assert "## Root Causes" in plan, "still written from what the other specialists found"
+    assert result.status == S.FAILED and result.artifacts
+    assert result.error.code == "MODEL_UNAVAILABLE"
+    assert result.error.message.startswith("incomplete findings from engineering-agent: engineering-agent failed: ollama")
+    assert result.summary == "Partial: engineering-agent failed; tracker not updated."
+
+
+def test_a_specialist_with_no_usable_findings_counts_as_incomplete():
+    from mosaic_contracts.schema import AgentResult
+
+    def empty(agent):
+        return AgentResult(pid=1, agent=agent, status=AgentResultStatus.COMPLETED, output={"drivers": [], "summary": "Unable to "
+                           "extract financial data from evidence. Manual review required."}, summary="nothing")
+
+    ctx = _planner(_with(**{"finance-agent": empty, "research-agent": _failed_child}))
+    result = asyncio.run(PlannerAgent().run(APOLLO, ctx))
+    assert "action-agent" not in [a for a, _ in _spawned(ctx)]
+    assert result.status == AgentResultStatus.FAILED and result.error.code == "MODEL_UNAVAILABLE"
+    assert result.summary == "Partial: finance-agent, research-agent failed; tracker not updated."
+    assert "finance-agent returned no usable findings" in result.error.message
+
+
+def test_when_every_specialist_has_findings_the_action_step_runs_as_before():
+    """The Apollo path, pinned: same spawns in the same order, the action step last with every specialist's output."""
+    ctx, inputs = _planner_ctx(GENERIC_PLAN, children=WITH_FINDINGS)
+    result = asyncio.run(PlannerAgent().run(APOLLO, ctx))
+    assert _spawned(ctx) == [(s["agent"], s["goal"]) for s in GENERIC_PLAN["steps"]]
+    action_inputs = inputs[-1][1]
+    assert inputs[-1][0] == "action-agent" and set(action_inputs["upstream"]) == {"s1", "s2", "s3"}
+    assert result.status == AgentResultStatus.COMPLETED
+    assert "Partial" not in _plan_text(ctx) and not any("skipping tracker update" in m for _, m, _ in ctx.logs)

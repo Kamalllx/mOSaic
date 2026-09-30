@@ -19,7 +19,8 @@ import logging
 import re
 from typing import Any
 
-from mosaic_contracts.schema import AgentResult, AgentResultStatus
+from mosaic_contracts.errors import MosaicError
+from mosaic_contracts.schema import AgentResult, AgentResultStatus, ErrorInfo
 
 from mosaic_agents.prompts import PlanOut, PlanStep, RootCausesOut, SynthesisOut
 from mosaic_agents.sdk import (
@@ -72,6 +73,19 @@ Produce:
 
 NEVER fabricate citations. Only cite /org paths that actually appeared in the evidence.
 """
+
+ACTION_AGENT = "action-agent"
+# What each library specialist's findings are in: research counts when it opened a page even if it listed no findings.
+_FINDINGS_KEYS = ("drivers", "blockers", "findings", "urls_opened")
+
+
+def _has_findings(output: Any) -> bool:
+    """A specialist's output carries something to act on (for agents with other output shapes: anything at all)."""
+    if not isinstance(output, dict) or not output:
+        return False
+    known = [k for k in _FINDINGS_KEYS if k in output]
+    return any(output[k] for k in known) if known else True
+
 
 MAX_ROOT_CAUSES = 3
 PREFERRED_SOURCES = ("/org/finance/", "/org/engineering/")  # primary records; overviews like /org/projects/* rank lower
@@ -156,6 +170,9 @@ class PlannerAgent(MosaicAgent):
         # Topological execution: spawn all steps whose deps are complete
         completed_steps: set[str] = set()
         remaining = list(steps)
+        # Specialists that failed or came back empty, with why. The tracker is only updated from complete findings.
+        incomplete: dict[str, str] = {}
+        incomplete_codes: list[str] = []
 
         while remaining:
             if ctx.cancelled():
@@ -169,6 +186,11 @@ class PlannerAgent(MosaicAgent):
             # Spawn all ready steps in parallel
             for step in ready:
                 remaining.remove(step)
+                if step.agent == ACTION_AGENT and incomplete:
+                    await ctx.log(f"planner: skipping tracker update: incomplete findings from {', '.join(incomplete)}",
+                                  level="warning")
+                    completed_steps.add(step.step_id)
+                    continue
                 inputs = {"upstream": {k: upstream[k] for k in step.depends_on if k in upstream}, "project": project}
                 try:
                     pid = await ctx.spawn(step.agent, step.goal, inputs)
@@ -177,6 +199,8 @@ class PlannerAgent(MosaicAgent):
                 except Exception as e:
                     await ctx.log(f"planner: failed to spawn {step.agent}: {e}", level="warning")
                     completed_steps.add(step.step_id)  # skip this step
+                    if step.agent != ACTION_AGENT:
+                        incomplete[step.agent] = f"{step.agent} could not be started: {e}"
 
             # Wait for all spawned steps that haven't been waited on yet
             for step in [s for s in steps if s.step_id in step_pids and s.step_id not in completed_steps]:
@@ -192,10 +216,21 @@ class PlannerAgent(MosaicAgent):
                         else:  # the synthesis goes on without it: say so where the timeline highlights it
                             await ctx.log(f"planner: step {step.step_id} ({step.agent}) {result.status.value}: "
                                           f"{result.summary[:300]}; continuing without its findings", level="warning")
+                        if step.agent != ACTION_AGENT:
+                            if result.status != AgentResultStatus.COMPLETED:
+                                incomplete[step.agent] = result.summary[:300] or f"{step.agent} {result.status.value}"
+                                if result.error is not None:
+                                    incomplete_codes.append(result.error.code)
+                            elif not _has_findings(result.output):
+                                incomplete[step.agent] = f"{step.agent} returned no usable findings"
+                                await ctx.log(f"planner: step {step.step_id} ({step.agent}) returned no usable findings",
+                                              level="warning")
                     except Exception as e:
                         await ctx.log(f"planner: wait for step {step.step_id} failed: {e}", level="warning")
                         upstream[step.step_id] = {}
                         completed_steps.add(step.step_id)
+                        if step.agent != ACTION_AGENT:
+                            incomplete[step.agent] = f"{step.agent}: {e}"
 
         # 7. Synthesize
         if ctx.cancelled():
@@ -209,13 +244,14 @@ class PlannerAgent(MosaicAgent):
             "recovery_plan (list of steps), summary (two or three sentences)."
         )
 
-        synthesis = await ask_json(ctx, SYNTHESIS_SYSTEM, synthesis_prompt, SynthesisOut, max_tokens=2000)
+        partial = f"Partial: {', '.join(incomplete)} failed; tracker not updated." if incomplete else None
+        synthesis = await self._ask(ctx, partial, SYNTHESIS_SYSTEM, synthesis_prompt, SynthesisOut, max_tokens=2000)
         synthesis = synthesis or SynthesisOut()
         synthesis.root_causes = await self._backed(ctx, synthesis.root_causes, retrieved)
         if not synthesis.root_causes:
             # Small models often fail the full schema: retry once with just the root causes and compact findings
             await ctx.log("planner: synthesis had no cited root causes; retrying with a simpler schema", level="warning")
-            retry = await ask_json(ctx, SYNTHESIS_SYSTEM, (
+            retry = await self._ask(ctx, partial, SYNTHESIS_SYSTEM, (
                 f"Goal: {goal}\n\nSpecialist findings (with their /org evidence):\n{self._findings_text(upstream)}\n\n"
                 "List the root causes as JSON: root_causes (list of {cause, evidence: [/org paths from the findings]})."),
                 RootCausesOut, max_tokens=800)
@@ -241,9 +277,20 @@ class PlannerAgent(MosaicAgent):
         await ctx.log(f"planner: synthesis complete ({len(synthesis.root_causes)} root causes)")
 
         # 8. Write artifact
-        recovery_md = self._make_recovery_md(goal, synthesis, upstream)
+        recovery_md = self._make_recovery_md(goal, synthesis, upstream, partial)
         artifact_ref = await ctx.put_artifact("recovery-plan.md", recovery_md.encode(), "text/markdown")
         await ctx.log(f"planner: wrote artifact {artifact_ref}")
+
+        if partial:
+            # The plan is written, but the run is not a success: end the task as failed, naming the specialists.
+            reasons = "; ".join(incomplete.values())
+            return AgentResult(
+                pid=ctx.pid, agent=ctx.manifest.name, status=AgentResultStatus.FAILED, summary=partial,
+                error=ErrorInfo(code=incomplete_codes[0] if incomplete_codes else "INTERNAL",
+                                message=f"incomplete findings from {', '.join(incomplete)}: {reasons}"[:1000], retriable=False),
+                output={"root_causes": synthesis.root_causes, "recovery_plan": self._numbered(synthesis.recovery_plan),
+                        "artifact": artifact_ref, "partial": True, "incomplete": list(incomplete)},
+                evidence=sorted(p for p in retrieved if p.startswith("/org")), artifacts=[artifact_ref])
 
         # 9. Return result
         root_causes = synthesis.root_causes
@@ -392,8 +439,20 @@ class PlannerAgent(MosaicAgent):
                     lines.append(f"  {k}: {str(v)[:300]}")
         return "\n".join(lines) or "(no specialist findings)"
 
-    def _make_recovery_md(self, goal: str, synthesis: SynthesisOut | None, upstream: dict) -> str:
-        parts = [f"# Recovery Plan\n\n**Goal:** {goal}\n"]
+    async def _ask(self, ctx: Any, partial: str | None, *args: Any, **kw: Any) -> Any:
+        """ask_json; when findings are already incomplete, a failing model (often the reason they are) must not cost
+        the partial plan too, so its error is logged and the plan is built from the structured findings instead."""
+        if not partial:
+            return await ask_json(ctx, *args, **kw)
+        try:
+            return await ask_json(ctx, *args, **kw)
+        except MosaicError as e:
+            await ctx.log(f"planner: synthesis unavailable ({e.message}); writing the partial plan from the findings",
+                          level="warning")
+            return None
+
+    def _make_recovery_md(self, goal: str, synthesis: SynthesisOut | None, upstream: dict, partial: str | None = None) -> str:
+        parts = [f"# Recovery Plan\n\n**{partial}**\n" if partial else "# Recovery Plan\n", f"**Goal:** {goal}\n"]
 
         parts.append("\n## Root Causes\n")
         for i, rc in enumerate(synthesis.root_causes if synthesis else [], 1):
