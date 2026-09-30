@@ -5,14 +5,15 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "light",
     "androidStatusBar": {
-      "backgroundColor": "#0d1117",
-      "barStyle": "light-content",
+      "backgroundColor": "#ffffff",
+      "barStyle": "dark-content",
       "translucent": false
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.mosaic.mobile"
     },
     "android": {
       "adaptiveIcon": {
@@ -21,11 +22,35 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.mosaic.mobile",
+      "versionCode": 1,
+      "permissions": [
+        "android.permission.POST_NOTIFICATIONS"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "scheme": "mosaic"
+    "scheme": "mosaic",
+    "plugins": [
+      "expo-router",
+      "expo-web-browser",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#0b6b60"
+        }
+      ],
+      "expo-font"
+    ]
   }
 }
