@@ -234,7 +234,7 @@ export type TrustLevel4 = "verified" | "trusted" | "unverified" | "untrusted";
 export type VerificationStatus2 = "unverified" | "verified" | "disputed" | "stale";
 
 /**
- * mOSaic contracts v0.6.0
+ * mOSaic contracts v0.7.0
  */
 export interface MOSaic {
   A2AMessage?: A2AMessage;
@@ -762,6 +762,10 @@ export interface ComponentHealth {
 export interface EmbedRequest {
   texts: string[];
   model_hint?: string | null;
+  /**
+   * What the texts are: some embedding models (nomic-embed-text) are trained with a task prefix and retrieve better when queries and documents are marked; providers that don't need it ignore it
+   */
+  input_type?: ("query" | "document") | null;
 }
 /**
  * This interface was referenced by `MOSaic`'s JSON-Schema

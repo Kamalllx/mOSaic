@@ -27,4 +27,4 @@ Full brief: [docs/team/P3-agents-models.md](../../docs/team/P3-agents-models.md)
 | Router: batch `/api/embed`, schema-invalid JSON repaired, `MODEL_UNAVAILABLE` at routing time; model tests skip when models aren't pulled | ☑ |
 | Agents consult `/org/policies` (needed for the security-policy-v2 invalidation demo) | ☐ follow-up |
 | Review leftovers: `MOSAIC_MODELS_CONFIG` override (contract field, 0.5.0; `models/models.7b-only.yaml` for 8 GB GPUs) | ✅ |
-| Review leftovers: nomic `search_query:`/`search_document:` prefixes (contract, co-propose with P2) | ☐ |
+| Review leftovers: nomic `search_query:`/`search_document:` prefixes (`EmbedRequest.input_type`, contract 0.7.0; semantic MRR 0.83 → 0.90 on data/okf) | ✅ |

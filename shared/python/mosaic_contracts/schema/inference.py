@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field
 
@@ -78,6 +78,11 @@ class StreamChunk(Contract):
 class EmbedRequest(Contract):
     texts: list[str]
     model_hint: str | None = None
+    input_type: Literal["query", "document"] | None = Field(
+        None,
+        description="What the texts are: some embedding models (nomic-embed-text) are trained with a task prefix and "
+        "retrieve better when queries and documents are marked; providers that don't need it ignore it",
+    )
 
 
 class EmbedResponse(Contract):
