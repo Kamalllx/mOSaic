@@ -96,6 +96,7 @@ A real run on the laptop takes about 33–51 s and scores **8/8** on `scripts/de
 | 0.5.0 | `Settings.models_config` (`MOSAIC_MODELS_CONFIG`) |
 | 0.6.0 | `RunTimeline.chain_verified` |
 | 0.7.0 | `EmbedRequest.input_type` (`query` / `document`) for nomic prefixes |
+| 0.8.0 | `Settings.firewall_llm` (`MOSAIC_FIREWALL_LLM`); new flag value `instruction_like_llm` |
 
 ---
 
@@ -113,7 +114,7 @@ A real run on the laptop takes about 33–51 s and scores **8/8** on `scripts/de
 | NOOA adapter: object agents (public async methods with docstrings = skills; model picks one) | Done, tested | `agents/mosaic_agents/adapters/nooa.py` |
 | Hybrid retrieval (lexical + pgvector + graph) | 10/10 QA, MRR 0.90; semantic-only 10/10 (0.83 → 0.90 with nomic prefixes) | `knowledge/mosaic_knowledge/retrieval`, `indexing/store.py` (`EMBED_SCHEME="qd1"`) |
 | Context firewall: regex (always on) | Catches the demo vendor email | `knowledge/mosaic_knowledge/firewall/__init__.py` |
-| Context firewall: LLM classifier (opt-in) | Prompt improved, temperature 0: 3–4 of 5 reworded injections the regex misses, 0 false positives on the bundle, ~0.2 s/doc. **Off by default; no setting yet** | same file, `use_llm_classifier=` |
+| Context firewall: LLM classifier (opt-in) | Prompt improved, temperature 0: 3–4 of 5 reworded injections the regex misses, 0 false positives on the bundle, ~0.2 s/doc. Off by default; `MOSAIC_FIREWALL_LLM=true` turns it on (0.8.0); its catches add the flag `instruction_like_llm` | same file; `knowledge/mosaic_knowledge/factory.py` |
 | Memory with `derived_from`, invalidation on source change | Done (stale in ~0.1 s) | `knowledge/.../memory`, `coherence` |
 | Re-consolidation: stale memories re-derived from new text | Done (~3.5 s); tags `reconsolidated`, `replaces:<old id>`; event `memory.consolidated` with source `memory.reconsolidate` | `memory.reconsolidate()`, `coherence._on_changed` |
 | Model router + Ollama provider, nomic `search_query:`/`search_document:` prefixes | Done (0.7.0) | `models/mosaic_models/*`, `models/models.yaml`, `models/models.7b-only.yaml` |

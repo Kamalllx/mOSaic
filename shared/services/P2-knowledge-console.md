@@ -47,7 +47,7 @@ Security policy v2 (`data/demo-assets/security-policy-v2.md`) reindexes but inva
 | OKF I/O + validation | ✅ |
 | Postgres schema + indexing | ✅ (auto re-embed on model/dim change) |
 | Hybrid retrieval + graph + scope filter | ✅ |
-| Context firewall | ✅ regex; optional LLM classifier built, off by default |
+| Context firewall | ✅ regex; LLM classifier behind `MOSAIC_FIREWALL_LLM` (contract 0.8.0, off by default): its catches carry `instruction_like` + `instruction_like_llm` and log a warning on `mosaic.knowledge.firewall` |
 | Memory manager + coherence | ✅ (re-consolidation queue not done) |
 | Ingest pipeline (uses P4 converters) | ✅ all five of P4's converters through the pipeline; output byte-identical to P4's committed data/okf |
 | Run under P1's real kernel (T9 part 1) | ✅ on `integration/m3` |
