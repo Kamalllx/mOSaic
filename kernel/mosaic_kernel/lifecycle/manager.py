@@ -11,6 +11,7 @@ from mosaic_contracts.schema import (
     TERMINAL_STATES,
     AgentCreated,
     AgentManifest,
+    AgentProcess,
     AgentResult,
     AgentResultStatus,
     AgentState,
@@ -36,6 +37,7 @@ from mosaic_contracts.schema.common import new_id, utcnow
 from mosaic_contracts.util import has_capability, path_matches
 
 from ..context.agent_context import KernelAgentContext
+from ..dynamic import generate, org_probe
 
 if TYPE_CHECKING:
     from ..kernel import Kernel
@@ -102,9 +104,11 @@ class Lifecycle:
             if parent_manifest is None or req.agent not in parent_manifest.capabilities.agents:
                 raise MosaicError("CAPABILITY_DENIED", f"{parent.agent} may not spawn {req.agent}")
             await k.quotas.charge_child(parent.pid)
+            # Every agent another agent creates is generated from its role template, for this task only.
+            manifest = await self._generate(manifest, req, task, parent)
 
         caps = manifest.all_capabilities()
-        if req.capabilities is not None:  # a request may only narrow
+        if req.capabilities is not None:  # a request may only narrow (generated manifests are narrowed already)
             caps = [c for c in caps if has_capability(c, req.capabilities)]
         quota = ResourceQuota(
             max_tokens=manifest.resources.max_tokens_per_task, max_tool_calls=manifest.resources.max_tool_calls,
@@ -131,8 +135,9 @@ class Lifecycle:
 
         await k.emit(EventType.PROCESS_SPAWNED, {"agent": manifest.name, "ppid": req.ppid}, task_id=task.task_id, pid=pid)
         if req.ppid is not None:  # the story's "created" step: agents a planner creates (the root planner is the task itself)
-            await k.emit(EventType.AGENT_CREATED, AgentCreated(pid=pid, manifest_name=manifest.name, template=manifest.name,
-                                                               generated=False).model_dump(mode="json"),
+            await k.emit(EventType.AGENT_CREATED, AgentCreated(pid=pid, manifest_name=manifest.name,
+                                                               template=manifest.template or manifest.name,
+                                                               generated=manifest.generated).model_dump(mode="json"),
                          task_id=task.task_id, pid=pid)
         await k.journal(task.task_id, AuditKind.SPAWN, f"Spawned {manifest.name}", pid=pid,
                         actor=k.actor(req.ppid) if req.ppid else "kernel.lifecycle",
@@ -146,6 +151,38 @@ class Lifecycle:
                          task_id=task.task_id, pid=pid, source="kernel.lifecycle")
         self.tasks[pid] = asyncio.create_task(self._run(pid, manifest, ctx, restore_state), name=f"pid-{pid}")
         return pid
+
+    async def _generate(self, template: AgentManifest, req: SpawnRequest, task: Task, parent: AgentProcess) -> AgentManifest:
+        """The child's ephemeral manifest and policy: template ∩ request ∩ user permissions ∩ org policy (∩ the parent's
+        bounds when the parent is generated too). What was narrowed, and why, goes into a `policy` audit entry."""
+        k = self.k
+        user = await k.permissions.resolve(task.user_id, task.org_id, list(task.metadata.get("roles", [])) or None)
+        parent_manifest = self.manifests.get(parent.pid)
+        inherit = parent_manifest is not None and parent_manifest.generated
+        parent_ctx = self.contexts.get(parent.pid)
+        permits = getattr(k.policy, "permits", None)
+        probe = org_probe(template, task.org_id, task.user_id, list(task.metadata.get("roles", [])))
+        g = generate(template, req, name=k.ephemeral.name_for(template.name, task.task_id), task_id=task.task_id, user=user,
+                     org_refuses=(lambda c: permits(c, probe)) if permits else (lambda c: None),
+                     parent=parent_manifest if inherit else None,
+                     parent_caps=list(parent.capabilities) if inherit else None,
+                     parent_scopes=list(parent_ctx.principal.data_scopes) if inherit and parent_ctx else None)
+        k.ephemeral.add(task.task_id, g)
+        if hasattr(k.policy, "register_generated"):
+            k.policy.register_generated(g.manifest.name, g.policy)
+        if g.dropped:
+            summary = f"Narrowed {g.manifest.name}: " + "; ".join(f"{x} ({why})" for x, why in g.dropped.items())
+            await k.journal(task.task_id, AuditKind.POLICY, summary[:500], pid=parent.pid, actor="kernel.lifecycle",
+                            data={"agent": g.manifest.name, "template": template.name, "requested": g.requested,
+                                  "granted": g.manifest.all_capabilities(), "scope": g.manifest.memory.mounts,
+                                  "dropped": g.dropped, "user": user.user_id, "roles": user.roles, "why": req.why})
+        return g.manifest
+
+    def drop_generated(self, task_id: str) -> None:
+        """The task ended: its generated manifests and policies go (memory, disk, policy overlay)."""
+        names = self.k.ephemeral.remove_task(task_id)
+        if names and hasattr(self.k.policy, "drop_generated"):
+            self.k.policy.drop_generated(names)
 
     def _resume_state(self, task: Task) -> dict | None:
         cp_id = task.metadata.get("resume_from")

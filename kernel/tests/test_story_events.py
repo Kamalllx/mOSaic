@@ -26,12 +26,14 @@ def test_agents_a_planner_creates_are_announced_after_their_spawn(make_kernel):
         await k.shutdown()
         return t
 
-    assert run(go).status == TaskStatus.COMPLETED
+    t = run(go)
+    assert t.status == TaskStatus.COMPLETED
     created = k.bus.of_type("agent.created")
     assert len(created) == 1  # the root planner is the task itself, not a created agent
     c = AgentCreated.model_validate(created[0].payload)
-    spawned = next(e for e in k.bus.of_type("process.spawned") if e.payload["agent"] == "finance-agent")
-    assert (c.pid, c.manifest_name, c.template, c.generated) == (spawned.pid, "finance-agent", "finance-agent", False)
+    spawned = next(e for e in k.bus.of_type("process.spawned") if e.payload["ppid"] is not None)
+    assert (c.pid, c.manifest_name, c.template, c.generated) == (spawned.pid, f"finance-agent@{t.task_id}", "finance-agent", True)
+    assert spawned.payload["agent"] == c.manifest_name
     assert created[0].pid == c.pid
 
 
