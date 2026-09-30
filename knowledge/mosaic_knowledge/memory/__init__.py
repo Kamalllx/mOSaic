@@ -41,6 +41,13 @@ UPDATE memories SET stale = true WHERE memory_id IN (SELECT id FROM dep) AND NOT
 RETURNING memory_id, owner;
 """
 
+RECONSOLIDATE_PROMPT = (
+    "A finding an agent stored earlier rests on documents that have since changed. Rewrite the finding so it matches "
+    "the current documents: one or two sentences, keep figures the documents still support, correct the ones they no "
+    "longer support, and add nothing they don't say. Reply with the finding only.\n\n"
+    "Earlier finding:\n{finding}\n\nCurrent documents:\n{documents}"
+)
+
 
 class MemoryManager:
     def __init__(self, store: PgStore, models: Any, event_bus: Any = None) -> None:
@@ -48,6 +55,9 @@ class MemoryManager:
         self.models = models
         self.bus = event_bus
         self._migrated = False
+        # Set by the factory when coherence runs: invalidations then say a re-consolidation is queued, and coherence
+        # calls reconsolidate() once the changed document has been reindexed.
+        self.reconsolidate_stale = False
 
     async def _ensure_ready(self) -> None:
         if self._migrated:
@@ -269,12 +279,53 @@ class MemoryManager:
             rows = await cur.fetchall()
             await conn.commit()
         stale = [r["memory_id"] for r in rows]
-        report = InvalidationReport(source=source, invalidated=stale, affected_agents=sorted({r["owner"] for r in rows}))
+        report = InvalidationReport(source=source, invalidated=stale, affected_agents=sorted({r["owner"] for r in rows}),
+                                    reconsolidation_queued=self.reconsolidate_stale and bool(stale))
         if self.bus is not None and stale:
             await self.bus.publish(
                 Event(type=EventType.MEMORY_INVALIDATED, source="memory.manager", payload=report.model_dump(mode="json"))
             )
         return report
+
+    async def reconsolidate(self, memory_ids: list[str]) -> list[MemoryRecord]:
+        """Re-derive stale memories from the current text of their /org sources (blueprint §21: invalidation and
+        recomputation). Each gets a new memory with the same owner, task, kind and sources, tagged reconsolidated and
+        replaces:<old id>; the stale one stays for history. Memories without /org sources are left as they are."""
+        await self._ensure_ready()
+        if self.models is None or not memory_ids:
+            return []
+        async with self.pg.connection() as conn:
+            cur = await conn.execute("SELECT * FROM memories WHERE memory_id = ANY(%s) AND stale", (memory_ids,))
+            rows = await cur.fetchall()
+        from mosaic_contracts.schema import ChatMessage, ModelRequest, Role
+        from mosaic_contracts.schema.common import PrivacyLevel
+        from mosaic_contracts.schema.inference import TaskClass
+
+        out: list[MemoryRecord] = []
+        for row in rows:
+            sources = [p for p in (row["derived_from"] or []) if p.startswith("/org")]
+            docs = await self.pg.get_object_rows(sources)
+            if not docs:
+                continue
+            documents = "\n\n".join(f"[{p}]\n{(docs[p]['body'] or '')[:1500]}" for p in sources if p in docs)
+            resp = await self.models.generate(ModelRequest(
+                messages=[ChatMessage(role=Role.USER, content=RECONSOLIDATE_PROMPT.format(
+                    finding=row["summary"] or row["content"], documents=documents))],
+                task_class=TaskClass.SUMMARIZATION, privacy=PrivacyLevel.INTERNAL, max_tokens=300))
+            content = (resp.content or "").strip()[:2000]
+            if not content:
+                continue
+            rec = MemoryRecord(
+                memory_id=new_id("MEM"), kind=row["kind"], scope=row["scope"], org_id=row["org_id"], owner=row["owner"],
+                task_id=row["task_id"], content=content, derived_from=sources, importance=row["importance"] or 0.5,
+                tags=[*(t for t in (row["tags"] or []) if not t.startswith("replaces:")), "reconsolidated", f"replaces:{row['memory_id']}"],
+            )
+            await self.store(rec)
+            out.append(rec)
+        if self.bus is not None and out:
+            await self.bus.publish(Event(type=EventType.MEMORY_CONSOLIDATED, source="memory.reconsolidate",
+                                         payload={"created": len(out)}))
+        return out
 
     async def rehydrate(self, pid: int) -> WorkingSet | None:
         await self._ensure_ready()

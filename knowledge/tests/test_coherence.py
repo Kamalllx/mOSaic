@@ -48,6 +48,7 @@ def test_manual_edit_invalidates_dependent_memories_and_reindexes(services):
             seen.append(e)
 
         b.event_bus.subscribe("*", h)
+        b.models.responses["rests on documents that have since changed"] = "Quasarcrypt keys now rotate every 30 days."
         await b.knowledge.read("/org/policies/security", user_principal())  # load + index the scratch bundle
         summary = MemoryRecord(
             memory_id=new_id("MEM"),
@@ -77,15 +78,27 @@ def test_manual_edit_invalidates_dependent_memories_and_reindexes(services):
         )
         await _wait_for(seen, lambda e: e.type == "knowledge.reindexed")
         hits = await b.knowledge.search(SearchQuery(text="Quasarcrypt keys rotate"), user_principal())
+        await _wait_for(seen, lambda e: e.type == "memory.consolidated" and e.source == "memory.reconsolidate")
+        async with b.memory.pg.connection() as conn:
+            cur = await conn.execute("SELECT * FROM memories WHERE %s = ANY(tags)", (f"replaces:{summary.memory_id}",))
+            redone = await cur.fetchall()
+            cur = await conn.execute("SELECT count(*) AS n FROM memories WHERE %s = ANY(tags)", (f"replaces:{derived.memory_id}",))
+            redone_derived = (await cur.fetchone())["n"]
         stop.set()
         await watcher
-        return summary, derived, changed, invalidated, hits
+        return summary, derived, changed, invalidated, hits, redone, redone_derived
 
-    summary, derived, changed, invalidated, hits = asyncio.run(go())
+    summary, derived, changed, invalidated, hits, redone, redone_derived = asyncio.run(go())
     assert changed.payload["change"] == "updated"
     assert set(invalidated.payload["invalidated"]) == {summary.memory_id, derived.memory_id}
     assert invalidated.payload["affected_agents"] == ["compliance-agent", "finance-agent"]
     assert hits.hits and hits.hits[0].path == "/org/policies/security", "the edit is searchable after coherence reindexed it"
+    # re-consolidation: the memory resting on the edited document is re-derived from its new text
+    assert invalidated.payload["reconsolidation_queued"] is True
+    [new] = redone
+    assert new["content"] == "Quasarcrypt keys now rotate every 30 days." and not new["stale"]
+    assert new["owner"] == "finance-agent" and new["derived_from"] == ["/org/policies/security"] and "reconsolidated" in new["tags"]
+    assert redone_derived == 0, "a memory derived only from other memories has no document to re-derive from"
 
 
 def test_knowledge_watch_setting_starts_the_watcher(tmp_path):

@@ -6,7 +6,7 @@ TODO:
   - [x] dependency graph from MemoryRecord.derived_from (memory.MemoryManager.invalidate's recursive CTE)
   - [x] on knowledge.changed: invalidate transitively, reindex, publish memory.invalidated
   - [x] optional watchfiles watcher over okf_dir: manual edits publish knowledge.changed (500 ms debounce)
-  - [ ] queue re-consolidation for invalidated memories (InvalidationReport.reconsolidation_queued)
+  - [x] re-consolidate invalidated memories from the reindexed sources (InvalidationReport.reconsolidation_queued)
 """
 
 from __future__ import annotations
@@ -23,13 +23,16 @@ logger = logging.getLogger("mosaic.knowledge.coherence")
 
 
 class Coherence:
-    """knowledge.changed → memory.invalidate(path) → knowledge.reindex([path])."""
+    """knowledge.changed → memory.invalidate(path) → knowledge.reindex([path]) → memory.reconsolidate(stale)."""
 
     def __init__(self, event_bus: Any, knowledge: Any, memory: Any) -> None:
         self.bus = event_bus
         self.knowledge = knowledge
         self.memory = memory
         self._subscription = None
+        self._background: set[asyncio.Task] = set()
+        if hasattr(memory, "reconsolidate"):
+            memory.reconsolidate_stale = True
 
     def start(self) -> None:
         if self._subscription is None:
@@ -45,11 +48,24 @@ class Coherence:
         if not path:
             return
         try:
-            await self.memory.invalidate(path)
+            report = await self.memory.invalidate(path)
             if self.knowledge is not None:
                 await self.knowledge.reindex([path])
         except Exception:  # a failing handler must not break the bus; log and move on
             logger.exception("coherence failed for %s", path)
+            return
+        if getattr(report, "reconsolidation_queued", False):
+            # In the background: it calls the model once per memory, and the bus shouldn't wait for that.
+            task = asyncio.create_task(self._reconsolidate(report.invalidated))
+            self._background.add(task)
+            task.add_done_callback(self._background.discard)
+
+    async def _reconsolidate(self, memory_ids: list[str]) -> None:
+        try:
+            done = await self.memory.reconsolidate(memory_ids)
+            logger.info("re-derived %d of %d stale memories", len(done), len(memory_ids))
+        except Exception:
+            logger.exception("re-consolidation failed for %s", memory_ids)
 
 
 async def watch_bundle(okf_dir: Path, event_bus: Any, stop: asyncio.Event | None = None, debounce_ms: int = 500) -> None:
