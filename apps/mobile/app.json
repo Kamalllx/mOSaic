@@ -5,7 +5,12 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
+    "androidStatusBar": {
+      "backgroundColor": "#0d1117",
+      "barStyle": "light-content",
+      "translucent": false
+    },
     "ios": {
       "supportsTablet": true
     },

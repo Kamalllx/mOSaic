@@ -76,8 +76,10 @@ function Explorer() {
           {path ? (
             <ObjectView key={path} path={path} onSelect={(p) => go({ path: p })} />
           ) : (
-            <div className="mt-16 text-center text-text-2">
-              <p className="text-lg text-foreground">Pick a document or search.</p>
+            <div className="flex h-full flex-col items-center justify-center px-6 py-16 text-center text-text-2">
+              <BookOpenText className="mb-3 size-10 opacity-25" aria-hidden />
+              <p className="text-lg font-medium text-foreground">Pick a document or search.</p>
+              <p className="mt-1 text-sm">Select a file from the tree on the left, or enter a search query.</p>
               <p className="mt-1 text-sm">Search blends lexical, semantic and graph scores and shows all three.</p>
             </div>
           )}

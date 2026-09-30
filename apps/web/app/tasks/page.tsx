@@ -35,7 +35,7 @@ export default function TasksPage() {
         </Link>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <div role="radiogroup" aria-label="Status" className="flex overflow-hidden rounded-md border border-line">
+        <div role="radiogroup" aria-label="Status filter" className="flex overflow-hidden rounded-md border border-line">
           {FILTERS.map((f) => (
             <button
               key={f}
@@ -57,9 +57,44 @@ export default function TasksPage() {
           className="h-9 min-w-48 flex-1 rounded-md border border-line bg-surface-2 px-3 text-sm"
         />
       </div>
-      <section className="rounded-xl border border-line bg-surface-1 p-2 shadow-panel">
-        {tasks.isError && <p className="p-3 text-sm text-st-failed">Gateway unreachable: {String(tasks.error)}</p>}
-        {tasks.isSuccess && shown.length === 0 && <p className="p-3 text-sm text-text-2">No tasks match.</p>}
+      <section aria-label="Task list" className="rounded-xl border border-line bg-surface-1 p-2 shadow-panel">
+        {tasks.isError && (
+          <div className="flex flex-col items-center gap-3 p-8 text-center">
+            <p className="text-sm text-st-failed">Gateway unreachable: {String(tasks.error)}</p>
+            <button
+              type="button"
+              onClick={() => tasks.refetch()}
+              className="rounded-md border border-line px-3 py-1.5 text-sm hover:bg-surface-3"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+        {tasks.isLoading && (
+          <div className="space-y-1 p-2">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="flex items-center gap-3 rounded-md px-3 py-3">
+                <div className="h-5 w-24 animate-pulse rounded-md bg-surface-3" />
+                <div className="flex-1 space-y-1.5">
+                  <div className="h-3.5 w-full animate-pulse rounded bg-surface-3" />
+                  <div className="h-3 w-1/3 animate-pulse rounded bg-surface-3" />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {tasks.isSuccess && shown.length === 0 && (
+          <div className="px-4 py-8 text-center">
+            <p className="text-sm font-medium text-text-2">
+              {all.length === 0 ? "No tasks yet." : "No tasks match."}
+            </p>
+            {all.length === 0 && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Submit a goal from the <Link href="/" className="text-brand hover:underline">home page</Link> to start.
+              </p>
+            )}
+          </div>
+        )}
         {shown.map((t) => (
           <TaskRow key={t.task_id} t={t} />
         ))}

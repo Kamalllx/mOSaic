@@ -25,10 +25,40 @@ pack without backend support was left out (list below).
 | Tasks (new) | — | [after](after/tasks-dark-1920x1080.jpg) | [light](after/tasks-light-1920x1080.jpg) | [1366](after/tasks-dark-1366x768.jpg) | [phone](after/phone-tasks.jpg) |
 | Boot (new) | — | [after](after/boot-dark-1920x1080.jpg) | [light](after/boot-light-1920x1080.jpg) | [1366](after/boot-dark-1366x768.jpg) | — |
 
+## Polish pass (c/polish)
+
+These improvements were added on top of the revamp, keeping the same information architecture:
+
+### Firewall visibility (knowledge panel + task timeline)
+
+The knowledge panel now uses a `role="alert"` card with a double border, a larger icon, bold uppercase heading, and per-path `FirewallHit` rows that each show the path and the label "offending text — treated as data, not instructions". A green confirmation row reads "treated as data, not instructions" after the list of hits. The `detectedBy` prop on each hit supports "caught by regex" vs "caught by classifier" labelling when the backend provides a classifier flag (currently not emitted by the mock). The retrieval list also shows a flagged count inline.
+
+### Memory re-derivation
+
+The Memory page now visually groups a stale record and its re-derived replacement as a paired card with a teal border and "Memory re-derived from changed source" header. Stale record text has a strikethrough; re-derived records have a subtle teal background. The stat bar shows a teal "N re-derived" count alongside the amber stale count when both are non-zero.
+
+### Empty and loading states
+
+Every page now shows:
+- A skeleton (animated pulse placeholders) while data is loading, matching the layout of the loaded state.
+- A centred, descriptive empty state with a next-action hint instead of a bare text line.
+- An inline error card with a Retry button when the gateway is unreachable.
+
+Pages improved: Tasks, Approvals, Audit index, Agents, Memory, Knowledge, System.
+
+### Accessibility
+
+- `aria-label` added to `role="radiogroup"` controls.
+- `role="alert"` on the firewall hit card and the invalidation banner.
+- `aria-label="Tasks with audit journals"` / `"Pending approvals"` / `"Resolved approvals"` on list containers.
+- Knowledge page empty state now includes the `BookOpenText` icon as a visual anchor.
+- All interactive icon-only buttons already had `aria-label`; no regressions introduced.
+
 ## What was checked
 
-- `npm run build`, `npm run lint` and `npm test` (59 tests: the event reducer, the client, the approval-drawer state,
+- `npm run build`, `npm run lint` and `npm test` (61 tests: the event reducer, the client, the approval-drawer state,
   the process-tree layout, and WCAG AA contrast for every text token on every surface in both themes).
+- `tsc --noEmit` clean in both `apps/web` and `apps/mobile`.
 - The mock gateway replay on every screen, in both themes, at 1920×1080 and 1366×768, with no browser console errors.
 - Phones at 390 and 430 px: no horizontal overflow on any page, and an approval approved from the phone viewport.
 - After approving in the drawer, the drawer closes and the page behind it takes clicks (the dress-rehearsal overlay bug).
@@ -54,3 +84,4 @@ pack without backend support was left out (list below).
 | "Last indexed 2 min ago" | Only the live `knowledge.reindexed` event carries it |
 | "Hash chain verified" | The gateway returns hashes but no server-side verification; the console shows "chain intact: N entries link to their predecessor" (a link check). The kernel has `verify_chain()`; exposing it is a contract change |
 | Phone push notifications | None exist; the phone uses the approvals page and the full-screen approval card |
+| Classifier flag on individual paths | The mock gateway does not currently emit `classifier=true` on `knowledge.retrieved`; the `FirewallHit` component is ready to show it when Person B adds the field |

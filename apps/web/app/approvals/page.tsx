@@ -43,11 +43,27 @@ export default function ApprovalsPage() {
         ))}
       </div>
 
-      {all.isError && <p className="text-sm text-st-failed">Gateway unreachable: {String(all.error)}</p>}
+      {all.isError && (
+        <div className="flex items-center justify-between rounded-xl border border-st-failed/50 bg-st-failed/8 p-4 text-sm text-st-failed">
+          <span>Gateway unreachable: {String(all.error)}</span>
+          <button
+            type="button"
+            onClick={() => all.refetch()}
+            className="rounded-md border border-line px-3 py-1.5 text-sm text-foreground hover:bg-surface-3"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       {tab === "pending" ? (
-        <section className="space-y-5">
-          {all.isSuccess && pending.length === 0 && <p className="text-sm text-text-2">Nothing is waiting for you.</p>}
+        <section aria-label="Pending approvals" className="space-y-5">
+          {all.isSuccess && pending.length === 0 && (
+            <div className="rounded-xl border border-line bg-surface-1 px-4 py-8 text-center shadow-panel">
+              <p className="text-sm font-medium text-text-2">Nothing is waiting for your decision.</p>
+              <p className="mt-1 text-xs text-muted-foreground">Pending approvals appear here when an agent requests a privileged action.</p>
+            </div>
+          )}
           {pending.map((a) => (
             <div key={a.approval_id} className="space-y-1.5">
               <Link href={`/tasks/${a.task_id}`} className="font-mono text-xs text-text-2 hover:text-foreground">
@@ -58,8 +74,12 @@ export default function ApprovalsPage() {
           ))}
         </section>
       ) : (
-        <ul className="divide-y divide-line rounded-xl border border-line bg-surface-1">
-          {resolved.length === 0 && <li className="p-4 text-sm text-text-2">No resolved approvals yet.</li>}
+        <ul aria-label="Resolved approvals" className="divide-y divide-line rounded-xl border border-line bg-surface-1">
+          {resolved.length === 0 && (
+            <li className="px-4 py-8 text-center">
+              <p className="text-sm text-text-2">No resolved approvals yet.</p>
+            </li>
+          )}
           {resolved.map((a) => (
             <li key={a.approval_id} className="flex flex-wrap items-center gap-3 px-4 py-3 text-sm">
               <span className="w-20 font-mono text-xs text-text-2">{formatTime(a.resolved_at ?? a.requested_at)}</span>

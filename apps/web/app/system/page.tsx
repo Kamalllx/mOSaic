@@ -126,6 +126,14 @@ export default function SystemPage() {
             v{st.version} · contract {st.contract_version} · up {up}
           </span>
         )}
+        {status.isError && (
+          <span className="ml-auto flex items-center gap-2 text-sm text-st-failed">
+            Gateway unreachable
+            <button type="button" onClick={() => status.refetch()} className="rounded-md border border-line px-2 py-1 text-xs text-foreground hover:bg-surface-3">
+              Retry
+            </button>
+          </span>
+        )}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

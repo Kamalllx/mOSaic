@@ -137,7 +137,28 @@ export default function AgentsPage() {
           The agent registry, read from the manifests on this machine: capabilities, knowledge mounts and resource limits.
         </p>
       </div>
-      {agents.isError && <p className="text-sm text-st-failed">Gateway unreachable: {String(agents.error)}</p>}
+      {agents.isError && (
+        <div className="flex items-center justify-between rounded-xl border border-st-failed/50 bg-st-failed/8 p-4 text-sm text-st-failed">
+          <span>Gateway unreachable: {String(agents.error)}</span>
+          <button type="button" onClick={() => agents.refetch()} className="rounded-md border border-line px-3 py-1.5 text-sm text-foreground hover:bg-surface-3">
+            Retry
+          </button>
+        </div>
+      )}
+      {agents.isLoading && (
+        <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="space-y-3 rounded-xl border border-line bg-surface-1 p-4">
+              <div className="h-4 w-32 animate-pulse rounded bg-surface-3" />
+              <div className="h-3 w-full animate-pulse rounded bg-surface-3" />
+              <div className="h-3 w-2/3 animate-pulse rounded bg-surface-3" />
+            </div>
+          ))}
+        </div>
+      )}
+      {agents.isSuccess && agents.data.length === 0 && (
+        <p className="text-sm text-text-2">No agent manifests found on this machine.</p>
+      )}
       <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
         {(agents.data ?? []).map((a) => (
           <AgentCard key={a.name} a={a} />
@@ -147,7 +168,8 @@ export default function AgentsPage() {
         <h2 className="flex items-center gap-2 text-[17px] font-semibold">
           <Wrench className="size-4.5 text-text-2" aria-hidden /> Tools <span className="font-mono text-sm font-normal text-text-2">({tools.data?.length ?? 0})</span>
         </h2>
-        {tools.data && <ToolTable tools={tools.data} />}
+        {tools.isSuccess && tools.data.length === 0 && <p className="text-sm text-text-2">No tools registered.</p>}
+        {tools.data && tools.data.length > 0 && <ToolTable tools={tools.data} />}
       </section>
     </div>
   );

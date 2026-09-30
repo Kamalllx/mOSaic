@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { EyeOff } from "lucide-react";
+import { EyeOff, ShieldAlert, ShieldCheck } from "lucide-react";
 import { useClient } from "@/app/providers";
 import { UntrustedBadge } from "@/components/status";
 import { cn } from "@/lib/utils";
@@ -12,6 +12,12 @@ const MODES: [string, string][] = [
   ["semantic", "bg-brand"],
   ["graph", "bg-ev-knowledge"],
 ];
+
+/** Returns "classifier" if the LLM classifier fired, "regex" if only the regex layer fired, null if not flagged. */
+function firewallDetection(flags: string[] | null | undefined): "classifier" | "regex" | null {
+  if (!flags?.length) return null;
+  return flags.includes("instruction_like_llm") ? "classifier" : "regex";
+}
 
 export function SearchResults({ text, onSelect }: { text: string; onSelect: (p: string) => void }) {
   const client = useClient();
@@ -32,7 +38,8 @@ export function SearchResults({ text, onSelect }: { text: string; onSelect: (p: 
         {ev.took_ms !== undefined && <span>· {Math.round(ev.took_ms)} ms</span>}
       </p>
       {ev.hits.map((h, i) => {
-        const flagged = !!h.firewall_flags?.length;
+        const detection = firewallDetection(h.firewall_flags);
+        const flagged = detection !== null;
         return (
           <button
             key={h.path}
@@ -40,18 +47,32 @@ export function SearchResults({ text, onSelect }: { text: string; onSelect: (p: 
             onClick={() => onSelect(h.path)}
             className={cn(
               "block w-full rounded-xl border border-line bg-surface-1 p-4 text-left shadow-panel transition-colors hover:border-brand/60",
-              flagged && "border-untrusted/60",
+              flagged && "border-untrusted/60 bg-untrusted-bg/30",
             )}
           >
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-mono text-xs text-text-2">#{i + 1}</span>
               <span className="font-semibold">{h.title}</span>
               {flagged && <UntrustedBadge />}
+              {flagged && (
+                <span className="inline-flex items-center gap-1 rounded border border-untrusted/40 px-1.5 py-0.5 font-mono text-xs text-untrusted">
+                  {detection === "classifier" ? (
+                    <><ShieldAlert className="size-3" aria-hidden /> caught by LLM classifier</>
+                  ) : (
+                    <><ShieldAlert className="size-3" aria-hidden /> caught by regex</>
+                  )}
+                </span>
+              )}
               <span className="ml-auto font-mono text-xs text-text-2">score {h.score.toFixed(4)}</span>
             </div>
             <p className="font-mono text-xs text-ev-knowledge">{h.path} <span className="text-text-2">· {h.type}</span></p>
             <p className="mt-1.5 line-clamp-2 text-sm text-text-2">{h.snippet}</p>
-            {flagged && <p className="mt-1 text-xs text-untrusted">Flagged {h.firewall_flags!.join(", ")}: agents receive it as data, not instructions.</p>}
+            {flagged && (
+              <div className="mt-2 flex items-center gap-1.5 rounded-md border border-st-running/40 bg-st-running/8 px-2 py-1">
+                <ShieldCheck className="size-3.5 shrink-0 text-st-running" aria-hidden />
+                <span className="text-xs font-medium text-st-running">treated as data, not instructions</span>
+              </div>
+            )}
             <div className="mt-2 grid grid-cols-[1fr_auto] items-end gap-3">
               <div className="space-y-1">
                 {MODES.map(([mode, color]) => {
