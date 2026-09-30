@@ -5,6 +5,8 @@ Owner: P3 — Agents & Models
 from __future__ import annotations
 
 import logging
+import re
+from collections import Counter
 from typing import Any
 
 from mosaic_contracts.schema import AgentResult, AgentResultStatus, MessageType, Risk, SyscallRequest
@@ -15,6 +17,30 @@ from mosaic_agents.prompts import EngOut
 from mosaic_agents.sdk import MosaicAgent, ask_json, cite, gather_evidence, keep_retrieved, remember_finding
 
 log = logging.getLogger("mosaic.agents.engineering")
+
+_WORDS = {w: i for i, w in enumerate("zero one two three four five six seven eight nine ten eleven twelve".split())}
+_WEEKS = re.compile(r"\b(\d{1,2}|" + "|".join(_WORDS) + r")[\s-]+weeks?\b", re.I)
+_SLIP = re.compile(r"\b(late|behind|slip\w*|delay\w*|overdue|schedule)\b", re.I)
+
+
+def stated_slips(text: str) -> Counter[int]:
+    """Week counts the text states in sentences about a slip or delay ("six weeks behind schedule", "a 6-week slip")."""
+    found: Counter[int] = Counter()
+    for sentence in re.split(r"(?<=[.!?\n])\s+", text):
+        if _SLIP.search(sentence):
+            for m in _WEEKS.finditer(sentence):
+                v = m.group(1).lower()
+                found[int(v) if v.isdigit() else _WORDS[v]] += 1
+    return found
+
+
+def grounded_slip(model_weeks: int, text: str) -> int:
+    """The model's slip if the evidence states it; otherwise the slip the evidence states most often (qwen2.5:7b once
+    reported 24 weeks where every document says six)."""
+    stated = stated_slips(text)
+    if not stated or model_weeks in stated:
+        return model_weeks
+    return stated.most_common(1)[0][0]
 
 ENG_SYSTEM = """You are the Engineering Agent in mOSaic. Identify engineering blockers, schedule slips
 and technical root causes based on project evidence.
@@ -95,6 +121,11 @@ class EngineeringAgent(MosaicAgent):
                 summary="Unable to extract engineering data from evidence. Manual review required.",
             )
 
+        weeks = grounded_slip(eng_out.slip_weeks, f"{goal}\n{evidence_text}{jira_context}")
+        if weeks != eng_out.slip_weeks:
+            await ctx.log(f"engineering-agent: the evidence states a {weeks}-week slip, not {eng_out.slip_weeks}; using {weeks}",
+                          level="warning")
+            eng_out.slip_weeks = weeks
         await ctx.log(f"engineering-agent: analysis complete — {eng_out.slip_weeks} weeks slip, {len(eng_out.blockers)} blockers")
 
         retrieved = {h.path for h in evidence.hits}

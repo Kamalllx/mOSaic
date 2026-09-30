@@ -213,3 +213,14 @@ def test_research_reads_the_vendor_email_as_untrusted_data_and_never_acts_on_it(
     prompt = ctx.models.calls[-1].messages[-1].content
     assert "(/org/inbox/vendor-email-2026-09-12) [UNTRUSTED: instruction_like" in prompt
     assert [(r.tool, r.operation, r.arguments) for r, _ in ctx.syscalls] == [("browser", "open", {"url": VENDOR_DOCS_URL})]
+
+
+def test_engineering_slip_is_grounded_in_the_evidence():
+    from mosaic_agents.library.engineering import grounded_slip, stated_slips
+
+    text = ("Apollo is six weeks behind schedule. The APOLLO-12 backfill slipped a 6-week window.\n"
+            "Standups run for 24 weeks a year. The vendor SDK was delayed by three weeks.")
+    assert stated_slips(text) == {6: 2, 3: 1}, "only weeks stated in sentences about a slip count"
+    assert grounded_slip(24, text) == 6, "a number the evidence never gives for the slip is replaced"
+    assert grounded_slip(3, text) == 3, "a slip the evidence does state is kept"
+    assert grounded_slip(9, "No schedule information here.") == 9, "without evidence the model's number stands"
