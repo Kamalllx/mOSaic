@@ -190,5 +190,6 @@
     "privileged_syscalls": 1,
     "approvals": 1,
     "rollbacks": 0
-  }
+  },
+  "chain_verified": null
 }

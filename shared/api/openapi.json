@@ -3,7 +3,7 @@
   "info": {
     "title": "mOSaic Gateway API",
     "description": "Contract for the mOSaic kernel gateway. Served here by the mock implementation.",
-    "version": "0.5.0"
+    "version": "0.6.0"
   },
   "paths": {
     "/health": {
@@ -3542,6 +3542,18 @@
           },
           "stats": {
             "$ref": "#/components/schemas/TimelineStats"
+          },
+          "chain_verified": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chain Verified",
+            "description": "True when the audit log recomputed every entry's hash and each prev_hash links to its predecessor; False when that check fails; None when the log keeps no hash chain"
           }
         },
         "additionalProperties": false,

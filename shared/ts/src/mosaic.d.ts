@@ -234,7 +234,7 @@ export type TrustLevel4 = "verified" | "trusted" | "unverified" | "untrusted";
 export type VerificationStatus2 = "unverified" | "verified" | "disputed" | "stale";
 
 /**
- * mOSaic contracts v0.5.0
+ * mOSaic contracts v0.6.0
  */
 export interface MOSaic {
   A2AMessage?: A2AMessage;
@@ -1350,6 +1350,10 @@ export interface RunTimeline {
   goal: string;
   entries: AuditEntry[];
   stats?: TimelineStats;
+  /**
+   * True when the audit log recomputed every entry's hash and each prev_hash links to its predecessor; False when that check fails; None when the log keeps no hash chain
+   */
+  chain_verified?: boolean | null;
 }
 /**
  * This interface was referenced by `MOSaic`'s JSON-Schema

@@ -66,8 +66,10 @@ def test_audit_hash_chain(tmp_path):
         asyncio.run(log.append(AuditEntry(entry_id=f"A{i}", task_id="T-1", actor="kernel", kind=AuditKind.TASK,
                                           summary=f"e{i}")))
     assert log.verify_chain("T-1")
+    assert asyncio.run(log.timeline("T-1")).chain_verified is True
     log.db.execute("UPDATE audit SET data=replace(data, 'e1', 'tampered') WHERE seq=2")
     assert not log.verify_chain("T-1")
+    assert asyncio.run(log.timeline("T-1")).chain_verified is False, "the gateway reports the tampering too"
 
 
 def test_boot_recovery_resumes_interrupted_work(make_kernel, tmp_path):

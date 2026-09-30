@@ -58,3 +58,8 @@ class RunTimeline(Contract):
     goal: str
     entries: list[AuditEntry]
     stats: TimelineStats = Field(default_factory=TimelineStats)
+    chain_verified: bool | None = Field(
+        None,
+        description="True when the audit log recomputed every entry's hash and each prev_hash links to its predecessor; "
+        "False when that check fails; None when the log keeps no hash chain",
+    )

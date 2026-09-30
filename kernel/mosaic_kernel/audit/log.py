@@ -22,6 +22,16 @@ def entry_hash(entry: AuditEntry) -> str:
     return hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()
 
 
+def chain_ok(entries: list[AuditEntry]) -> bool:
+    """Every entry's hash recomputes and links to the previous entry's hash."""
+    prev = None
+    for e in entries:
+        if e.prev_hash != prev or entry_hash(e.model_copy(update={"hash": None})) != e.hash:
+            return False
+        prev = e.hash
+    return True
+
+
 class SqliteAuditLog:
     def __init__(self, path: Path | str) -> None:
         self.db = Database(path)
@@ -44,12 +54,7 @@ class SqliteAuditLog:
         return [AuditEntry.model_validate_json(r["data"]) for r in rows]
 
     def verify_chain(self, task_id: str) -> bool:
-        prev = None
-        for e in self.entries(task_id):
-            if e.prev_hash != prev or entry_hash(e.model_copy(update={"hash": None})) != e.hash:
-                return False
-            prev = e.hash
-        return True
+        return chain_ok(self.entries(task_id))
 
     async def timeline(self, task_id: str) -> RunTimeline:
         entries = self.entries(task_id)
@@ -67,4 +72,4 @@ class SqliteAuditLog:
             approvals=kinds.count(AuditKind.APPROVAL),
             rollbacks=kinds.count(AuditKind.ROLLBACK),
         )
-        return RunTimeline(task_id=task_id, goal=goal, entries=entries, stats=stats)
+        return RunTimeline(task_id=task_id, goal=goal, entries=entries, stats=stats, chain_verified=chain_ok(entries))

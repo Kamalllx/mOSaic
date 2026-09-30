@@ -47,7 +47,7 @@ Full brief: [docs/team/P1-kernel-execution.md](../../docs/team/P1-kernel-executi
 ## Status (owner keeps this current)
 | Item | Status |
 |---|---|
-| EventBus (+ Redis Stream mirror) · AuditLog (SQLite, hash chain) · PolicyEngine (YAML, hot reload) | ✅ |
+| EventBus (+ Redis Stream mirror) · AuditLog (SQLite, hash chain; `RunTimeline.chain_verified` recomputes it, contract 0.6.0) · PolicyEngine (YAML, hot reload) | ✅ |
 | Process table · lifecycle (retry, escalation, kill tree, pause/resume) · tasks · scheduler (priorities, GPU admission, preemption) | ✅ |
 | KernelAgentContext + IPC mailboxes | ✅ |
 | Syscalls · approvals · transactions (verify → commit / rollback) · idempotency | ✅ |

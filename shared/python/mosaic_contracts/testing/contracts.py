@@ -172,6 +172,7 @@ class AuditLogContract:
 
         e2, tl = run(go())
         assert e2.seq == 2 and [e.entry_id for e in tl.entries] == ["A1", "A2"] and tl.stats.agents == 1
+        assert tl.chain_verified in (True, None), "an untampered journal never reports a broken chain"
 
 
 # ============================================================================ P2
