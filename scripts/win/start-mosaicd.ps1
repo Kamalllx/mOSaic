@@ -14,6 +14,17 @@ $env:MOSAIC_MODELS_CONFIG = $ModelsConfig
 $env:MOSAIC_GATEWAY_PORT = $GatewayPort
 $env:MOSAIC_URL = "http://localhost:$GatewayPort"
 $env:PYTHONIOENCODING = "utf-8"
+# Connector tokens are encrypted at rest with a key made on this machine on first start; it lives in .data (git-ignored)
+# and never in the repo. Set MOSAIC_VAULT_KEY yourself to use another.
+if (-not $env:MOSAIC_VAULT_KEY) {
+    $keyFile = Join-Path $Repo ".data\vault.key"
+    if (-not (Test-Path $keyFile)) {
+        $bytes = New-Object byte[] 32
+        [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+        [Convert]::ToBase64String($bytes).Replace("+", "-").Replace("/", "_") | Out-File -Encoding ascii -NoNewline $keyFile
+    }
+    $env:MOSAIC_VAULT_KEY = (Get-Content $keyFile -Raw).Trim()
+}
 $Host.UI.RawUI.WindowTitle = "mosaicd :$GatewayPort"
 $log = Join-Path $Logs "mosaicd.log"
 "=== start $(Get-Date -Format s)" | Out-File -Encoding utf8 -Append $log
