@@ -192,6 +192,12 @@ export type SyscallStatus = "completed" | "denied" | "pending_approval" | "rejec
  * via the `definition` "ToolResultStatus".
  */
 export type ToolResultStatus = "success" | "error" | "timeout";
+/**
+ * This interface was referenced by `MOSaic`'s JSON-Schema
+ * via the `definition` "ToolTransport".
+ */
+export type ToolTransport = "native" | "mcp" | "http" | "browser" | "sandbox";
+export type Risk2 = "low" | "medium" | "high" | "critical";
 export type Priority1 = "high" | "normal" | "background";
 /**
  * Ordered from least to most sensitive. `restricted` must never leave the box.
@@ -216,12 +222,6 @@ export type PrivacyLevel6 = "public" | "internal" | "confidential" | "restricted
  */
 export type TaskStatus1 =
   "queued" | "planning" | "running" | "waiting_approval" | "paused" | "completed" | "failed" | "cancelled";
-export type Risk2 = "low" | "medium" | "high" | "critical";
-/**
- * This interface was referenced by `MOSaic`'s JSON-Schema
- * via the `definition` "ToolTransport".
- */
-export type ToolTransport = "native" | "mcp" | "http" | "browser" | "sandbox";
 /**
  * This interface was referenced by `MOSaic`'s JSON-Schema
  * via the `definition` "TrustLevel".
@@ -234,7 +234,7 @@ export type TrustLevel4 = "verified" | "trusted" | "unverified" | "untrusted";
 export type VerificationStatus2 = "unverified" | "verified" | "disputed" | "stale";
 
 /**
- * mOSaic contracts v0.8.0
+ * mOSaic contracts v0.9.0
  */
 export interface MOSaic {
   A2AMessage?: A2AMessage;
@@ -259,12 +259,14 @@ export interface MOSaic {
   Decision?: Decision;
   EmbedRequest?: EmbedRequest;
   EmbedResponse?: EmbedResponse;
+  EndpointInfo?: EndpointInfo;
   ErrorInfo?: ErrorInfo;
   Event?: Event;
   EvidenceSet?: EvidenceSet;
   ExecRequest?: ExecRequest;
   ExecResult?: ExecResult;
   FilesystemRules?: FilesystemRules;
+  FirewallConfig?: FirewallConfig;
   GpuStatus?: GpuStatus;
   GraphEdge?: GraphEdge;
   GraphResult?: GraphResult;
@@ -292,6 +294,8 @@ export interface MOSaic {
   ModelPolicy?: ModelPolicy1;
   ModelRequest?: ModelRequest;
   ModelResponse?: ModelResponse;
+  ModelRoute?: ModelRoute;
+  ModelsConfig?: ModelsConfig;
   Mount?: Mount;
   NetworkMode?: NetworkMode;
   OKFDraft?: OKFDraft;
@@ -301,6 +305,7 @@ export interface MOSaic {
   PolicyAppliesTo?: PolicyAppliesTo;
   PolicyDecision?: PolicyDecision;
   PolicyDocument?: PolicyDocument;
+  PolicySummary?: PolicySummary;
   Principal?: Principal;
   PrincipalKind?: PrincipalKind;
   Priority?: Priority;
@@ -314,6 +319,7 @@ export interface MOSaic {
   Role?: Role;
   RoutingDecision?: RoutingDecision;
   RunTimeline?: RunTimeline;
+  RuntimeVersions?: RuntimeVersions;
   SandboxInfo?: SandboxInfo;
   SandboxSpec?: SandboxSpec;
   SandboxStatus?: SandboxStatus;
@@ -321,10 +327,12 @@ export interface MOSaic {
   SearchMode?: SearchMode;
   SearchQuery?: SearchQuery;
   SpawnRequest?: SpawnRequest;
+  StackComponent?: StackComponent;
   StreamChunk?: StreamChunk;
   SyscallRequest?: SyscallRequest;
   SyscallResult?: SyscallResult;
   SyscallStatus?: SyscallStatus;
+  SystemConfig?: SystemConfig;
   SystemStatus?: SystemStatus;
   Task?: Task;
   TaskClass?: TaskClass1;
@@ -778,6 +786,20 @@ export interface EmbedResponse {
 }
 /**
  * This interface was referenced by `MOSaic`'s JSON-Schema
+ * via the `definition` "EndpointInfo".
+ */
+export interface EndpointInfo {
+  /**
+   * gateway | database | redis | ollama | jira | ...
+   */
+  name: string;
+  /**
+   * Credentials are always redacted (user:***@host)
+   */
+  url: string;
+}
+/**
+ * This interface was referenced by `MOSaic`'s JSON-Schema
  * via the `definition` "Event".
  */
 export interface Event {
@@ -914,6 +936,20 @@ export interface ExecResult {
 export interface FilesystemRules {
   read?: string[];
   write?: string[];
+}
+/**
+ * This interface was referenced by `MOSaic`'s JSON-Schema
+ * via the `definition` "FirewallConfig".
+ */
+export interface FirewallConfig {
+  /**
+   * Pattern screening; always on
+   */
+  regex?: boolean;
+  /**
+   * MOSAIC_FIREWALL_LLM
+   */
+  llm_classifier?: boolean;
 }
 /**
  * This interface was referenced by `MOSaic`'s JSON-Schema
@@ -1185,6 +1221,38 @@ export interface TokenUsage {
 }
 /**
  * This interface was referenced by `MOSaic`'s JSON-Schema
+ * via the `definition` "ModelRoute".
+ */
+export interface ModelRoute {
+  /**
+   * planning | reasoning | ... | default | latency_critical | embedding
+   */
+  task_class: string;
+  model: string;
+  local?: boolean;
+  /**
+   * The model is present in the runtime (ollama list)
+   */
+  available: boolean;
+  context_window?: number | null;
+}
+/**
+ * This interface was referenced by `MOSaic`'s JSON-Schema
+ * via the `definition` "ModelsConfig".
+ */
+export interface ModelsConfig {
+  /**
+   * Routing file in use, relative to the repo, e.g. models/models.7b-only.yaml
+   */
+  config_file: string;
+  default: string;
+  embedding: string;
+  remote_enabled?: boolean;
+  routes?: ModelRoute[];
+  models?: ModelInfo[];
+}
+/**
+ * This interface was referenced by `MOSaic`'s JSON-Schema
  * via the `definition` "Mount".
  */
 export interface Mount {
@@ -1294,6 +1362,31 @@ export interface AllowDeny3 {
   deny?: string[];
 }
 /**
+ * This interface was referenced by `MOSaic`'s JSON-Schema
+ * via the `definition` "PolicySummary".
+ */
+export interface PolicySummary {
+  policy: string;
+  priority: number;
+  /**
+   * applies_to.agents
+   */
+  agents?: string[];
+  /**
+   * applies_to.roles
+   */
+  roles?: string[];
+  /**
+   * Capabilities that need a human
+   */
+  requires_approval?: string[];
+  auto_approved?: string[];
+  /**
+   * approval: never, plus tools.deny
+   */
+  denied?: string[];
+}
+/**
  * Who is asking. Agents act on behalf of a user and inherit (a subset of) their scope.
  *
  * This interface was referenced by `MOSaic`'s JSON-Schema
@@ -1375,6 +1468,19 @@ export interface TimelineStats {
 }
 /**
  * This interface was referenced by `MOSaic`'s JSON-Schema
+ * via the `definition` "RuntimeVersions".
+ */
+export interface RuntimeVersions {
+  mosaic: string;
+  contract: string;
+  python: string;
+  /**
+   * Node.js on the server, if installed (the console build)
+   */
+  node?: string | null;
+}
+/**
+ * This interface was referenced by `MOSaic`'s JSON-Schema
  * via the `definition` "SandboxInfo".
  */
 export interface SandboxInfo {
@@ -1440,6 +1546,26 @@ export interface SpawnRequest {
 }
 /**
  * This interface was referenced by `MOSaic`'s JSON-Schema
+ * via the `definition` "StackComponent".
+ */
+export interface StackComponent {
+  /**
+   * ServiceBundle attribute, e.g. knowledge, models, sandbox
+   */
+  component: string;
+  /**
+   * real | fake | fake(fallback)
+   */
+  mode: string;
+  /**
+   * Implementing class, e.g. mosaic_knowledge.kfs.KnowledgeFS
+   */
+  implementation: string;
+  ok: boolean;
+  detail?: string;
+}
+/**
+ * This interface was referenced by `MOSaic`'s JSON-Schema
  * via the `definition` "StreamChunk".
  */
 export interface StreamChunk {
@@ -1478,6 +1604,66 @@ export interface ToolResult {
   started_at?: string;
   finished_at?: string;
   error?: ErrorInfo | null;
+}
+/**
+ * GET /system/config: one read-only document describing the running system. Never contains secrets.
+ *
+ * This interface was referenced by `MOSaic`'s JSON-Schema
+ * via the `definition` "SystemConfig".
+ */
+export interface SystemConfig {
+  versions: RuntimeVersions;
+  env?: string;
+  stack?: StackComponent[];
+  models: ModelsConfig;
+  agents?: AgentManifest[];
+  tools?: ToolSpec[];
+  policies?: PolicySummary[];
+  firewall?: FirewallConfig;
+  feature_flags?: {
+    [k: string]: boolean;
+  };
+  endpoints?: EndpointInfo[];
+  /**
+   * okf_dir, policies_dir, manifests_dir, data_dir, models_config
+   */
+  paths?: {
+    [k: string]: string;
+  };
+}
+/**
+ * This interface was referenced by `MOSaic`'s JSON-Schema
+ * via the `definition` "ToolSpec".
+ */
+export interface ToolSpec {
+  name: string;
+  description: string;
+  transport: ToolTransport;
+  operations: ToolOperation[];
+}
+/**
+ * This interface was referenced by `MOSaic`'s JSON-Schema
+ * via the `definition` "ToolOperation".
+ */
+export interface ToolOperation {
+  name: string;
+  capability: string;
+  description: string;
+  /**
+   * JSON Schema
+   */
+  input_schema?: {
+    [k: string]: unknown;
+  };
+  /**
+   * JSON Schema
+   */
+  output_schema?: {
+    [k: string]: unknown;
+  };
+  risk?: Risk2;
+  reversible?: boolean;
+  requires_sandbox?: boolean;
 }
 /**
  * This interface was referenced by `MOSaic`'s JSON-Schema
@@ -1578,40 +1764,6 @@ export interface ToolInvocation {
   };
   timeout_s?: number;
   dry_run?: boolean;
-}
-/**
- * This interface was referenced by `MOSaic`'s JSON-Schema
- * via the `definition` "ToolOperation".
- */
-export interface ToolOperation {
-  name: string;
-  capability: string;
-  description: string;
-  /**
-   * JSON Schema
-   */
-  input_schema?: {
-    [k: string]: unknown;
-  };
-  /**
-   * JSON Schema
-   */
-  output_schema?: {
-    [k: string]: unknown;
-  };
-  risk?: Risk2;
-  reversible?: boolean;
-  requires_sandbox?: boolean;
-}
-/**
- * This interface was referenced by `MOSaic`'s JSON-Schema
- * via the `definition` "ToolSpec".
- */
-export interface ToolSpec {
-  name: string;
-  description: string;
-  transport: ToolTransport;
-  operations: ToolOperation[];
 }
 /**
  * This interface was referenced by `MOSaic`'s JSON-Schema
