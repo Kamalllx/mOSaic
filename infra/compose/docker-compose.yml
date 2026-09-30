@@ -13,14 +13,14 @@ services:
       POSTGRES_USER: mosaic
       POSTGRES_PASSWORD: mosaic
       POSTGRES_DB: mosaic
-    ports: ["127.0.0.1:5432:5432"]
+    ports: ["127.0.0.1:${MOSAIC_PG_PORT:-5432}:5432"]         # a native Postgres on 5432? MOSAIC_PG_PORT=5434 docker compose ...
     volumes: [pg-data:/var/lib/postgresql/data]
     healthcheck: {test: ["CMD-SHELL", "pg_isready -U mosaic"], interval: 5s, retries: 10}
     restart: unless-stopped
 
   redis:               # P1 — event bus durability (Redis Streams), short-lived state
     image: redis:7-alpine
-    ports: ["127.0.0.1:6379:6379"]
+    ports: ["127.0.0.1:${MOSAIC_REDIS_PORT:-6379}:6379"]      # Redis already running (e.g. in WSL)? MOSAIC_REDIS_PORT=6380
     volumes: [redis-data:/data]
     healthcheck: {test: ["CMD", "redis-cli", "ping"], interval: 5s, retries: 10}
     restart: unless-stopped
