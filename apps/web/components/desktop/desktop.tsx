@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
+import { memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useClient } from "@/app/providers";
 import { ApprovalsApp } from "@/components/apps/approvals";
 import { FilesApp } from "@/components/apps/files";
@@ -67,10 +67,30 @@ function useWindowTitle(win: Win): { title: string; subtitle?: string } {
 
 const truncate = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
-function WindowView(props: { win: Win; focused: boolean; compact: boolean; area: Area; dispatch: React.Dispatch<Parameters<typeof reduce>[1]>; onNavigate: (url: string) => void; onClose: () => void }) {
+const WindowView = memo(function WindowView(props: {
+  win: Win;
+  focused: boolean;
+  compact: boolean;
+  area: Area;
+  dispatch: React.Dispatch<Parameters<typeof reduce>[1]>;
+  onNavigate: (url: string) => void;
+  onClose: (key: string) => void;
+}) {
   const { win, focused, compact, area, dispatch, onNavigate, onClose } = props;
   const { title, subtitle } = useWindowTitle(win);
-  const nav = useMemo(() => ({ key: win.key, url: win.url, navigate: onNavigate, close: onClose }), [win.key, win.url, onNavigate, onClose]);
+  const close = useCallback(() => onClose(win.key), [onClose, win.key]);
+  const nav = useMemo(() => ({ key: win.key, url: win.url, navigate: onNavigate, close }), [win.key, win.url, onNavigate, close]);
+  // The app's element only changes with its URL, so dragging or resizing the window never re-renders the app inside.
+  const body = useMemo(
+    () => (
+      <WindowContext.Provider value={nav}>
+        <AppBody win={win} />
+      </WindowContext.Provider>
+    ),
+    // win is read for its app and url only
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [nav, win.app, win.url],
+  );
   return (
     <WindowFrame
       win={win}
@@ -80,18 +100,19 @@ function WindowView(props: { win: Win; focused: boolean; compact: boolean; area:
       compact={compact}
       area={area}
       onFocus={() => dispatch({ type: "focus", key: win.key })}
-      onClose={onClose}
+      onClose={close}
       onMinimize={() => dispatch({ type: "minimize", key: win.key })}
       onToggleMax={() => dispatch({ type: "toggleMax", key: win.key })}
       onMove={(x, y) => dispatch({ type: "move", key: win.key, x, y, area })}
       onResize={(w, h) => dispatch({ type: "resize", key: win.key, w, h, area })}
     >
-      <WindowContext.Provider value={nav}>
-        <AppBody win={win} />
-      </WindowContext.Provider>
+      {body}
     </WindowFrame>
   );
-}
+});
+
+/** The part of the wallpaper the landing's greeting and Ask bar cover (fractions of the screen), kept free of nodes. */
+const HERO_BOX: [number, number, number, number] = [0.02, 0.04, 0.44, 0.36];
 
 function DesktopInner() {
   const pathname = usePathname();
@@ -246,13 +267,10 @@ function DesktopInner() {
 
   return (
     <div className="desktop fixed inset-0 flex flex-col overflow-hidden bg-grout text-foreground">
-      <Wallpaper />
+      <Wallpaper avoid={HERO_BOX} />
       <TopBar front={top} wins={state.wins} actions={actions} compact={compact} />
       <main ref={areaRef} className={`relative min-h-0 flex-1 ${compact ? "" : "mb-[90px]"}`} aria-label="Desktop">
-        <div
-          className={`absolute inset-0 flex overflow-y-auto px-4 ${compact ? "flex-col items-center gap-6 pt-8 pb-6" : "items-start justify-center pt-[11vh]"} ${docked ? "invisible" : ""}`}
-          style={compact ? undefined : { paddingRight: "min(360px, 22vw)" }}
-        >
+        <div className={`absolute inset-0 flex overflow-y-auto ${compact ? "flex-col items-center gap-6 px-4 pt-8 pb-6" : "items-start px-[5vw] pt-[8vh]"} ${docked ? "invisible" : ""}`}>
           <Hero onAsk={() => setSpotlight(true)} compact={compact} />
           {!compact && (
             <div className="absolute top-4 right-5 hidden min-[1100px]:block">
@@ -267,13 +285,13 @@ function DesktopInner() {
           </div>
         )}
         {state.wins.map((w) => (
-          <WindowView key={w.key} win={w} focused={w.key === top?.key} compact={compact} area={area} dispatch={dispatch} onNavigate={navigate} onClose={() => close(w.key)} />
+          <WindowView key={w.key} win={w} focused={w.key === top?.key} compact={compact} area={area} dispatch={dispatch} onNavigate={navigate} onClose={close} />
         ))}
         <Notifications focusedTask={focusedTask} />
       </main>
       <div className={compact ? "relative" : "pointer-events-none absolute inset-x-0 bottom-2 z-[5000] flex justify-center"}>
         <div className={compact ? "" : "pointer-events-auto"}>
-          <Dock wins={state.wins} focusedKey={top?.key} compact={compact} onApp={(app) => onDock(app)} onDesktop={() => router.push("/")} />
+          <Dock wins={state.wins} focusedKey={top?.key} compact={compact} onApp={(app) => onDock(app)} onDesktop={() => router.push("/")} onAsk={() => setSpotlight(true)} />
         </div>
       </div>
       <Spotlight open={spotlight} onClose={() => setSpotlight(false)} />
