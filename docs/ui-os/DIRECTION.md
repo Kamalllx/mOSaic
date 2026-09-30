@@ -33,3 +33,21 @@ tinted by the reading agent. Flagged documents pulse red, and stale sources puls
 
 **FINISH.** Unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md,
 and every shipping raster carrying its provenance.
+
+## Revision 2 (2026-09-30, Kamal): macOS, light and colourful
+
+Kamal rejected the dark slate look. What changed:
+- **Theme.** Light by default (dark remains in the menu), with macOS materials: a translucent menu bar with real menus, windows with traffic lights and a centred title, and a frosted dock with magnification and bouncing badges.
+- **Wallpaper.** A multicolour gradient field of glass tesserae, with each /org folder as a patch of vivid glossy tiles. Tiles still flare live and stay clear of the clock.
+- **Landing.** The large clock and greeting, an "Ask mOSaic" pill, and widgets for running work, what needs you, the machine and knowledge.
+- **Spotlight.** Alt+Space, or Ctrl+K, opens a floating field with a spring, blur and fade entrance. It asks mOSaic (the text runs as a task), or opens an app, task or document. It replaces the composer box and the launcher.
+- **Shortcuts.**
+  - Alt+` switches windows while Alt is held;
+  - Alt+1 to Alt+8 open dock apps;
+  - Alt+W closes, Alt+M minimises, Alt+Enter zooms;
+  - Alt+D shows the desktop, Alt+T opens the Terminal, Alt+/ opens the shortcut sheet.
+- **The visible run.**
+  - A new task's window **docks left** and tells the run as a story (`lib/desktop/story.ts`), with a large orb and the active agent's face on the step happening now.
+  - The rest of the desktop becomes the **run stage**: agents as `bot-avatars` with orbs, every referred document (flagged ones red), kernel calls and their decisions, sandbox screenshots, data tables, and the result.
+  - The story already reads Person B's thought-process events.
+- **Terminal.** Light, with a coloured prompt and output.
