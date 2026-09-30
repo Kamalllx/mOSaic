@@ -208,12 +208,13 @@ class PolicyRouter:
     async def embed(self, request: EmbedRequest) -> EmbedResponse:
         embed_model = self._config.get("embedding", "nomic-embed-text")
         # find a provider that can embed — try all until one succeeds
+        reasons: list[str] = []
         for provider in self._providers.values():
             try:
                 return await provider.embed(request, embed_model)
-            except MosaicError:
-                pass
-        raise MosaicError("MODEL_UNAVAILABLE", f"No provider could produce embeddings with model {embed_model}")
+            except MosaicError as e:
+                reasons.append(e.message)
+        raise MosaicError("MODEL_UNAVAILABLE", f"no provider could embed with {embed_model}: " + "; ".join(reasons or ["none configured"]))
 
     async def embedding_dim(self) -> int:
         if self._dim is not None:

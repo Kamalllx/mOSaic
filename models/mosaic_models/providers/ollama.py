@@ -32,7 +32,17 @@ class OllamaProvider:
 
     def __init__(self, base_url: str, timeout: float = 180.0) -> None:
         self.base_url = base_url.rstrip("/")
+        self.timeout = timeout
         self.client = httpx.AsyncClient(base_url=self.base_url, timeout=timeout)
+
+    def _transport_error(self, what: str, e: httpx.HTTPError) -> MosaicError:
+        """httpx's timeout and connection errors usually stringify to "", which left task failures with no reason."""
+        kind = type(e).__name__
+        if isinstance(e, httpx.TimeoutException) and not isinstance(e, httpx.ConnectTimeout):
+            return MosaicError("TIMEOUT", f"{what}: no answer within {self.timeout:g}s ({kind})")
+        if isinstance(e, httpx.TransportError):
+            return MosaicError("MODEL_UNAVAILABLE", f"{what}: cannot reach Ollama at {self.base_url} ({kind})")
+        return MosaicError("MODEL_UNAVAILABLE", f"{what}: {kind}: {e}")
 
     def _body(self, req: ModelRequest, model: str, stream: bool) -> dict:
         body: dict = {
@@ -57,7 +67,7 @@ class OllamaProvider:
         except httpx.HTTPStatusError as e:
             raise MosaicError("MODEL_UNAVAILABLE", f"ollama {model}: HTTP {e.response.status_code} — {e.response.text[:200]}") from e
         except httpx.HTTPError as e:
-            raise MosaicError("MODEL_UNAVAILABLE", f"ollama {model}: {e}") from e
+            raise self._transport_error(f"ollama {model}", e) from e
 
         data = r.json()
         if "error" in data:
@@ -109,7 +119,7 @@ class OllamaProvider:
                     else:
                         yield StreamChunk(delta=d.get("message", {}).get("content", ""))
         except httpx.HTTPError as e:
-            raise MosaicError("MODEL_UNAVAILABLE", f"ollama stream {model}: {e}") from e
+            raise self._transport_error(f"ollama stream {model}", e) from e
 
     async def embed(self, req: EmbedRequest, model: str) -> EmbedResponse:
         """One POST /api/embed for the whole batch (the old /api/embeddings took one prompt per request)."""
@@ -118,7 +128,7 @@ class OllamaProvider:
         try:
             r = await self.client.post("/api/embed", json={"model": model, "input": task_prefixed(model, req)})
         except httpx.HTTPError as e:
-            raise MosaicError("MODEL_UNAVAILABLE", f"ollama embed {model}: {e}") from e
+            raise self._transport_error(f"ollama embed {model}", e) from e
         if r.status_code >= 400:
             raise MosaicError("MODEL_UNAVAILABLE", f"embed {model}: {r.text[:200]}")
         vecs = r.json().get("embeddings") or []

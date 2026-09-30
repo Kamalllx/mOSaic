@@ -62,3 +62,17 @@ def test_factory_reads_the_configured_models_file(tmp_path):
     seven_b = yaml.safe_load((REPO_ROOT / "models" / "models.7b-only.yaml").read_text(encoding="utf-8"))
     chat = {k: v for k, v in seven_b["by_task_class"].items() if k not in ("code", "vision")}
     assert set(chat.values()) == {seven_b["default"]} == {seven_b["latency_critical"]} == {"qwen2.5:7b-instruct"}
+
+
+def test_an_embedding_failure_keeps_the_providers_reason():
+    class Down(Scripted):
+        async def embed(self, request, model):
+            raise MosaicError("MODEL_UNAVAILABLE", f"ollama embed {model}: cannot reach Ollama at http://ollama (ConnectError)")
+
+    from mosaic_contracts.schema import EmbedRequest
+
+    with pytest.raises(MosaicError) as e:
+        asyncio.run(PolicyRouter([Down(pulled=[])], CONFIG).embed(EmbedRequest(texts=["x"])))
+    assert e.value.code == "MODEL_UNAVAILABLE"
+    assert e.value.message == ("no provider could embed with nomic-embed-text: "
+                               "ollama embed nomic-embed-text: cannot reach Ollama at http://ollama (ConnectError)")
