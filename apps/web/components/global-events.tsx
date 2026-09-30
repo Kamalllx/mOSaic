@@ -10,7 +10,7 @@ import { str, strList } from "@/lib/events";
 /** The latest memory.invalidated events this session, newest first (read by the Memory screen). */
 export const INVALIDATIONS_KEY = ["memory-invalidations"];
 
-const TYPES = ["approval.requested", "approval.resolved", "knowledge.changed", "knowledge.reindexed", "memory.invalidated"];
+const TYPES = ["approval.requested", "approval.resolved", "knowledge.changed", "knowledge.reindexed", "memory.invalidated", "memory.consolidated"];
 
 /** The console's one app-level subscription. These events matter on every page: the approvals badge, the explorer, and
  *  the memory-invalidation moment of the demo (knowledge/memory events carry no task_id, so no task timeline gets them). */
@@ -27,6 +27,12 @@ export function GlobalEvents() {
               qc.invalidateQueries({ queryKey: [key] });
             }
             if (e.type === "knowledge.changed") toast.info(`Knowledge ${str(e, "change")}: ${str(e, "path")}`);
+          }
+          if (e.type === "memory.consolidated") {
+            qc.invalidateQueries({ queryKey: ["memory"] });
+            const n = typeof e.payload?.created === "number" ? e.payload.created : 0;
+            if (e.source === "memory.reconsolidate" && n)
+              toast.success(`${n} ${n === 1 ? "memory" : "memories"} re-derived from the changed source`, { duration: 10_000 });
           }
           if (e.type === "memory.invalidated") {
             qc.invalidateQueries({ queryKey: ["memory"] });

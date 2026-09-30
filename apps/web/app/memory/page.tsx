@@ -2,7 +2,7 @@
 
 import type { Event, MemoryKind, MemoryRecord } from "@mosaic/contracts";
 import { useQuery } from "@tanstack/react-query";
-import { Brain, TriangleAlert } from "lucide-react";
+import { Brain, RefreshCw, TriangleAlert } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { useClient } from "@/app/providers";
@@ -15,6 +15,7 @@ const KINDS: (MemoryKind | "all")[] = ["all", "episodic", "semantic", "working"]
 
 function MemoryRow({ m, changed }: { m: MemoryRecord; changed: string[] }) {
   const importance = Math.max(0, Math.min(1, m.importance ?? 0));
+  const replaces = m.tags?.find((t) => t.startsWith("replaces:"))?.slice("replaces:".length);
   return (
     <li
       className={cn("grid gap-3 px-4 py-3 transition-opacity duration-200 md:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]", m.stale && "bg-st-waiting/5")}
@@ -30,6 +31,15 @@ function MemoryRow({ m, changed }: { m: MemoryRecord; changed: string[] }) {
               <TriangleAlert className="size-3.5" aria-hidden /> source changed
             </span>
           )}
+          {replaces && !m.stale && (
+            <span
+              className="inline-flex items-center gap-1 rounded-md border border-brand/60 bg-brand-subtle px-1.5 py-0.5 font-mono text-xs font-bold uppercase text-brand"
+              title={`Re-derived from the current sources; replaces ${replaces}`}
+            >
+              <RefreshCw className="size-3.5" aria-hidden /> re-derived
+            </span>
+          )}
+          {replaces && <span className="font-mono text-xs text-text-2">replaces {replaces}</span>}
         </div>
         <p className="line-clamp-3 text-sm leading-relaxed">{m.summary || m.content}</p>
         <div className="flex items-center gap-3 text-xs text-text-2">
@@ -94,7 +104,7 @@ function MemoryScreen() {
           <h1 className="flex items-center gap-2 text-2xl font-semibold">
             <Brain className="size-6 text-brand" aria-hidden /> Memory
           </h1>
-          <p className="mt-1 text-sm text-text-2">What agents learned, linked to the documents it came from. When a source changes, its memories go stale.</p>
+          <p className="mt-1 text-sm text-text-2">What agents learned, linked to the documents it came from. When a source changes, its memories go stale and are re-derived from the new text.</p>
         </div>
         <p className="font-mono text-sm text-text-2">
           {all.length} {all.length === 1 ? "record" : "records"} · <span className={stale ? "font-semibold text-st-waiting" : ""}>{stale} stale</span>
