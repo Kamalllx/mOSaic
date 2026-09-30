@@ -26,8 +26,8 @@
   <img alt="Ollama local models" src="https://img.shields.io/badge/Models-Ollama%2C_local-2BB8A3?style=flat-square&labelColor=151A21">
   <img alt="Postgres and pgvector" src="https://img.shields.io/badge/Postgres-pgvector-4C86D9?style=flat-square&labelColor=151A21">
   <img alt="Docker sandboxes" src="https://img.shields.io/badge/Execution-Docker_sandboxes-D99A25?style=flat-square&labelColor=151A21">
-  <img alt="305 Python tests" src="https://img.shields.io/badge/pytest-305_passing-2FB344?style=flat-square&labelColor=151A21">
-  <img alt="Contract 0.7.0" src="https://img.shields.io/badge/contract-0.7.0-9D8CE8?style=flat-square&labelColor=151A21">
+  <img alt="312 Python tests" src="https://img.shields.io/badge/pytest-312_passing-2FB344?style=flat-square&labelColor=151A21">
+  <img alt="Contract 0.8.0" src="https://img.shields.io/badge/contract-0.8.0-9D8CE8?style=flat-square&labelColor=151A21">
 </p>
 
 <br>
@@ -282,7 +282,7 @@ The context firewall has two detection layers:
 | Regex rules | Yes | Known injection patterns in the demo bundle |
 | LLM classifier | Opt-in | Reworded and paraphrased injection attempts that regex rules miss; ~0.2 s per document |
 
-The LLM classifier runs at temperature 0 against the local model and catches 3-4 of 5 reworded injections with zero false positives on the full demo bundle. Enable it by passing `use_llm_classifier=True` to the firewall factory. The console distinguishes the two: a regex hit is labelled "instruction-like (regex)" and a classifier hit is labelled "instruction-like (classifier)" in the knowledge panel and task timeline.
+The LLM classifier runs at temperature 0 against the local model and catches 3-4 of 5 reworded injections with zero false positives on the full demo bundle. Turn it on with `MOSAIC_FIREWALL_LLM=true` in the environment mosaicd starts with. Hits it catches carry the extra flag `instruction_like_llm`, and the knowledge search labels them "caught by LLM classifier" (regex hits read "caught by regex").
 
 ### NOOA adapter
 
@@ -296,7 +296,7 @@ An Expo (SDK 57) app in [`apps/mobile/`](apps/mobile) gives approvers a phone-na
 
 The console has a `/boot` page: a full-screen startup checklist that ticks off each service in order (Gateway, Kernel, Policy, Audit, Knowledge, Memory, Models, Agents, Sandbox) and automatically opens the Home page when all components are ready. On Windows, `scripts/win/mosaic-boot.ps1` starts every service and opens `/boot` in Edge kiosk mode. `scripts/preflight.py` checks GPU throughput, sandbox readiness, the bundle, and search quality, and must print "all green" before a demo run. `scripts/demo_run.py run --auto-approve` scores a full Apollo run out of 8/8.
 
-### Contract 0.7.0
+### Contracts 0.7.0 and 0.8.0
 
 `EmbedRequest.input_type` (`query` / `document`) enables nomic-embed-text's `search_query:` / `search_document:` prefix scheme. This improved the demo bundle's hybrid retrieval MRR from 0.83 to 0.90 (10/10 QA questions correct).
 
@@ -306,6 +306,7 @@ The console has a `/boot` page: a full-screen startup checklist that ticks off e
 | 0.5.0 | `Settings.models_config` (`MOSAIC_MODELS_CONFIG`) |
 | 0.6.0 | `RunTimeline.chain_verified` |
 | 0.7.0 | `EmbedRequest.input_type` for nomic prefixes |
+| 0.8.0 | `Settings.firewall_llm` (`MOSAIC_FIREWALL_LLM`) and the `instruction_like_llm` flag |
 
 ---
 
@@ -395,7 +396,7 @@ The mock pauses at the approval like the real kernel, so every screen, including
 The kiosk boot script (`scripts/win/mosaic-boot.ps1`) starts all services and opens `/boot` in Edge kiosk mode. Run `scripts/preflight.py` before a demo to verify GPU throughput, sandboxes and the knowledge bundle.
 </details>
 
-**Tests:** `uv run pytest -q` (305 passing, including a 10/10 retrieval QA on the demo bundle) · `npm --prefix apps/web test` (passing, including WCAG AA contrast checks for both themes) · `uvx ruff check .`
+**Tests:** `uv run pytest -q` (312 passing, including a 10/10 retrieval QA on the demo bundle) · `npm --prefix apps/web test` (passing, including WCAG AA contrast checks for both themes) · `uvx ruff check .`
 
 ---
 
