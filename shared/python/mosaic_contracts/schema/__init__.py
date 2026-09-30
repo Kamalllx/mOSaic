@@ -17,7 +17,7 @@ from .tools import *  # noqa: F401,F403
 # Models exported as JSON Schema / TypeScript (shared/schemas, shared/ts). Keep sorted by domain.
 EXPORTED_MODELS = [
     # common
-    Principal, ResourceQuota, ResourceUsage, Provenance, ErrorInfo,  # noqa: F405
+    Principal, UserPermissions, ResourceQuota, ResourceUsage, Provenance, ErrorInfo,  # noqa: F405
     # task
     TaskCreate, Task, TaskResult,  # noqa: F405
     # process

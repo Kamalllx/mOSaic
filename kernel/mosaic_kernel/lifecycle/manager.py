@@ -118,7 +118,7 @@ class Lifecycle:
         pid = proc.pid
         principal = Principal(kind=PrincipalKind.AGENT, org_id=task.org_id, user_id=task.user_id, pid=pid,
                               agent=manifest.name, roles=list(task.metadata.get("roles", [])), capabilities=caps,
-                              data_scopes=self._scopes(manifest, task, caps),
+                              data_scopes=self._scopes(manifest, task, caps, req.scope),
                               max_privacy=PrivacyLevel(task.metadata.get("max_privacy", PrivacyLevel.INTERNAL.value)))
         ctx = KernelAgentContext(k, pid=pid, ppid=req.ppid, task_id=task.task_id, manifest=manifest,
                                  principal=principal, inputs=req.inputs)
@@ -157,8 +157,10 @@ class Lifecycle:
         self.k.tasks._save(self.k.tasks.get(task.task_id).model_copy(update={"metadata": meta}))
         return dict(cp.agent_state) if cp and cp.checkpoint_id == cp_id and cp.agent_state else None
 
-    def _scopes(self, manifest: AgentManifest, task: Task, caps: list[str]) -> list[str]:
+    def _scopes(self, manifest: AgentManifest, task: Task, caps: list[str], requested: list[str] | None = None) -> list[str]:
         scopes = intersect_scopes(mounts_as_globs(manifest.memory.mounts), list(task.data_scope))
+        if requested is not None:  # a spawn request may only narrow
+            scopes = intersect_scopes(scopes, list(requested))
         knowledge_allow = getattr(self.k.policy, "knowledge_allow", None)
         if knowledge_allow is not None:
             probe = Principal(kind=PrincipalKind.AGENT, org_id=task.org_id, user_id=task.user_id, agent=manifest.name,

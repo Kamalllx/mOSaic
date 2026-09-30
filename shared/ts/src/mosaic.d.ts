@@ -234,7 +234,7 @@ export type TrustLevel4 = "verified" | "trusted" | "unverified" | "untrusted";
 export type VerificationStatus2 = "unverified" | "verified" | "disputed" | "stale";
 
 /**
- * mOSaic contracts v0.10.0
+ * mOSaic contracts v0.11.0
  */
 export interface MOSaic {
   A2AMessage?: A2AMessage;
@@ -346,6 +346,7 @@ export interface MOSaic {
   ToolSpec?: ToolSpec;
   ToolTransport?: ToolTransport;
   TrustLevel?: TrustLevel4;
+  UserPermissions?: UserPermissions;
   ValidationIssue?: ValidationIssue;
   ValidationReport?: ValidationReport;
   VerificationCheck?: VerificationCheck;
@@ -423,6 +424,22 @@ export interface AgentManifest {
   resources?: ManifestResources;
   network?: ManifestNetwork;
   approval?: ManifestApproval;
+  /**
+   * The role's instructions, for template agents that run it generically
+   */
+  system_prompt?: string | null;
+  /**
+   * The role template this manifest was generated from (None: a template)
+   */
+  template?: string | null;
+  /**
+   * True for an ephemeral manifest the kernel generated for one task
+   */
+  generated?: boolean;
+  /**
+   * The task a generated manifest belongs to; removed when the task ends
+   */
+  task_id?: string | null;
 }
 /**
  * This interface was referenced by `MOSaic`'s JSON-Schema
@@ -1493,6 +1510,14 @@ export interface SpawnRequest {
    * Optional narrowing; can never exceed the child's manifest. The parent controls WHICH agents it may spawn (its manifest.capabilities.agents), not their capabilities
    */
   capabilities?: string[] | null;
+  /**
+   * Optional narrowing of the child's /org scope (its template's memory mounts); never widens (0.11.0)
+   */
+  scope?: string[] | null;
+  /**
+   * Why the parent creates this agent, for the audit and the UI
+   */
+  why?: string | null;
 }
 /**
  * This interface was referenced by `MOSaic`'s JSON-Schema
@@ -1987,6 +2012,22 @@ export interface ToolSpec {
   description: string;
   transport: ToolTransport;
   operations: ToolOperation[];
+}
+/**
+ * What a user may do (0.11.0), resolved from {user, org, roles} by a PermissionsProvider. `permissions` are app
+ * permissions (task.create, approval.resolve, ...); `capabilities` and `data_scopes` bound every agent a task started by
+ * this user creates: an agent never gets a capability or an /org scope its user lacks.
+ *
+ * This interface was referenced by `MOSaic`'s JSON-Schema
+ * via the `definition` "UserPermissions".
+ */
+export interface UserPermissions {
+  user_id: string;
+  org_id: string;
+  roles?: string[];
+  permissions?: string[];
+  capabilities?: string[];
+  data_scopes?: string[];
 }
 /**
  * This interface was referenced by `MOSaic`'s JSON-Schema

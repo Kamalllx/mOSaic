@@ -61,6 +61,14 @@ def capability_matches(capability: str, granted: str) -> bool:
     return len(c) == len(g)
 
 
+# Capabilities whose catalog default is `approval: required` (shared/catalogs/capabilities.yaml; a test keeps them equal).
+# A generated agent's policy requires approval for these whatever the org policy says: writes always need a person.
+APPROVAL_REQUIRED: frozenset[str] = frozenset({
+    "knowledge.write", "agent.retry", "jira.write", "browser.click", "browser.type", "sandbox.exec", "database.write",
+    "external.email", "mcp.call",
+})
+
+
 def has_capability(capability: str, granted: list[str]) -> bool:
     return any(capability_matches(capability, g) for g in granted)
 

@@ -155,10 +155,12 @@ class KernelAgentContext:
         return memory_id
 
     # ------------------------------------------------------------------ processes
-    async def spawn(self, agent: str, goal: str, inputs: dict[str, Any] | None = None) -> int:
+    async def spawn(self, agent: str, goal: str, inputs: dict[str, Any] | None = None, *,
+                    capabilities: list[str] | None = None, scope: list[str] | None = None, why: str | None = None) -> int:
         await self._enter("agent.spawn")
         return await self.k.lifecycle.spawn(SpawnRequest(agent=agent, goal=goal, task_id=self.task_id, ppid=self.pid,
-                                                         inputs=inputs or {}))
+                                                         inputs=inputs or {}, capabilities=capabilities, scope=scope,
+                                                         why=why))
 
     async def wait(self, pid: int, timeout: float | None = None) -> AgentResult:
         await self._enter()

@@ -114,6 +114,19 @@ class Principal(Contract):
     max_privacy: PrivacyLevel = PrivacyLevel.INTERNAL
 
 
+class UserPermissions(Contract):
+    """What a user may do (0.11.0), resolved from {user, org, roles} by a PermissionsProvider. `permissions` are app
+    permissions (task.create, approval.resolve, ...); `capabilities` and `data_scopes` bound every agent a task started by
+    this user creates: an agent never gets a capability or an /org scope its user lacks."""
+
+    user_id: str
+    org_id: str
+    roles: list[str] = Field(default_factory=list)
+    permissions: list[str] = Field(default_factory=list)
+    capabilities: list[Capability] = Field(default_factory=list)
+    data_scopes: list[PathGlob] = Field(default_factory=list)
+
+
 class ResourceQuota(Contract):
     max_tokens: int = 20_000
     max_tool_calls: int = 20

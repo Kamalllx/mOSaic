@@ -13,12 +13,12 @@ from .agents import AgentRegistry, AgentRuntime
 from .execution import ArtifactStore, BrowserDriver, SandboxManager, ToolExecutor
 from .inference import ModelProvider, ModelRouter
 from .ingestion import SourceConverter
-from .kernel import AgentContext, AuditLog, EventBus, EventHandler, PolicyEngine, Subscription
+from .kernel import AgentContext, AuditLog, EventBus, EventHandler, PermissionsProvider, PolicyEngine, Subscription
 from .knowledge import ContextFirewall, KnowledgeService, MemoryService
 from .system import ResourceProbe
 
 __all__ = [
     "AgentContext", "AgentRegistry", "AgentRuntime", "ArtifactStore", "AuditLog", "BrowserDriver", "ContextFirewall",
     "EventBus", "EventHandler", "KnowledgeService", "MemoryService", "ModelProvider", "ModelRouter",
-    "PolicyEngine", "ResourceProbe", "SandboxManager", "SourceConverter", "Subscription", "ToolExecutor",
+    "PermissionsProvider", "PolicyEngine", "ResourceProbe", "SandboxManager", "SourceConverter", "Subscription", "ToolExecutor",
 ]

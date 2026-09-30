@@ -85,6 +85,7 @@ from ..schema import (
     SearchHit,
     SearchMode,
     SearchQuery,
+    SpawnRequest,
     StreamChunk,
     SyscallRequest,
     SyscallResult,
@@ -98,6 +99,7 @@ from ..schema import (
     ToolSpec,
     ToolTransport,
     TrustLevel,
+    UserPermissions,
     ValidationIssue,
     ValidationReport,
     VerificationCheck,
@@ -863,7 +865,7 @@ def default_test_manifest(name: str = "test-agent") -> AgentManifest:
 class FakeAgentContext:
     """Stand-in for the kernel's AgentContext. P3 unit-tests agents with it; nothing else needed.
 
-    Inspect afterwards: .logs, .narrations, .syscalls, .spawned, .sent, .checkpoints, .models.calls
+    Inspect afterwards: .logs, .narrations, .syscalls, .spawned, .spawn_requests, .sent, .checkpoints, .models.calls
     Inject: responses= (canned LLM replies), child_runner= (what spawned children return),
             auto_approve= (approve REQUIRES_APPROVAL syscalls), inbox messages via .inbox.put_nowait(msg)
     """
@@ -889,6 +891,7 @@ class FakeAgentContext:
         self.narrations: list[NarrationPayload] = []
         self.syscalls: list[tuple[SyscallRequest, SyscallResult]] = []
         self.spawned: dict[int, tuple[str, str, asyncio.Task]] = {}
+        self.spawn_requests: dict[int, SpawnRequest] = {}  # what each spawn asked for (capabilities, scope, why)
         self.sent: list[A2AMessage] = []
         self.checkpoints: dict[str, dict[str, Any]] = {}
         self.approvals: list[Approval] = []
@@ -920,10 +923,13 @@ class FakeAgentContext:
     async def remember(self, record: MemoryRecord) -> str:
         return await self.memory.store(record)
 
-    async def spawn(self, agent: str, goal: str, inputs: dict[str, Any] | None = None) -> int:
+    async def spawn(self, agent: str, goal: str, inputs: dict[str, Any] | None = None, *,
+                    capabilities: list[str] | None = None, scope: list[str] | None = None, why: str | None = None) -> int:
         if agent not in self.manifest.capabilities.agents:
             raise MosaicError("CAPABILITY_DENIED", f"{self.manifest.name} may not spawn {agent}")
         pid, self._next_pid = self._next_pid, self._next_pid + 1
+        self.spawn_requests[pid] = SpawnRequest(agent=agent, goal=goal, task_id=self.task_id, ppid=self.pid, inputs=inputs or {},
+                                                capabilities=capabilities, scope=scope, why=why)
 
         async def default_child(a: str, g: str, i: dict[str, Any]) -> AgentResult:
             return AgentResult(pid=pid, agent=a, status=AgentResultStatus.COMPLETED, summary=f"[fake {a}] {g}")
@@ -1068,6 +1074,23 @@ class FakeResourceProbe:
                                 gpu=GpuStatus(name="Fake RTX", utilization=0.1, memory_used_mb=1024, memory_total_mb=8192))
 
 
+class FakePermissionsProvider:
+    """PermissionsProvider for tests: every user gets `capabilities` / `data_scopes` (default: all of /org and every
+    capability in the catalog), or what `users` sets for them by user id."""
+
+    ALL = ["knowledge.*", "memory.*", "agent.*", "jira.*", "fs.*", "browser.*", "sandbox.*", "postgres.*", "database.*",
+           "db.*", "external.*", "mcp.*"]
+
+    def __init__(self, users: dict[str, UserPermissions] | None = None) -> None:
+        self.users = users or {}
+
+    async def resolve(self, user_id: str, org_id: str, roles: list[str] | None = None) -> UserPermissions:
+        if user_id in self.users:
+            return self.users[user_id]
+        return UserPermissions(user_id=user_id, org_id=org_id, roles=list(roles or ["owner"]), permissions=["task.create"],
+                               capabilities=list(self.ALL), data_scopes=["/org/**"])
+
+
 def fake_bundle(settings: Any = None) -> Any:
     """A ServiceBundle where every service is a fake — P1 builds the kernel on top of this before anything is real."""
     from ..wiring import ServiceBundle, Settings
@@ -1078,7 +1101,7 @@ def fake_bundle(settings: Any = None) -> Any:
                       browser=FakeBrowserDriver(), converters=[FakeMarkdownConverter()],
                       agent_registry=FakeAgentRegistry(), agent_runtime=FakeAgentRuntime(), probe=FakeResourceProbe(),
                       policy=FakePolicyEngine(),
-                      audit=InMemoryAuditLog())
+                      audit=InMemoryAuditLog(), permissions=FakePermissionsProvider())
     b.knowledge = FakeKnowledgeService(s.okf_dir, b.models, b.firewall, b.event_bus)
     b.memory = FakeMemoryService(b.event_bus)
     b.modes = {k: "fake" for k in ("event_bus", "artifacts", "models", "firewall", "knowledge", "memory", "sandbox",
@@ -1089,7 +1112,7 @@ def fake_bundle(settings: Any = None) -> Any:
 __all__ = [
     "fake_bundle", "FakeMarkdownConverter", "FakeBrowserDriver", "FakeResourceProbe",
     "FAKE_TOOL_SPECS", "FIXTURE_MANIFESTS_DIR", "FIXTURE_OKF_DIR", "FakeAgentContext", "FakeAgentRegistry",
-    "FakeAgentRuntime", "FakeContextFirewall", "FakeKnowledgeService", "FakeMemoryService", "FakeModelRouter",
+    "FakeAgentRuntime", "FakeContextFirewall", "FakePermissionsProvider", "FakeKnowledgeService", "FakeMemoryService", "FakeModelRouter",
     "FakePolicyEngine", "FakeSandboxManager", "FakeToolExecutor", "InMemoryArtifactStore", "InMemoryAuditLog",
     "InMemoryEventBus", "default_test_manifest", "load_manifests", "parse_okf", "system_principal", "user_principal",
 ]

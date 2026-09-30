@@ -42,6 +42,7 @@ if TYPE_CHECKING:
         KnowledgeService,
         MemoryService,
         ModelRouter,
+        PermissionsProvider,
         PolicyEngine,
         ResourceProbe,
         SandboxManager,
@@ -128,6 +129,7 @@ class ServiceBundle:
     probe: ResourceProbe | None = None
     policy: PolicyEngine | None = None
     audit: AuditLog | None = None
+    permissions: PermissionsProvider | None = None  # 0.11.0: None means the kernel's built-in role stub
     modes: dict[str, str] = field(default_factory=dict)
 
     def require(self, name: str):
