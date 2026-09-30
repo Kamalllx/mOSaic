@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from mosaic_contracts.errors import MosaicError
 from mosaic_contracts.schema import (
     TERMINAL_STATES,
+    AgentCreated,
     AgentManifest,
     AgentResult,
     AgentResultStatus,
@@ -129,6 +130,10 @@ class Lifecycle:
             restore_state = self._resume_state(task)
 
         await k.emit(EventType.PROCESS_SPAWNED, {"agent": manifest.name, "ppid": req.ppid}, task_id=task.task_id, pid=pid)
+        if req.ppid is not None:  # the story's "created" step: agents a planner creates (the root planner is the task itself)
+            await k.emit(EventType.AGENT_CREATED, AgentCreated(pid=pid, manifest_name=manifest.name, template=manifest.name,
+                                                               generated=False).model_dump(mode="json"),
+                         task_id=task.task_id, pid=pid)
         await k.journal(task.task_id, AuditKind.SPAWN, f"Spawned {manifest.name}", pid=pid,
                         actor=k.actor(req.ppid) if req.ppid else "kernel.lifecycle",
                         data={"agent": manifest.name, "ppid": req.ppid, "goal": req.goal, "capabilities": caps})
