@@ -1,46 +1,72 @@
-# apps/mobile: phone thin client
+# apps/mobile: mOSaic on the phone
 
-Expo (SDK 57) app with three tabs:
-- **Approvals:** polls `GET /approvals?status=pending` every 2 s while the app is in the foreground. Pauses when the app goes into background and resumes immediately on return to foreground. Each card shows the capability, risk badge, arguments (horizontally scrollable), evidence paths and policy, with Approve / Reject buttons (`POST /approvals/{id}/approve|reject`).
-- **Compose:** `POST /tasks`, prefilled with the Apollo demo prompt. Keyboard avoidance ensures the input is not covered on small phones.
-- **Settings:** gateway URL and user/org headers, stored on device.
+Expo SDK 57 app with Expo Router. The phone is a thin client: every task, agent and model runs on the mOSaic server. The phone signs in, starts tasks, watches them live, and approves what the kernel is blocking.
 
-Types and header names come from `@mosaic/contracts` (`shared/ts`). `metro.config.js` watches that folder.
+## Screens
+| Tab | What it does | Gateway calls |
+|---|---|---|
+| Home | Running and recent tasks, live status | `GET /tasks` (3 s poll) |
+| Approvals | Risk, capability, arguments, evidence paths, policy. Big Approve / Reject buttons at the bottom of each card, shown only if the role may resolve approvals | `GET /approvals?status=pending`, `POST /approvals/{id}/approve\|reject` |
+| Compose | Prompt and priority; opens the task when it starts | `POST /tasks` |
+| Knowledge | Hybrid search with scores, provenance, trust, and firewall flags | `GET /knowledge/search` |
+| Settings | Server URL, account and permissions, org switcher, notifications, sign out | none |
+| Task detail | Status, process tree (one avatar per agent), live timeline, result, cancel | `GET /tasks/{id}`, `GET /agents?task_id`, `WS /ws/events?task_id` |
 
+Other behaviour:
+- **Connection banner:** an offline or reconnecting banner comes from `/health`.
+- **Polling:** it pauses in the background and refreshes as soon as the app returns.
+- **Notifications:** a local notification fires for every new approval while the app is open or recently used (`expo-notifications`). Push notifications are not used.
+- **Theme:** the light theme tokens live in `src/theme.ts`. Kamal's re-skin only changes values there.
+
+## Sign-in and roles
+- **Dev sign-in**, for `MOSAIC_AUTH=dev` and the mock gateway. You enter a user, an org and a role. Requests carry `X-Mosaic-User`, `X-Mosaic-Org` and `X-Mosaic-Roles`.
+- **Google sign-in** (`@react-native-google-signin/google-signin`):
+  1. The app gets a Google ID token.
+  2. It exchanges the token at Person C's `POST /auth/google`.
+  3. It then uses `Authorization: Bearer <token>`, reads `GET /auth/me`, and passes the token to the WebSocket as `?token=`.
+
+  The button appears only in the APK or a development build (it is native code, so not in Expo Go), and only when this is set at build time:
+  ```
+  EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=<the WEB OAuth client ID>
+  ```
+  Use the **web** client ID: it is the audience the gateway verifies. The **Android** client ID must also exist in the same Google Cloud project, registered with the package `com.mosaic.mobile` and the SHA-1 of the signing key (`cd android && ./gradlew signingReport`). Person C creates both IDs (`docs/AUTH.md`). For iOS, add the plugin to `app.json` with `iosUrlScheme`.
+- **Roles:** `src/rbac.ts` mirrors the role table (owner, admin, approver, member, viewer) and hides actions the role cannot use. The server stays the authority. When `/auth/me` returns explicit permissions, those win.
+
+## Run it
 ```bash
 cd apps/mobile
 npm ci
-npx expo start                  # scan the QR code with Expo Go
 npm run typecheck
+uv run mosaic-mock-gateway --port 8080        # from the repo root: a full Apollo run, no GPU needed
 ```
+| Where | Command | Server URL in the app |
+|---|---|---|
+| Web (quick check) | `npx expo start --web` | `http://localhost:8080` |
+| Expo Go on a phone | `npx expo start`, scan the QR code | `http://<laptop-ip>:8080` |
+| Android emulator | `npx expo run:android` (needs Android Studio and an AVD) | `http://10.0.2.2:8080`, the host machine as seen from the emulator (the default) |
+| Real phone over USB | enable USB debugging, then `npx expo run:android --device` | `http://<laptop-ip>:8089` on hotspot or LAN |
+| Over Tailscale | phone on the tailnet | `https://<node>.<tailnet>.ts.net:8443` (see `infra/appliance/README.md`) |
 
-- **Develop without the node:** run `uv run mosaic-mock-gateway` on your laptop, then set the gateway URL to `http://<laptop-ip>:8080`. Plain HTTP works in Expo Go during development. The default URL is `http://localhost:8080`.
-- **Real gateway over Tailscale:** use `https://<node>.<tailnet>.ts.net:8443`. See `infra/appliance/README.md` §5.
-- **Hotspot (Windows):** run `scripts\win\phone-access.ps1` (as administrator) on the laptop to open the firewall. The Settings tab shows a hint with the right URL format. Remove the rule afterwards with `-Remove`.
+On Windows, `scripts\win\phone-access.ps1` opens the firewall for hotspot use. The release build allows cleartext HTTP (`expo-build-properties`, `usesCleartextTraffic`), so LAN and hotspot URLs work without TLS.
 
-## Device testing
+## Build the APK
+```bash
+cd apps/mobile
+npx expo prebuild --platform android --clean     # generates android/ (git-ignored)
+echo "sdk.dir=C:/Users/<you>/AppData/Local/Android/Sdk" > android/local.properties   # if ANDROID_HOME is unset
+cd android
+./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a,x86_64
+# -> android/app/build/outputs/apk/release/app-release.apk; copy it to mosaic-<version>.apk
+```
+- Build with JDK 17 or 21 and the Android SDK from Android Studio.
+- **Architectures:** `arm64-v8a` covers modern phones and `x86_64` covers the emulator. Leaving out 32-bit halves the build time.
+- **Signing:** as generated, the release APK is signed with the debug keystore. That is fine for side-loading at a hackathon, but not for the Play Store. For a real release key:
+  1. Create a keystore **outside the repo**, for example `%USERPROFILE%\.mosaic\mosaic-release.jks`, with `keytool -genkeypair -v -keystore mosaic-release.jks -alias mosaic -keyalg RSA -keysize 2048 -validity 10000`.
+  2. Put `MOSAIC_UPLOAD_STORE_FILE`, `MOSAIC_UPLOAD_KEY_ALIAS` and the two passwords in `%USERPROFILE%\.gradle\gradle.properties`.
+  3. Point `signingConfigs.release` in `android/app/build.gradle` at them.
 
-`npm run typecheck` passes against contract 0.7.0.
+  Never commit the keystore or passwords.
+- **Alternative:** EAS Build (`eas build -p android --profile preview`), if the team has an Expo account.
 
-A real-device test on iOS or Android was not performed in this environment. The app was validated by:
-- TypeScript type check (`npm run typecheck`) — clean.
-- Code review against the Expo SDK 57 API (SafeAreaView, AppState, KeyboardAvoidingView, Pressable).
-- Static review of safe area, keyboard avoidance, touch target sizes (minHeight 44/50 px), and background-polling behavior.
-
-When a real device is available: use Expo Go, connect to the mock gateway (`--port 8080`), navigate to Settings and enter `http://<laptop-ip>:8080`, then Compose → submit the Apollo task → switch to Approvals → approve.
-
-## Changes from the original
-
-| Area | Change |
-|---|---|
-| Safe areas | Replaced `View` with `SafeAreaView` for the root and loading screen |
-| Keyboard | Added `KeyboardAvoidingView` (platform-aware behavior) to Compose and Settings |
-| Background polling | Polls only when `AppState === "active"`; re-polls immediately on foreground |
-| Touch targets | Buttons: `minHeight 44–50 px`; tabs: `minHeight 44 px` |
-| Long arguments | `ScrollView horizontal` wrapper around the JSON arguments block |
-| Error states | Error shown in a styled card with a Retry button; Compose errors shown distinctly |
-| Empty state | Descriptive text explaining that approvals appear when an agent acts |
-| Loading state | Shows spinner with gateway URL while the first fetch runs |
-| Risk badge | Colour-coded badge (critical/high/medium/low) on each approval card |
-| Default URL | Changed from Tailscale URL to `http://localhost:8080` for local development |
-| Accessibility | `accessibilityRole`, `accessibilityLabel`, `accessibilityState` on all interactive elements |
+## Checks before a commit
+`npm run typecheck`, then `npx expo-doctor` (expected 21/21), then `npx expo export --platform android` to confirm Metro bundles.
