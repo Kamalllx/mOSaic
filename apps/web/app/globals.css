@@ -85,6 +85,9 @@
   --radius-2xl: 16px;
 
   --shadow-panel: var(--shadow);
+  --shadow-window: var(--win-shadow);
+  --shadow-window-idle: var(--win-shadow-idle);
+  --color-grout: var(--grout);
   --ease-out-soft: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
@@ -122,10 +125,17 @@
   --ev-knowledge: #5b9bd5;
   --ev-tool: #8aa4c2;
   --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 16px rgb(0 0 0 / 0.25);
+  --grout: #07090c;
+  /* Windows light from above: a tight contact shadow and a long soft one, tinted with the grout. */
+  --win-shadow: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 2px 4px rgb(2 4 8 / 0.5), 0 24px 60px -12px rgb(2 4 8 / 0.75);
+  --win-shadow-idle: 0 1px 2px rgb(2 4 8 / 0.45), 0 12px 32px -12px rgb(2 4 8 / 0.6);
 }
 
 [data-theme="light"] {
   color-scheme: light;
+  --grout: #cdd3da;
+  --win-shadow: 0 2px 4px rgb(30 41 59 / 0.12), 0 24px 60px -12px rgb(30 41 59 / 0.35);
+  --win-shadow-idle: 0 1px 2px rgb(30 41 59 / 0.1), 0 12px 32px -12px rgb(30 41 59 / 0.25);
   --bg: #f6f7f9;
   --surface-1: #ffffff;
   --surface-2: #f1f3f6;
@@ -214,3 +224,33 @@
 /* React Flow follows the theme */
 .react-flow__attribution { display: none; }
 .react-flow__edge-path { stroke: var(--line-strong); }
+
+/* ---- Desktop ---------------------------------------------------------------------------------------------------- */
+::selection { background: color-mix(in srgb, var(--brand) 35%, transparent); }
+* { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+
+/* In the components layer, so utilities such as `hidden` still win. */
+@layer components {
+.win-btn {
+  display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 22px; border-radius: 6px;
+  color: var(--text-2); transition: background-color 120ms, color 120ms;
+}
+.win-btn:hover { background: var(--surface-3); color: var(--text); }
+.bar-btn {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 24px; border-radius: 6px;
+  color: var(--text); transition: background-color 120ms;
+}
+.bar-btn:hover { background: var(--surface-3); }
+}
+
+@keyframes window-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+.window-in { animation: window-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1); transform-origin: 50% 30%; }
+
+@keyframes notice-in {
+  from { opacity: 0; transform: translateX(16px); }
+  to { opacity: 1; transform: none; }
+}
+.notice-in { animation: notice-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1); }

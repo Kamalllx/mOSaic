@@ -1,5 +1,6 @@
 "use client";
 
+import { Loading } from "@/components/desktop/orb";
 import type { TaskStatus } from "@mosaic/contracts";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
@@ -15,7 +16,7 @@ type Filter = (typeof FILTERS)[number];
 const matches = (f: Filter, s?: TaskStatus) =>
   f === "all" || (f === "active" ? isActive(s) : f === "failed" ? s === "failed" || s === "cancelled" : s === f);
 
-export default function TasksPage() {
+export function TasksApp() {
   const client = useClient();
   const [filter, setFilter] = useState<Filter>("all");
   const [text, setText] = useState("");
@@ -43,7 +44,7 @@ export default function TasksPage() {
               role="radio"
               aria-checked={filter === f}
               onClick={() => setFilter(f)}
-              className={cn("h-9 whitespace-nowrap px-2.5 text-sm capitalize text-text-2 sm:px-3", filter === f && "bg-surface-3 text-foreground")}
+              className={cn("h-9 whitespace-nowrap px-2.5 text-sm capitalize text-text-2 @xl:px-3", filter === f && "bg-surface-3 text-foreground")}
             >
               {f} <span className="font-mono text-xs">({all.filter((t) => matches(f, t.status)).length})</span>
             </button>
@@ -70,19 +71,7 @@ export default function TasksPage() {
             </button>
           </div>
         )}
-        {tasks.isLoading && (
-          <div className="space-y-1 p-2">
-            {[0, 1, 2].map((i) => (
-              <div key={i} className="flex items-center gap-3 rounded-md px-3 py-3">
-                <div className="h-5 w-24 animate-pulse rounded-md bg-surface-3" />
-                <div className="flex-1 space-y-1.5">
-                  <div className="h-3.5 w-full animate-pulse rounded bg-surface-3" />
-                  <div className="h-3 w-1/3 animate-pulse rounded bg-surface-3" />
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        {tasks.isLoading && <Loading label="Reading the process table" state="working" />}
         {tasks.isSuccess && shown.length === 0 && (
           <div className="px-4 py-8 text-center">
             <p className="text-sm font-medium text-text-2">

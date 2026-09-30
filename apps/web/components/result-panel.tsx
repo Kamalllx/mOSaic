@@ -62,7 +62,7 @@ export function ResultPanel({ taskId, view }: { taskId: string; view: TaskView }
   const actions = committedActions(r?.actions ?? [], view.timeline, view);
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+    <div className="grid gap-4 @7xl:grid-cols-[minmax(0,1fr)_380px]">
       <article className="min-w-0 space-y-4">
         <section className={cn("rounded-xl border bg-surface-1 p-5 shadow-panel", failed ? "border-st-failed/60" : "border-line")}>
           <h2 className={cn("flex items-center gap-2 text-sm font-semibold uppercase tracking-wider", failed ? "text-st-failed" : "text-st-running")}>

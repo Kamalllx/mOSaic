@@ -1,5 +1,6 @@
 "use client";
 
+import { Loading } from "@/components/desktop/orb";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, ScrollText } from "lucide-react";
 import Link from "next/link";
@@ -8,7 +9,7 @@ import { TaskStatusBadge, formatTime } from "@/components/status";
 import { byNewest } from "@/components/task-row";
 
 /** Audit journals are per task: pick one. */
-export default function AuditIndexPage() {
+export function JournalsApp() {
   const client = useClient();
   const tasks = useQuery({ queryKey: ["tasks"], queryFn: () => client.listTasks(), refetchInterval: 5_000 });
   const all = [...(tasks.data ?? [])].sort(byNewest);
@@ -35,19 +36,7 @@ export default function AuditIndexPage() {
             </button>
           </li>
         )}
-        {tasks.isLoading && (
-          <>
-            {[0, 1, 2].map((i) => (
-              <li key={i} className="flex items-center gap-3 px-4 py-3">
-                <div className="h-5 w-28 animate-pulse rounded-md bg-surface-3" />
-                <div className="flex-1 space-y-1.5">
-                  <div className="h-3.5 w-3/4 animate-pulse rounded bg-surface-3" />
-                  <div className="h-3 w-1/4 animate-pulse rounded bg-surface-3" />
-                </div>
-              </li>
-            ))}
-          </>
-        )}
+        {tasks.isLoading && <li><Loading label="Reading the audit journals" /></li>}
         {tasks.isSuccess && all.length === 0 && (
           <li className="px-4 py-8 text-center">
             <p className="text-sm text-text-2">No tasks yet.</p>
@@ -57,7 +46,7 @@ export default function AuditIndexPage() {
         {all.map((t) => (
           <li key={t.task_id}>
             <Link href={`/audit/${t.task_id}`} className="group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-surface-3">
-              <TaskStatusBadge status={t.status} className="justify-center sm:w-[10.5rem]" />
+              <TaskStatusBadge status={t.status} className="justify-center @xl:w-[10.5rem]" />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm">{t.goal}</p>
                 <p className="font-mono text-xs text-text-2">

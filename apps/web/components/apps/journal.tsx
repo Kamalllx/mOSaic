@@ -22,7 +22,7 @@ import {
   Wrench,
 } from "lucide-react";
 import Link from "next/link";
-import { use, useState } from "react";
+import { useState } from "react";
 import { useClient } from "@/app/providers";
 import { EvidenceChip, PidChip, formatTime } from "@/components/status";
 import { cn } from "@/lib/utils";
@@ -109,8 +109,7 @@ function Entry({ e }: { e: AuditEntry }) {
   );
 }
 
-export default function AuditPage({ params }: { params: Promise<{ taskId: string }> }) {
-  const { taskId } = use(params);
+export function JournalApp({ taskId }: { taskId: string }) {
   const client = useClient();
   const [hidden, setHidden] = useState<AuditKind[]>(["state", "model"]);
   const [pid, setPid] = useState<string>("");
@@ -134,7 +133,7 @@ export default function AuditPage({ params }: { params: Promise<{ taskId: string
           <p className="font-mono text-xs uppercase tracking-widest text-text-2">Audit journal · {taskId}</p>
           <h1 className="mt-1 text-xl font-semibold">{q.data?.goal ?? "…"}</h1>
         </div>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
+        <div className="grid grid-cols-2 gap-2 @xl:grid-cols-4 @5xl:grid-cols-8">
           <Stat value={entries.length} label="entries" />
           <Stat value={s?.agents ?? 0} label="agents" />
           <Stat value={s?.knowledge_objects ?? 0} label="knowledge objects" tone="text-ev-knowledge" />

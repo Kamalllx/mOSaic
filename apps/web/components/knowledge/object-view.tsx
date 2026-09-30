@@ -171,7 +171,7 @@ export function ObjectView({ path, onSelect }: { path: string; onSelect: (p: str
       <div className="rounded-xl border border-line bg-surface-1 p-5 shadow-panel">
         <Markdown body={o.body} onLink={(href) => onSelect(resolveOkfLink(o.path, o.okf_file, href))} />
       </div>
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 @3xl:grid-cols-2">
         <LinkList title="Links to" icon={ArrowUpRight} paths={[...new Set([...(o.links ?? []), ...outgoing])]} onSelect={onSelect} />
         <LinkList title="Linked from" icon={ArrowDownLeft} paths={incoming} onSelect={onSelect} />
       </div>

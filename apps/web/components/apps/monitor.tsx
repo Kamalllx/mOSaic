@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useClient } from "@/app/providers";
 import { ArtifactImage, isImage } from "@/components/artifacts";
-import { useModels, useResources } from "@/components/shell/app-shell";
+import { useModels, useResources } from "@/components/desktop/hooks";
 import { formatTime } from "@/components/status";
 import { str } from "@/lib/events";
 import { cn } from "@/lib/utils";
@@ -97,7 +97,7 @@ function useLastTaskScreenshots() {
   });
 }
 
-export default function SystemPage() {
+export function MonitorApp() {
   const client = useClient();
   const status = useQuery({ queryKey: ["system-status"], queryFn: () => client.status(), refetchInterval: 10_000 });
   const res = useResources();
@@ -136,7 +136,7 @@ export default function SystemPage() {
         )}
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 @xl:grid-cols-2 @7xl:grid-cols-4">
         <Gauge2 label="CPU" icon={Cpu} pct={r ? r.cpu_percent : null} value={r ? `${r.cpu_percent.toFixed(0)}%` : "…"} detail="all cores" />
         <Gauge2
           label="RAM"
@@ -155,10 +155,10 @@ export default function SystemPage() {
         />
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      <div className="grid gap-4 @7xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <div className="space-y-4">
           <Section title="Kernel" icon={Cpu}>
-            <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <dl className="grid grid-cols-2 gap-2 @xl:grid-cols-4">
               {(
                 [
                   ["processes", r?.running_processes],
@@ -176,7 +176,7 @@ export default function SystemPage() {
           </Section>
 
           <Section title={`Components (${st?.components.filter((c) => c.ok).length ?? 0}/${st?.components.length ?? 0} healthy)`} icon={CircleCheck}>
-            <ul className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+            <ul className="grid grid-cols-2 gap-1.5 @xl:grid-cols-3">
               {st?.components.map((c) => (
                 <li key={c.component} className="flex items-center gap-2 rounded-md border border-line bg-surface-2 px-2.5 py-1.5 text-sm" title={c.detail || undefined}>
                   {c.ok ? <CircleCheck className="size-4 shrink-0 text-st-running" aria-label="ok" /> : <CircleX className="size-4 shrink-0 text-st-failed" aria-label="down" />}

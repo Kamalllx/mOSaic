@@ -1,7 +1,7 @@
 import { GeistSans } from "geist/font/sans";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
-import { AppShell } from "@/components/shell/app-shell";
+import { Desktop } from "@/components/desktop/desktop";
 import "./globals.css";
 import { Providers } from "./providers";
 
@@ -13,16 +13,20 @@ const jetbrainsMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "mOSaic console",
-  description: "Agents as processes, actions as governed syscalls, everything audited.",
+  title: "mOSaic",
+  description: "An operating system for your organization's AI: agents as processes, actions as governed syscalls, everything audited.",
 };
 
+export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover", themeColor: "#07090c" };
+
+/** Every route renders the desktop; the route itself only says which window is in front (see components/desktop). */
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${GeistSans.variable} ${jetbrainsMono.variable} h-full`} suppressHydrationWarning>
-      <body className="min-h-full">
+      <body className="h-full overflow-hidden">
         <Providers>
-          <AppShell>{children}</AppShell>
+          <Desktop />
+          {children}
         </Providers>
       </body>
     </html>

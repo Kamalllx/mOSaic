@@ -1,9 +1,10 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BookOpenText, Loader2, RefreshCw, Search, X } from "lucide-react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { BookOpenText, RefreshCw, Search, X } from "lucide-react";
+import { Orb } from "@/components/desktop/orb";
+import { useState } from "react";
+import { useWindowNav, useWindowParams } from "@/components/desktop/window-context";
 import { toast } from "sonner";
 import { useClient } from "@/app/providers";
 import { ObjectView } from "@/components/knowledge/object-view";
@@ -11,12 +12,11 @@ import { SearchResults } from "@/components/knowledge/search-results";
 import { KnowledgeTree } from "@/components/knowledge/tree";
 import { MosaicError } from "@/lib/mosaic-client";
 
-function Explorer() {
+export function FilesApp() {
   const client = useClient();
   const qc = useQueryClient();
-  const params = useSearchParams();
-  const router = useRouter();
-  const pathname = usePathname();
+  const params = useWindowParams();
+  const win = useWindowNav();
   const path = params.get("path");
   const query = params.get("q");
   const [draft, setDraft] = useState(query ?? "");
@@ -36,11 +36,11 @@ function Explorer() {
     const q = next.q === undefined ? query : next.q;
     if (p) s.set("path", p);
     if (q) s.set("q", q);
-    router.push(`${pathname}${s.size ? `?${s}` : ""}`);
+    win.navigate(`/knowledge${s.size ? `?${s}` : ""}`);
   };
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col gap-4 @5xl:h-full">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-semibold">
@@ -62,12 +62,12 @@ function Explorer() {
             disabled={reindex.isPending}
             className="flex h-9 items-center gap-1.5 rounded-md border border-line px-3 text-sm transition-colors hover:bg-surface-3 disabled:opacity-60"
           >
-            {reindex.isPending ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <RefreshCw className="size-4" aria-hidden />} Reindex
+            {reindex.isPending ? <Orb state="searching" label="Reindexing" /> : <RefreshCw className="size-4" aria-hidden />} Reindex
           </button>
         </div>
       </div>
 
-      <div className="grid gap-4 lg:h-[calc(100vh-11.5rem)] lg:grid-cols-[280px_minmax(0,1fr)] 2xl:grid-cols-[280px_minmax(0,1fr)_440px]">
+      <div className="grid gap-4 @5xl:min-h-0 @5xl:flex-1 @5xl:grid-cols-[280px_minmax(0,1fr)] @[96rem]:grid-cols-[280px_minmax(0,1fr)_440px]">
         <aside className="min-h-0 overflow-y-auto rounded-xl border border-line bg-surface-1 p-2 shadow-panel">
           <KnowledgeTree selected={path} onSelect={(p) => go({ path: p })} />
         </aside>
@@ -85,7 +85,7 @@ function Explorer() {
           )}
         </section>
 
-        <aside className="flex min-h-0 flex-col gap-3 2xl:col-start-3 max-2xl:lg:col-span-2 max-lg:order-first">
+        <aside className="flex min-h-0 flex-col gap-3 @[96rem]:col-start-3 @max-[96rem]:@5xl:col-span-2 @max-5xl:order-first">
           <form
             role="search"
             className="relative"
@@ -129,10 +129,3 @@ function Explorer() {
   );
 }
 
-export default function KnowledgePage() {
-  return (
-    <Suspense>
-      <Explorer />
-    </Suspense>
-  );
-}

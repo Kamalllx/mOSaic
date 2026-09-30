@@ -1,10 +1,11 @@
 "use client";
 
+import { Loading } from "@/components/desktop/orb";
 import type { Event, MemoryKind, MemoryRecord } from "@mosaic/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { Brain, RefreshCw, TriangleAlert } from "lucide-react";
-import { useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { useState } from "react";
+import { useWindowParams } from "@/components/desktop/window-context";
 import { useClient } from "@/app/providers";
 import { INVALIDATIONS_KEY, invalidationTitle } from "@/components/global-events";
 import { EvidenceChip, formatTime } from "@/components/status";
@@ -21,7 +22,7 @@ function MemoryRow({ m, changed }: { m: MemoryRecord; changed: string[] }) {
   return (
     <li
       className={cn(
-        "grid gap-3 px-4 py-3 transition-opacity duration-200 md:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]",
+        "grid gap-3 px-4 py-3 transition-opacity duration-200 @3xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]",
         m.stale && "bg-st-waiting/5",
         isReconsolidated && !m.stale && "bg-brand-subtle/20",
       )}
@@ -101,9 +102,9 @@ function ReplacementGroup({ memory, replaced, changed }: { memory: MemoryRecord;
   );
 }
 
-function MemoryScreen() {
+export function MemoryApp() {
   const client = useClient();
-  const params = useSearchParams();
+  const params = useWindowParams();
   const [owner, setOwner] = useState(params.get("owner") ?? "");
   const [task, setTask] = useState(params.get("task_id") ?? "");
   const [kind, setKind] = useState<(typeof KINDS)[number]>("all");
@@ -222,23 +223,7 @@ function MemoryScreen() {
         </div>
       )}
 
-      {q.isLoading && (
-        <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface-1 shadow-panel">
-          {[0, 1, 2, 3].map((i) => (
-            <li key={i} className="flex gap-4 px-4 py-4">
-              <div className="flex-1 space-y-2">
-                <div className="h-3 w-32 animate-pulse rounded bg-surface-3" />
-                <div className="h-3 w-full animate-pulse rounded bg-surface-3" />
-                <div className="h-3 w-2/3 animate-pulse rounded bg-surface-3" />
-              </div>
-              <div className="w-40 space-y-2">
-                <div className="h-3 w-20 animate-pulse rounded bg-surface-3" />
-                <div className="h-5 w-32 animate-pulse rounded bg-surface-3" />
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
+      {q.isLoading && <Loading label="Reading memories" state="weaving" />}
 
       {q.isSuccess && (
         <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface-1 shadow-panel">
@@ -262,10 +247,3 @@ function MemoryScreen() {
   );
 }
 
-export default function MemoryPage() {
-  return (
-    <Suspense>
-      <MemoryScreen />
-    </Suspense>
-  );
-}

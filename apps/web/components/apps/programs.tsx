@@ -1,5 +1,6 @@
 "use client";
 
+import { Loading } from "@/components/desktop/orb";
 import type { AgentManifest, ToolSpec } from "@mosaic/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { Bot, Wrench } from "lucide-react";
@@ -123,7 +124,7 @@ function ToolTable({ tools }: { tools: ToolSpec[] }) {
 }
 
 /** Read-only: what the kernel can spawn and what the tools can do. Agents are defined by manifests on disk. */
-export default function AgentsPage() {
+export function ProgramsApp() {
   const client = useClient();
   const agents = useQuery({ queryKey: ["registry-agents"], queryFn: () => client.registry() });
   const tools = useQuery({ queryKey: ["registry-tools"], queryFn: () => client.registryTools() });
@@ -145,21 +146,11 @@ export default function AgentsPage() {
           </button>
         </div>
       )}
-      {agents.isLoading && (
-        <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
-          {[0, 1, 2].map((i) => (
-            <div key={i} className="space-y-3 rounded-xl border border-line bg-surface-1 p-4">
-              <div className="h-4 w-32 animate-pulse rounded bg-surface-3" />
-              <div className="h-3 w-full animate-pulse rounded bg-surface-3" />
-              <div className="h-3 w-2/3 animate-pulse rounded bg-surface-3" />
-            </div>
-          ))}
-        </div>
-      )}
+      {agents.isLoading && <Loading label="Reading the agent registry" />}
       {agents.isSuccess && agents.data.length === 0 && (
         <p className="text-sm text-text-2">No agent manifests found on this machine.</p>
       )}
-      <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+      <div className="grid gap-4 @3xl:grid-cols-2 @[96rem]:grid-cols-3">
         {(agents.data ?? []).map((a) => (
           <AgentCard key={a.name} a={a} />
         ))}

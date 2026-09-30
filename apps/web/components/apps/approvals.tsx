@@ -8,7 +8,7 @@ import { ApprovalCard, approvalHeadline } from "@/components/approval-card";
 import { PidChip, RiskBadge, formatTime } from "@/components/status";
 import { cn } from "@/lib/utils";
 
-export default function ApprovalsPage() {
+export function ApprovalsApp() {
   const client = useClient();
   const [tab, setTab] = useState<"pending" | "history">("pending");
   const all = useQuery({ queryKey: ["approvals", "all"], queryFn: () => client.approvals(), refetchInterval: 2_000 });

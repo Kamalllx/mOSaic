@@ -3,7 +3,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Play, Save, ScrollText, Square } from "lucide-react";
 import Link from "next/link";
-import { use, useEffect, useState } from "react";
+import type { Event } from "@mosaic/contracts";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useClient } from "@/app/providers";
 import { ApprovalDrawer } from "@/components/approval-drawer";
@@ -37,8 +38,7 @@ function useTick(on: boolean) {
   }, [on]);
 }
 
-export default function TaskPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
+export function TaskApp({ id }: { id: string }) {
   const client = useClient();
   const qc = useQueryClient();
   const view = useTaskEvents(id);
@@ -62,11 +62,16 @@ export default function TaskPage({ params }: { params: Promise<{ id: string }> }
   const start = view.task?.created_at ?? view.timeline[0]?.ts;
   const end = done ? (view.task?.updated_at ?? view.timeline.at(-1)?.ts) : null;
   const procs = Object.values(view.processes);
+  const last = useMemo(() => {
+    const m: Record<number, Event> = {};
+    for (const e of view.timeline) if (e.pid) m[e.pid] = e;
+    return m;
+  }, [view.timeline]);
   // Default selection: whoever is waiting (usually the action agent at the approval), else the root.
   const selected = picked ?? procs.find((p) => p.state === "WAITING" && p.waiting_on?.startsWith("approval:"))?.pid ?? procs.find((p) => !p.ppid)?.pid ?? null;
 
   return (
-    <div className="flex flex-col gap-4 md:h-[calc(100vh-6.5rem)]">
+    <div className="flex flex-col gap-4 @3xl:h-full">
       <header className="flex flex-wrap items-start gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2.5">
@@ -77,9 +82,9 @@ export default function TaskPage({ params }: { params: Promise<{ id: string }> }
               <span className={cn("size-2 rounded-full", streamDot)} aria-hidden /> {streamLabel}
             </span>
           </div>
-          <h1 className="mt-1.5 line-clamp-2 text-xl font-semibold leading-snug md:text-2xl">{String(goal ?? "…")}</h1>
+          <h1 className="mt-1.5 line-clamp-2 text-xl font-semibold leading-snug @3xl:text-2xl">{String(goal ?? "…")}</h1>
         </div>
-        <div className="flex w-full flex-wrap items-center gap-2 md:w-auto md:shrink-0">
+        <div className="flex w-full flex-wrap items-center gap-2 @3xl:w-auto @3xl:shrink-0">
           <ApprovalDrawer view={view} />
           {active && (
             <Button variant="outline" size="sm" onClick={() => control.mutate("checkpoint")} disabled={control.isPending}>
@@ -106,7 +111,7 @@ export default function TaskPage({ params }: { params: Promise<{ id: string }> }
 
       <PhoneTaskView view={view} start={start} />
 
-      <div className="hidden min-h-0 flex-1 flex-col gap-3 md:flex">
+      <div className="hidden min-h-0 flex-1 flex-col gap-3 @3xl:flex">
         <div role="tablist" aria-label="Task view" className="flex gap-1 border-b border-line">
           {(["live", "result"] as const).map((t) => (
             <button
@@ -136,7 +141,7 @@ export default function TaskPage({ params }: { params: Promise<{ id: string }> }
                 Processes <span className="font-mono text-sm font-normal text-text-2">({procs.length})</span>
               </h2>
               <div className="min-h-0 flex-1">
-                <ProcessTree processes={view.processes} selected={selected} onSelect={setPicked} />
+                <ProcessTree processes={view.processes} last={last} selected={selected} onSelect={setPicked} />
               </div>
             </section>
             <section className="min-h-0 space-y-3 overflow-y-auto">

@@ -12,7 +12,7 @@ export function PhoneTaskView({ view, start }: { view: TaskView; start?: string 
   const procs = Object.values(view.processes).sort((a, b) => a.pid - b.pid);
   const latest = view.timeline.filter((e) => !isNoise(e)).slice(-5).reverse();
   return (
-    <div className="space-y-4 md:hidden">
+    <div className="space-y-4 @3xl:hidden">
       <section className="rounded-xl border border-line bg-surface-1 p-3">
         <h2 className="mb-2 text-base font-semibold">Processes</h2>
         <ul className="divide-y divide-line">

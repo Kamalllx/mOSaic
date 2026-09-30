@@ -1,6 +1,6 @@
 "use client";
 
-import type { AgentProcess } from "@mosaic/contracts";
+import type { AgentProcess, Event } from "@mosaic/contracts";
 import {
   Background,
   type Edge,
@@ -17,6 +17,8 @@ import "@xyflow/react/dist/style.css";
 import { Hourglass, Pause, Play, Skull } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Orb } from "@/components/desktop/orb";
+import { ORB_LABEL, orbFor } from "@/lib/desktop/orb";
 import { NODE_H, NODE_W, columnsFor, layout } from "@/lib/process-layout";
 import { agentTone } from "@/lib/tones";
 import { cn } from "@/lib/utils";
@@ -26,6 +28,8 @@ import { availableActions, type ProcessAction, useProcessActions } from "./task/
 
 interface NodeData extends Record<string, unknown> {
   proc: AgentProcess;
+  /** The last event this process produced: what its orb shows it doing. */
+  last?: Event;
   selected: boolean;
   onAction: (a: ProcessAction, p: AgentProcess) => void;
   onSelect: (pid: number) => void;
@@ -39,6 +43,7 @@ const ACTION_ICON = { pause: Pause, resume: Play, kill: Skull } as const;
 function ProcessNode({ data }: NodeProps<ProcNode>) {
   const p = data.proc;
   const tone = agentTone(p.state);
+  const orb = orbFor(p.state, data.last, p.waiting_on);
   const actions = availableActions(p).filter((a): a is keyof typeof ACTION_ICON => a in ACTION_ICON);
   return (
     <div
@@ -62,7 +67,11 @@ function ProcessNode({ data }: NodeProps<ProcNode>) {
         </span>
         <AgentStateBadge state={p.state} />
       </div>
-      <p className="mt-0.5 truncate text-sm font-medium">{p.agent}</p>
+      <p className="mt-0.5 flex items-center gap-1.5 truncate text-sm font-medium">
+        {orb && <Orb state={orb} label={ORB_LABEL[orb]} />}
+        <span className="truncate">{p.agent}</span>
+        {orb && <span className="ml-auto shrink-0 text-xs font-normal text-text-2">{ORB_LABEL[orb]}</span>}
+      </p>
       <div className="mt-1 flex flex-wrap items-center gap-1.5 font-mono text-xs text-text-2">
         <span>{tokensOf(p).toLocaleString()} tok</span>
         {(p.usage?.tool_calls ?? 0) > 0 && <span>· {p.usage?.tool_calls} tools</span>}
@@ -123,10 +132,12 @@ function FitOnGrowth({ pids }: { pids: string }) {
 
 export function ProcessTree({
   processes,
+  last = {},
   selected = null,
   onSelect = () => {},
 }: {
   processes: Record<number, AgentProcess>;
+  last?: Record<number, Event>;
   selected?: number | null;
   onSelect?: (pid: number) => void;
 }) {
@@ -149,7 +160,7 @@ export function ProcessTree({
       id: String(p.pid),
       type: "proc",
       position: positions[p.pid] ?? { x: 0, y: 0 },
-      data: { proc: p, selected: p.pid === selected, onAction: act, onSelect },
+      data: { proc: p, last: last[p.pid], selected: p.pid === selected, onAction: act, onSelect },
       draggable: false,
     }));
     const edges: Edge[] = pairs.map(([a, b]) => {
@@ -165,7 +176,7 @@ export function ProcessTree({
     return { nodes, edges };
     // `act` is recreated each render but only opens a dialog or fires a mutation; depending on it would rebuild the graph every render
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [procs, processes, selected, onSelect, cols]);
+  }, [procs, processes, last, selected, onSelect, cols]);
 
   return (
     <div ref={pane} className="relative h-full min-h-0">

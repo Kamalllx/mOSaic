@@ -2,7 +2,8 @@
 
 import type { Approval } from "@mosaic/contracts";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, FileSearch, KeyRound, Loader2, ShieldCheck, Undo2, X } from "lucide-react";
+import { Check, FileSearch, KeyRound, ShieldCheck, Undo2, X } from "lucide-react";
+import { Orb } from "@/components/desktop/orb";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useClient } from "@/app/providers";
@@ -67,7 +68,9 @@ export function ApprovalCard({
   const [comment, setComment] = useState("");
   const sc = approval.syscall;
   const pending = (approval.status ?? "pending") === "pending";
-  useEffect(() => onShown?.(approval.approval_id), [onShown, approval.approval_id]);
+  useEffect(() => {
+    onShown?.(approval.approval_id);
+  }, [onShown, approval.approval_id]);
 
   const resolve = useMutation({
     mutationFn: (approve: boolean) =>
@@ -169,7 +172,7 @@ export function ApprovalCard({
               disabled={resolve.isPending}
               onClick={() => resolve.mutate(true)}
             >
-              {resolve.isPending && resolve.variables ? <Loader2 className="size-5 animate-spin" /> : <Check className="size-5" />}
+              {resolve.isPending && resolve.variables ? <Orb state="solving" label="Sending your decision" /> : <Check className="size-5" />}
               Approve
             </Button>
             <Button
@@ -179,7 +182,7 @@ export function ApprovalCard({
               disabled={resolve.isPending}
               onClick={() => resolve.mutate(false)}
             >
-              {resolve.isPending && resolve.variables === false ? <Loader2 className="size-5 animate-spin" /> : <X className="size-5" />}
+              {resolve.isPending && resolve.variables === false ? <Orb state="solving" label="Sending your decision" /> : <X className="size-5" />}
               Reject
             </Button>
           </div>
