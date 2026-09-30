@@ -39,7 +39,7 @@ Gates (after `9159fc0`):
 Notes for Kamal: see the B1 note (event names and example payloads); merge order `contract/thought-events`, then
 `b/thought-events`.
 
-## B2: dynamic agents (in progress)
+## B2: dynamic agents (done)
 
 Branches: `contract/dynamic-agents` (0.11.0) from `contract/thought-events`; `b/dynamic-agents` from `b/thought-events`
 with the contract branch merged in.
@@ -115,5 +115,70 @@ findings) is per pid and unchanged.
 `PermissionsProvider` + `ServiceBundle.permissions`; `util.APPROVAL_REQUIRED` (the catalog's required-by-default
 capabilities, tested against the YAML); a fake permissions provider.
 
+### Result
+
+Branches and commits:
+- `contract/dynamic-agents` (pushed; cut from `b/thought-events`, see below): `466a3a7` contract 0.11.0.
+- `b/dynamic-agents` (from the contract branch): `edbca3c` plan (this log), `a124712` kernel generation, overlay
+  policies, permissions stub, cleanup and sweep; `14ba976` role templates and the planner's bounded spawns.
+
+Decisions made while building:
+- **The contract branch is cut from `b/thought-events`, not `contract/thought-events`.** Cut from the contract branch
+  it scored 8/8, 8/8, 9/9, but its story check failed by design (no emission on a contract-only branch), and the
+  rules say never push a branch that fails `--check-story`. On `b/thought-events` it passes, and the merge order stays
+  one chain: `contract/thought-events` → `b/thought-events` → `contract/dynamic-agents` → `b/dynamic-agents`. After
+  the earlier merges its diff is contract-only (plus the kernel's pass-through of the new spawn arguments).
+- **0.11.0:** no `origin/contract/*` uses it (`system-config` has 0.9.0, mine 0.10.0).
+- **The role stub file is `policies/rbac/role-capabilities.yaml`,** not `policies/`: the policy engine loads every
+  `policies/*.yaml` as a `PolicyDocument` and would fail at boot. **Person C's `policies/roles.yaml` on
+  `identity-connectors` has exactly this problem** (flag for Kamal before merging it).
+- **Org policy intersection skips context-level capabilities** (`knowledge.*`, `agent.*`, `memory.*`): no policy
+  document lists them (`agent.spawn` would be dropped and no generated agent could fork); org policy bounds them through
+  knowledge scopes.
+- **Generated policies only narrow:** an overlay consulted after the org documents (deny outside the bounds; a
+  catalog approval-required capability needs a person even when an org policy says auto). Decisions keep the org
+  policy's name except when the overlay tightens them.
+- **The root planner is not generated** (its registry manifest runs as before); every agent it or any other agent
+  spawns is.
+- **Scripted test runtimes** run a generated agent's template script (`kernel/mosaic_kernel/testing.py`), and five
+  kernel tests now assert the generated names (`worker@T-…`, `worker@T-…#2`).
+- Alternative not taken: letting the model write `{role, scope, capabilities, why}` itself (changes the Apollo
+  prompt). The planner builds them from its role table; the kernel narrows whatever is asked.
+
+Tests: 377 passed, 0 skipped; ruff clean; web build passed on the contract branch. New:
+`shared/python/tests/test_dynamic_agents_contract.py` (5), `kernel/tests/test_dynamic_agents.py` (8: bounded by the
+user, over-broad request narrowed with an audit entry, org policy through the template and the write overlay,
+sub-agents never wider, cleanup on success/failure/cancel, boot sweep, the role stub, alice can still run the demo),
+`agents/tests/test_dynamic_roles.py` (6: Apollo/Zeus prompts unchanged, templates offered by handles, spawned with the
+announced bounds, role tables = templates, TemplateAgent, memory owned by the role), one scope test in
+`kernel/tests/test_narrate.py`.
+
+Gates (`b/dynamic-agents` at `14ba976`):
+
+| Run | Score | Time | Story |
+|---|---|---|---|
+| Apollo | 8/8 | 102.5 s | PASS |
+| Zeus | 8/8 | 105.5 s | PASS |
+| Zeus, classifier on, `--expect-llm-flag` | 9/9 | 98.0 s | PASS |
+
+The contract branch alone (at `466a3a7`): Apollo 8/8 110.9 s, Zeus 8/8 107.0 s, Zeus classifier on 9/9 137.1 s, story
+PASS on all three.
+
+Verified on the real Apollo and Zeus runs: all four children `…@T-…` with `generated: true`, no `Narrowed` audit
+entries (the plan's bounds equal the templates'), `jira.write` still decided by `project-updates-v1` (through the
+template name), and no ephemeral folders left after the tasks.
+
+Notes for Kamal (contract 0.11.0):
+- `agent.created` now says `"generated": true` and `manifest_name: "finance-agent@T-27b3393603"`; `template` is still
+  the role (`finance-agent`), equal to `agent.planned.role`. Repeats of a role in one task: `research-agent@T-…#2`.
+- `process.spawned.payload.agent` and `GET /agents` show the generated name; use the part before `@` for the avatar.
+- `GET /registry/agents` lists 8 templates now (the 5 library agents + `analyst`, `data-engineer`, `writer`).
+- A narrowed agent gets one audit entry, kind `policy`, summary like
+  `Narrowed finance-agent@T-1: jira.read (not granted to bob (roles: viewer)); /org/finance/** (outside bob's data scopes)`,
+  data `{agent, template, requested, granted, scope, dropped: {item: why}, user, roles, why}`.
+
+Open issues: none blocking. The TemplateAgent is generic (no tools of its own yet); B3 gives `data-engineer`
+`db.query`.
+
 ## Next
-Build B2 per the plan above: contract branch first.
+B3 (SQL tool + vendors scenario) on `b/sql-tool` from `b/dynamic-agents`.
