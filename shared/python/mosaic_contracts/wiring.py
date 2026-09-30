@@ -78,6 +78,11 @@ class Settings(BaseModel):
     knowledge_watch: bool = Field(
         False, description="P2: watch okf_dir and publish knowledge.changed for manual edits (500 ms debounce)"
     )
+    firewall_llm: bool = Field(
+        False,
+        description="P2: also ask the local LLM classifier about unverified/untrusted hits the regex didn't flag; "
+        "its catches carry the extra flag instruction_like_llm",
+    )
     modes: dict[str, Mode] = Field(default_factory=lambda: {c: "fake" for c in COMPONENTS})
 
     @classmethod

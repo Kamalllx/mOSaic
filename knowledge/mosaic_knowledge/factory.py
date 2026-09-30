@@ -11,7 +11,7 @@ from .memory import MemoryManager
 
 
 def build_context_firewall(settings: Settings, services: ServiceBundle) -> ContextFirewall:
-    return ContextFirewallImpl(models=services.models)
+    return ContextFirewallImpl(models=services.models, use_llm_classifier=settings.firewall_llm)
 
 
 def build_knowledge_service(settings: Settings, services: ServiceBundle) -> KnowledgeService:

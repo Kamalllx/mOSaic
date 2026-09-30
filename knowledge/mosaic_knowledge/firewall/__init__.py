@@ -10,11 +10,17 @@ TODO:
 from __future__ import annotations
 
 import hashlib
+import logging
 import re
 from typing import Any
 
 from mosaic_contracts.schema import SearchHit
 from mosaic_contracts.schema.common import TrustLevel
+
+log = logging.getLogger("mosaic.knowledge.firewall")
+
+# Set alongside instruction_like when only the LLM classifier (not the regex) caught the hit.
+LLM_FLAG = "instruction_like_llm"
 
 # Seeded from mosaic_contracts.testing.fakes._INSTRUCTION_PATTERNS, extended with more injection shapes.
 _INSTRUCTION_PATTERNS = [
@@ -52,7 +58,7 @@ class ContextFirewall:
     def __init__(self, models: Any = None, use_llm_classifier: bool = False) -> None:
         self.models = models
         self.use_llm_classifier = use_llm_classifier
-        self._llm_cache: dict[str, bool] = {}
+        self._llm_cache: dict[str, str | None] = {}
 
     async def screen(self, hits: list[SearchHit]) -> list[SearchHit]:
         out: list[SearchHit] = []
@@ -66,7 +72,11 @@ class ContextFirewall:
                 and self.models is not None
                 and h.provenance.trust in (TrustLevel.UNVERIFIED, TrustLevel.UNTRUSTED)
             ):
-                flagged = await self._llm_flagged(text)
+                span = await self._llm_flagged(text)
+                if span is not None:
+                    flagged = True
+                    flags.add(LLM_FLAG)
+                    log.warning("LLM classifier flagged %s (%s): %s", h.path, h.provenance.trust.value, span[:160] or "-")
             if flagged:
                 flags.add("instruction_like")
             if h.provenance.trust == TrustLevel.UNTRUSTED:
@@ -74,7 +84,8 @@ class ContextFirewall:
             out.append(h.model_copy(update={"firewall_flags": sorted(flags)}) if flags != set(h.firewall_flags) else h)
         return out
 
-    async def _llm_flagged(self, text: str) -> bool:
+    async def _llm_flagged(self, text: str) -> str | None:
+        """The offending span ("" if the model gave none) when the classifier flags the text, else None."""
         content_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
         if content_hash in self._llm_cache:
             return self._llm_cache[content_hash]
@@ -100,9 +111,10 @@ class ContextFirewall:
             temperature=0.0,
         )
         resp = await self.models.generate(req)
-        flagged = bool((resp.parsed or {}).get("instruction_like", False))
-        self._llm_cache[content_hash] = flagged
-        return flagged
+        parsed = resp.parsed or {}
+        result = str(parsed.get("span") or "") if parsed.get("instruction_like") else None
+        self._llm_cache[content_hash] = result
+        return result
 
 
-__all__ = ["ContextFirewall"]
+__all__ = ["LLM_FLAG", "ContextFirewall"]
