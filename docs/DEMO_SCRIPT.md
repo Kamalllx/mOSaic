@@ -23,12 +23,28 @@ Target length is about 7 minutes. Rehearse it 3× at M3, and record one clean fu
 
 | Screen | URL |
 |---|---|
-| Composer + recent tasks | `/` |
-| Live run (timeline, process tree, result, recovery plan) | `/tasks/<task_id>` |
-| Approval center (also the drawer on every page) | `/approvals` |
-| Audit journal | `/audit/<task_id>` |
+| Boot checklist (open it first; it moves to Home when everything is up) | `/boot` |
+| Composer, pending approvals, running tasks, GPU | `/` |
+| Live run: timeline, process tree, inspector; **Result** tab when done | `/tasks/<task_id>` |
+| Every task | `/tasks` |
+| Approval center (the drawer opens by itself on the task page) | `/approvals` |
+| Audit journal (index at `/audit`) | `/audit/<task_id>` |
 | Knowledge explorer (the vendor email) | `/knowledge?path=/org/inbox/vendor-email-2026-09-12` |
-| System monitor (modes, GPU, sandbox screenshot) | `/system` |
+| Memory: findings with sources; the invalidation demo | `/memory` |
+| Agent registry and tools (read-only) | `/agents` |
+| System monitor (modes, GPU, models, sandboxes, screenshot) | `/system` |
+
+### Screen tour: where each demo moment lives
+| Moment | Where to look |
+|---|---|
+| Agents as processes (steps 2–3) | Task page, **Live** tab: the process tree; click a node for the inspector (quota bars, capabilities, model) |
+| Firewall (4–5) | Task timeline: the retrieval opens by itself with a red **UNTRUSTED** chip and "treated as data, not instructions"; the Knowledge panel on the right repeats it |
+| Sandbox screenshot (8–9) | Right column of the task page (**Sandboxes**), later in the **Result** tab and on `/system` |
+| Approval (10–11) | The drawer opens by itself: plain headline, risk, policy, arguments, evidence chips, Approve / Reject. Missed it? The amber "1 approval waiting" button in the task header, or `/approvals`. On a phone the card is full screen |
+| Commit (12–14) | Timeline: green commit row; **Result** tab, "Actions committed" (verified, with the tracker change) |
+| Audit (15) | The **Audit** button in the task header: stat tiles and "chain intact" |
+| Result (17) | The **Result** tab opens by itself when the run ends: summary, 3 root causes with citation chips, recovery steps |
+| Invalidation (18) | `/memory`: the amber "Source changed" banner, the stale rows tagged "source changed"; a toast shows on every page |
 
 For the invalidation demo (last row of the run sheet) start mosaicd with `MOSAIC_KNOWLEDGE_WATCH=true` (in `.env`).
 
@@ -50,10 +66,10 @@ For the invalidation demo (last row of the run sheet) start mosaicd with `MOSAIC
 | 11 | 3:00 | **Approve from the phone**; show the evidence paths on the card first | "The approver sees exactly which documents justify the change." | P2 (+P4 mobile) | Approve in the console |
 | 12–14 | 3:20 | Jira updated → verified → committed | "Transactional actions: execute, verify, commit, or roll back." | P1 | Pre-recorded rollback clip for a forced failure |
 | 15 | 3:50 | Audit journal with the stats header | "Every claim and every action is traceable." | P1/P2 | Page errors: `ai-audit <task_id>` in the node terminal |
-| 16 | 4:10 | Memory consolidated | "It learns from the run." | P2 | No `memory.consolidated` line: open `http://<node>:8080/memory?task_id=<task_id>` (finance/engineering findings with their source documents) |
+| 16 | 4:10 | Memory consolidated | "It learns from the run." | P2 | No `memory.consolidated` line: open `/memory` in the console (finance/engineering findings with their source documents) |
 | 17 | 4:30 | Final answer + recovery-plan artifact. Read the three root causes aloud: dual-run cloud cost, duplicate-recon-id backfill failure, PayCo certification + emergency contract | "Every root cause is backed by at least two documents." | P3 | Open the artifact from the last rehearsal |
 | + | 5:30 | `ai-kill` a leftover process live; `ai-top` shows GPU load during a run | "The OS metaphor, made visible." | P1/P4 | `ai-kill` fails: use the kill button on the node in the process tree |
-| 18 | 6:00 | **Invalidation:** edit the cloud bill the finance agent cited → its memories go stale; the console toasts "N memories stale" and names finance-agent; the explorer shows the new line. Steps below | "Knowledge changes, so the memories that depended on it are invalidated." | P2/P4 | No toast: open `/memory?task_id=<task_id>` and show `stale: true`; else skip |
+| 18 | 6:00 | **Invalidation:** open `/memory`, then edit the cloud bill the finance agent cited → the amber banner "Source changed … N memories invalidated · Affected: finance-agent" appears, the finance rows are tagged "source changed"; the explorer shows the new line. Steps below | "Knowledge changes, so the memories that depended on it are invalidated." | P2/P4 | No toast: open `/memory?task_id=<task_id>` and show `stale: true`; else skip |
 
 ### Invalidation demo (step 18)
 Needs mosaicd started with `MOSAIC_KNOWLEDGE_WATCH=true`, after a completed run (the finance and engineering agents store their findings, derived from the documents they cited).
