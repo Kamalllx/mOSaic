@@ -98,7 +98,9 @@ def main() -> int:
             pg.goto(a.base + "/boot")
             caption(pg, "mOSaic boots on one laptop: kernel, knowledge, local models and sandboxes. Nothing leaves the box.", 5)
             pg.goto(a.base + "/")
-            caption(pg, "One prompt starts a governed, multi-agent investigation.", 3)
+            caption(pg, "Alt+Space: one prompt starts a governed, multi-agent investigation.", 2)
+            pg.keyboard.press("Alt+Space")
+            pg.wait_for_timeout(700)
             pg.get_by_role("button", name="Apollo demo prompt").click()
             pg.get_by_role("radio", name="High").click()
             pg.wait_for_timeout(1500)
@@ -107,7 +109,7 @@ def main() -> int:
             tid = pg.url.rsplit("/", 1)[1]
             print(f"task {tid}", flush=True)
 
-            caption(pg, "Agents are processes: the planner forks finance, engineering, research and action agents, each with a PID and a quota.", 9)
+            caption(pg, "The task docks left and tells its story; the desktop shows every agent, document and action as it happens.", 9)
             caption(pg, "They search /org with hybrid retrieval. Every hit carries its provenance and trust level.", 8)
             caption(pg, "A vendor email tries to instruct the agents. The context firewall marks it untrusted: data, never instructions.", 9)
             caption(pg, "Research opens vendor docs in a browser sandbox on an internal network, with no internet access.")
@@ -118,6 +120,8 @@ def main() -> int:
             card.get_by_role("button", name="Approve").click()
             caption(pg, "Approved: executed in the sandbox, verified, then committed.", 3)
             pg.get_by_test_id("task-status").filter(has_text=re.compile("completed|failed|cancelled")).wait_for(timeout=600_000)
+            caption(pg, "Done: the story on the left, the result on the stage. Alt+Enter opens the full view.", 5)
+            pg.keyboard.press("Alt+Enter")
             pg.get_by_test_id("recovery-plan").wait_for(timeout=30_000)
             caption(pg, "The result: three root causes, each backed by cited documents, and a recovery plan.", 3)
             scroll(pg, 8)
