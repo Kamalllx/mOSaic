@@ -14,6 +14,11 @@ dependencies = [
     "rich>=13",
     "httpx>=0.27",
     "websockets>=12",
+    "google-auth>=2.30",      # verifies Google ID tokens (MOSAIC_AUTH=google)
+    "requests>=2.31",         # google-auth's transport for Google's signing keys
+    "cryptography>=42",       # the connector token vault (Fernet)
+    "python-multipart>=0.0.9",  # file uploads
+    "watchfiles>=0.21",       # mounted folders of this computer
 ]
 
 [project.scripts]
