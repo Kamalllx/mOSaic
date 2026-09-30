@@ -234,3 +234,40 @@ def test_engineering_slip_is_grounded_in_the_evidence():
     assert grounded_slip(24, text) == 6, "a number the evidence never gives for the slip is replaced"
     assert grounded_slip(3, text) == 3, "a slip the evidence does state is kept"
     assert grounded_slip(9, "No schedule information here.") == 9, "without evidence the model's number stands"
+
+
+def test_nooa_object_agents_run_as_governed_processes():
+    from mosaic_agents.adapters.nooa import Agent, NooaRunner, skills, wrap
+    from mosaic_agents.library.finance import FinanceAgent
+    from mosaic_agents.runtime import Runtime
+    from mosaic_contracts.schema import AgentResultStatus, SearchQuery
+
+    # finance-agent's manifest says framework: nooa; library agents already implement run(), so they pass through
+    assert manifest("finance-agent").runtime.framework.value == "nooa"
+    assert isinstance(Runtime()._load(manifest("finance-agent")), FinanceAgent)
+
+    class VendorAgent(Agent):
+        """Answers questions about vendor contracts."""
+
+        async def contract_terms(self, ctx, vendor: str) -> dict:
+            """Look up the contract terms for a vendor."""
+            ev = await ctx.search(SearchQuery(text=f"{vendor} contract", scope=["/org/finance"], top_k=3))
+            return {"summary": f"{vendor}: {len(ev.hits)} contract documents", "evidence": [h.path for h in ev.hits]}
+
+        async def _private(self, ctx) -> dict:
+            """Not a skill."""
+            return {}
+
+    assert list(skills(VendorAgent())) == ["contract_terms"]
+    assert skills(VendorAgent())["contract_terms"]["params"] == {"vendor": "string"}, "ctx is supplied, not chosen"
+    assert isinstance(wrap(VendorAgent), NooaRunner)
+
+    ctx = ctx_for("finance-agent", {"choose the one skill": {"skill": "contract_terms", "arguments": {"vendor": "PayCo", "x": 1}}})
+    result = asyncio.run(wrap(VendorAgent).run("What did we agree with PayCo?", ctx))
+    assert result.status == AgentResultStatus.COMPLETED and result.summary.startswith("PayCo:")
+    assert any("nooa: finance-agent.contract_terms" in m for _, m, _ in ctx.logs)
+    prompt = ctx.models.calls[-1].messages[-1].content
+    assert "contract_terms(vendor: string): Look up the contract terms for a vendor." in prompt
+
+    bad = ctx_for("finance-agent", {"choose the one skill": {"skill": "delete_everything", "arguments": {}}})
+    assert asyncio.run(wrap(VendorAgent).run("x", bad)).status == AgentResultStatus.FAILED

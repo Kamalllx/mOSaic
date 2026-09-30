@@ -192,7 +192,7 @@ In priority order for the demo. Each item lists the files to look at and a sugge
 - [x] **The compose Postgres port is fixed at 5432** (P4 area). Done: `MOSAIC_PG_PORT` and `MOSAIC_REDIS_PORT` in `infra/compose/docker-compose.yml`.
 - [ ] *(optional)* **Memory re-consolidation queue** (P2 area). Stale memories aren't re-summarized automatically. *Files:* `knowledge/mosaic_knowledge/memory/` and `coherence/`.
 - [ ] *(optional)* **LLM firewall classifier** (P2 area). It's built but off by default; the regex firewall catches the vendor email. *Files:* `knowledge/mosaic_knowledge/firewall/`.
-- [ ] *(optional, stretch)* **NOOA adapter.** `agents/mosaic_agents/adapters/nooa.py` is only a stub, although the manifests say `framework: nooa`.
+- [x] *(optional, stretch)* **NOOA adapter.** Done: `adapters/nooa.py` runs NOOA-style object agents (public async methods with docstrings are skills; the model picks one, the adapter calls it with ctx) and passes library agents through, so `framework: nooa` manifests run as themselves. Original note: `agents/mosaic_agents/adapters/nooa.py` is only a stub, although the manifests say `framework: nooa`.
 - [ ] *(optional, stretch)* **Mobile approve app.** `apps/mobile/` is an Expo app (approvals, compose, settings) that wasn't exercised in integration. Read its README, point it at your gateway URL, and test approve from the phone.
 - [ ] *(optional, stretch)* **Appliance installer.** `infra/appliance/install.sh` (Ubuntu, systemd, Tailscale) has never been run on a real node, so the cold-boot check is still open. It isn't needed if the demo runs on your laptop.
 - [ ] *(optional, stretch)* **OpenShell/microVM sandbox backend** (P1 area). Not started.
