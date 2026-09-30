@@ -143,7 +143,11 @@ def create_app(kernel: Kernel) -> FastAPI:
 
     @app.get("/system/config", response_model=SystemConfig, tags=["system"], dependencies=[Depends(need("config.read"))])
     async def system_config() -> SystemConfig:
-        return await build_system_config(k)
+        cfg = await build_system_config(k)
+        # Phase 2 switches the Settings centre shows next to the firewall: how people sign in, whether the vault is encrypted.
+        cfg.feature_flags.update({"google_sign_in": identity.mode == "google", "vault_encrypted": identity.vault.encrypted,
+                                  "folder_mounts": True})
+        return cfg
 
     @app.get("/models", response_model=list[ModelInfo], tags=["system"], dependencies=[Member_])
     async def list_models() -> list[ModelInfo]:

@@ -198,7 +198,11 @@ class Identity:
         alice = self._upsert_user("alice@acme.example", "Alice")
         self.db.execute("INSERT OR IGNORE INTO members VALUES (?,?,?,?,?,?,?)",
                         ("acme", alice.email, alice.user_id, "owner", MemberStatus.ACTIVE.value, now, None))
-        log.info("seeded the demo org acme with alice as owner (dev mode)")
+        # Two teammates invited ahead, so the demo can sign in as someone with less power and see roles at work.
+        for email, role in (("priya@acme.example", "approver"), ("sam@acme.example", "viewer")):
+            self.db.execute("INSERT OR IGNORE INTO members VALUES (?,?,?,?,?,?,?)",
+                            ("acme", email, None, role, MemberStatus.INVITED.value, None, alice.user_id))
+        log.info("seeded the demo org acme: alice (owner), priya (approver) and sam (viewer) invited (dev mode)")
 
     def org(self, org_id: str) -> Org | None:
         row = self.db.one("SELECT * FROM orgs WHERE org_id=?", (org_id,))
@@ -304,7 +308,7 @@ class Identity:
     def dev_login(self, body: DevLogin) -> Session:
         if self.mode != AuthMode.DEV:
             raise MosaicError("PERMISSION_DENIED", "email sign-in is only available when MOSAIC_AUTH=dev")
-        return self.issue(self._upsert_user(body.email, body.name))
+        return self.issue(self._join_by_domain(self._upsert_user(body.email, body.name)))
 
     def google_login(self, body: GoogleLogin) -> Session:
         client_id = self.settings.google_client_id
@@ -320,14 +324,16 @@ class Identity:
         if not claims.get("email") or not claims.get("email_verified", False):
             raise MosaicError("UNAUTHENTICATED", "the Google account has no verified email")
         user = self._upsert_user(claims["email"], claims.get("name", ""), claims.get("picture"))
-        # Anyone from the org's own email domain joins it as a member the first time they sign in.
+        return self.issue(self._join_by_domain(user))
+
+    def _join_by_domain(self, user: UserInfo) -> UserInfo:
+        """Anyone from an org's own email domain joins it as a member the first time they sign in (an invitation wins)."""
         if not self.home_org(user.user_id):
-            domain = claims["email"].split("@")[-1].lower()
-            row = self.db.one("SELECT org_id FROM orgs WHERE domain=?", (domain,))
+            row = self.db.one("SELECT org_id FROM orgs WHERE domain=?", (user.email.split("@")[-1].lower(),))
             if row:
                 self.db.execute("INSERT OR IGNORE INTO members VALUES (?,?,?,?,?,?,?)",
                                 (row["org_id"], user.email, user.user_id, "member", MemberStatus.ACTIVE.value, utcnow().isoformat(), "domain"))
-        return self.issue(user)
+        return user
 
     # ------------------------------------------------------------------ principals
     def me(self, user_id: str, org_id: str | None) -> Me:

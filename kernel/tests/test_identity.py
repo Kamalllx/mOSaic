@@ -51,6 +51,15 @@ def test_roles_decide_what_a_signed_in_member_may_do(dev):
     assert dev.post("/approvals/A-nope/approve", json={}, headers=bob).status_code == 404  # allowed now; no such approval
 
 
+def test_the_demo_org_has_teammates_waiting_and_its_domain_lets_colleagues_in(dev):
+    members = {m["email"]: m for m in dev.get("/orgs/acme/members").json()}
+    assert (members["priya@acme.example"]["role"], members["priya@acme.example"]["status"]) == ("approver", "invited")
+    sam = dev.get("/auth/me", headers=signin(dev, "sam@acme.example", "Sam")).json()
+    assert (sam["role"], "task.create" in sam["permissions"]) == ("viewer", False)
+    newcomer = dev.get("/auth/me", headers=signin(dev, "lee@acme.example")).json()
+    assert (newcomer["org"]["org_id"], newcomer["role"]) == ("acme", "member")
+
+
 def test_org_guard_rails(dev):
     dev.post("/orgs/acme/members", json={"email": "ann@acme.example", "role": "admin"})
     ann = signin(dev, "ann@acme.example")
