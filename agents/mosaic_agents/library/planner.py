@@ -493,11 +493,15 @@ class PlannerAgent(MosaicAgent):
             md.append(f"\n## Query\n\n```sql\n{data['sql']}\n```")
         artifact = await ctx.put_artifact("answer.md", "\n".join(md).encode(), "text/markdown")
 
-        failed = [s.agent for s in steps if s.step_id not in results or results[s.step_id].status != AgentResultStatus.COMPLETED]
+        failed = [s.agent for s in steps if s.step_id in results and results[s.step_id].status != AgentResultStatus.COMPLETED]
+        not_run = [s.agent for s in steps if s.step_id not in results]
         output = {"columns": columns, "rows": rows, "sql": data.get("sql"), "note": note, "filed": filed, "artifact": artifact}
-        if failed or not rows:
-            why = f"incomplete: {', '.join(failed) or 'data-engineer'} did not finish; nothing was filed"
+        if failed or not_run or not rows:
             first = next((results[s.step_id].error for s in steps if s.step_id in results and results[s.step_id].error), None)
+            cause = first.message if first else next((results[s.step_id].summary for s in steps if s.step_id in results
+                                                      and results[s.step_id].status != AgentResultStatus.COMPLETED), "")
+            why = (f"incomplete: {', '.join(failed) or 'data-engineer'} did not finish" + (f" ({cause[:300]})" if cause else "")
+                   + (f"; {', '.join(not_run)} not run" if not_run and failed else "") + "; nothing was filed")
             return AgentResult(pid=ctx.pid, agent=ctx.manifest.name, status=AgentResultStatus.FAILED, summary=why,
                                error=ErrorInfo(code=first.code if first else "INTERNAL", message=why, retriable=False),
                                output={**output, "partial": True}, artifacts=[artifact])
