@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { AppTile } from "./app-icons";
 import { useAllDocs, useTasks } from "./hooks";
 import { Orb } from "./orb";
+import { TypingDots } from "./typing-dots";
 import { DOCK_APPS } from "./shortcuts";
 
 // The prompt from docs/DEMO_SCRIPT.md ("paste exactly").
@@ -86,17 +87,18 @@ export function Spotlight({ open, onClose }: { open: boolean; onClose: () => voi
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-[7500]" onPointerDown={close}>
-      <div className="absolute inset-0 bg-black/[0.06] backdrop-blur-[1.5px]" aria-hidden />
+      <div className="absolute inset-0 bg-[rgb(15_23_42/0.08)]" aria-hidden />
       <section
         role="dialog"
         aria-modal="true"
         aria-label="Ask mOSaic"
         onPointerDown={(e) => e.stopPropagation()}
-        className={cn("material-strong absolute top-[16vh] left-1/2 w-[min(720px,calc(100vw-24px))] -translate-x-1/2 overflow-hidden rounded-[20px] shadow-window", closing ? "spotlight-out" : "spotlight-in")}
+        className={cn("panel absolute top-[16vh] left-1/2 w-[min(720px,calc(100vw-24px))] -translate-x-1/2 overflow-hidden rounded-[20px] shadow-window", closing ? "spotlight-out" : "spotlight-in")}
       >
         <div className="flex items-start gap-3 px-4 pt-4 pb-3">
-          <span className="mt-0.5">
+          <span className="mt-0.5 flex flex-col items-center gap-1">
             <Orb state={start.isPending ? "shaping" : q ? "listening" : "breathing"} size={32} label="mOSaic" />
+            {start.isPending && <TypingDots className="text-brand" label="Starting the task" />}
           </span>
           <textarea
             ref={field}

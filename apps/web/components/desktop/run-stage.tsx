@@ -12,11 +12,12 @@ import { useTaskEvents } from "@/lib/use-task-events";
 import { cn } from "@/lib/utils";
 import { AgentAvatar } from "./agent-avatar";
 import { Orb } from "./orb";
+import { TypingDots } from "./typing-dots";
 import { DataTable, DocChip } from "./run-story";
 
 function Card({ title, icon: Icon, count, children, className }: { title: string; icon: typeof Users; count?: number; children: React.ReactNode; className?: string }) {
   return (
-    <section className={cn("material-strong stage-in rounded-[18px] p-4 shadow-window-idle", className)}>
+    <section className={cn("panel stage-in rounded-2xl p-4", className)}>
       <h3 className="mb-3 flex items-center gap-2 text-[13px] font-semibold text-text-2">
         <Icon className="size-4" aria-hidden /> {title}
         {count !== undefined && <span className="font-mono text-xs">{count}</span>}
@@ -64,7 +65,7 @@ export function RunStage({ taskId, onZoom }: { taskId: string; onZoom: () => voi
 
   return (
     <div className="grid content-start gap-4 @[900px]:grid-cols-2">
-      <section className="material-strong stage-in flex items-start gap-3 rounded-[18px] p-4 shadow-window-idle @[900px]:col-span-2">
+      <section className="panel stage-in flex items-start gap-3 rounded-2xl p-4 @[900px]:col-span-2">
         {running ? <Orb state="working" size={32} label="running" /> : <span className="size-8" aria-hidden />}
         <div className="min-w-0 flex-1">
           <p className="line-clamp-2 text-base font-semibold leading-snug">{String(goal ?? "…")}</p>
@@ -82,7 +83,7 @@ export function RunStage({ taskId, onZoom }: { taskId: string; onZoom: () => voi
           {procs.map((p) => {
             const orb = orbFor(p.state, last[p.pid], p.waiting_on);
             return (
-              <li key={p.pid} className={cn("stage-in flex items-center gap-3 rounded-2xl bg-surface-1/80 p-2.5", p.waiting_on?.startsWith("approval:") && "ring-2 ring-st-waiting")}>
+              <li key={p.pid} className={cn("stage-in flex items-center gap-3 rounded-2xl bg-surface-2 p-2.5", p.waiting_on?.startsWith("approval:") && "ring-2 ring-st-waiting")}>
                 <AgentAvatar agent={p.agent} state={p.state} size={60} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold">{p.agent}</p>
@@ -92,6 +93,7 @@ export function RunStage({ taskId, onZoom }: { taskId: string; onZoom: () => voi
                   <p className="mt-1 flex items-center gap-1.5 text-xs text-text-2">
                     {orb ? <Orb state={orb} size={32} label={ORB_LABEL[orb]} /> : null}
                     <span className="truncate">{orb ? ORB_LABEL[orb] : p.state?.toLowerCase()}</span>
+                    {orb === "composing" && <TypingDots className="text-[#8b5cf6]" />}
                   </p>
                 </div>
               </li>
@@ -150,7 +152,7 @@ export function RunStage({ taskId, onZoom }: { taskId: string; onZoom: () => voi
       )}
 
       {!running && view.summary && (
-        <section className="material-strong stage-in rounded-[18px] border-st-running/40 p-4 shadow-window @[900px]:col-span-2">
+        <section className="panel stage-in rounded-2xl p-4 @[900px]:col-span-2">
           <p className="text-xs font-semibold text-st-running">Result</p>
           <p className="mt-1 text-sm leading-relaxed">{view.summary}</p>
           <button type="button" onClick={onZoom} className="mt-2 text-sm font-medium text-brand hover:underline">

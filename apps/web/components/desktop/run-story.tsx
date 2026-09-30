@@ -28,6 +28,7 @@ import { buildStory, type Step, type StepKind } from "@/lib/desktop/story";
 import { cn } from "@/lib/utils";
 import { AgentAvatar } from "./agent-avatar";
 import { BigOrb } from "./big-orb";
+import { TypingDots } from "./typing-dots";
 import type { OrbState } from "thinking-orbs";
 
 const KIND: Record<StepKind, [LucideIcon, string, OrbState]> = {
@@ -109,7 +110,10 @@ function StepRow({ step }: { step: Step }) {
         <Icon className="size-3.5" strokeWidth={2.4} />
       </span>
       <div className={cn("min-w-0 flex-1 rounded-xl px-3 py-2", step.status === "active" ? "bg-surface-2 shadow-window-idle" : step.status === "waiting" ? "bg-st-waiting/10" : "")}>
-        <p className={cn("text-[14px] leading-snug", step.kind === "thought" ? "italic text-text-2" : "font-semibold")}>{step.title}</p>
+        <p className={cn("text-[14px] leading-snug", step.kind === "thought" ? "italic text-text-2" : "font-semibold")}>
+          {step.title}
+          {step.status === "active" && (step.kind === "think" || step.kind === "thought") && <TypingDots className="ml-2 align-middle text-[#8b5cf6]" />}
+        </p>
         {step.detail && <p className="mt-0.5 line-clamp-3 text-xs text-text-2">{step.detail}</p>}
         {!!step.paths?.length && (
           <div className="mt-1.5 flex flex-wrap gap-1.5">
@@ -147,11 +151,14 @@ export function RunStory({ view }: { view: TaskView }) {
   return (
     <div className="space-y-4">
       {now && (
-        <section aria-live="polite" className="flex items-center gap-4 rounded-2xl bg-gradient-to-br from-surface-2 to-surface-1 p-4 shadow-window-idle">
+        <section aria-live="polite" className="panel flex items-center gap-4 rounded-2xl p-4">
           <BigOrb state={KIND[now.kind][2]} size={96} dark={resolvedTheme === "dark"} />
           <div className="min-w-0 flex-1">
             <p className="text-xs font-semibold text-brand">{now.status === "waiting" ? "Waiting for you" : "Now"}</p>
-            <p className="mt-0.5 text-base font-semibold leading-snug">{now.title}</p>
+            <p className="mt-0.5 text-base font-semibold leading-snug">
+              {now.title}
+              {(now.kind === "think" || now.kind === "thought") && <TypingDots className="ml-2 align-middle text-[#8b5cf6]" />}
+            </p>
             {now.detail && <p className="mt-0.5 line-clamp-2 text-sm text-text-2">{now.detail}</p>}
           </div>
           {nowProc && <AgentAvatar agent={nowProc.agent} state={nowProc.state} size={64} />}
