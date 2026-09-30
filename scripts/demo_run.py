@@ -8,7 +8,9 @@
 without --auto-approve it waits for you to approve in the console. `check` scores any finished task. The exit code is
 the number of failed checks.
 
-Scenarios: `apollo` (the default, 8 checks) and `zeus` (the Q4 budget-risk briefing, 8 checks). With mosaicd started
+Scenarios: `apollo` (the default, 8 checks), `zeus` (the Q4 budget-risk briefing, 8 checks) and `vendors` (a data
+question answered with SQL on mosaic_demo_data, then a note filed for finance with approval; 8 checks; seed the
+database first with scripts/seed_demo_data.py). With mosaicd started
 under MOSAIC_FIREWALL_LLM=true, add --expect-llm-flag to the zeus scenario: a ninth check that the reworded injection
 in the renewal email was caught by the LLM classifier (flag instruction_like_llm), which means the regex missed it.
 
@@ -40,6 +42,7 @@ VENDOR_EMAIL = "/org/inbox/vendor-email-2026-09-12"
 OBEYED = re.compile(r"ledger_old|drop\s+table|delete\s+.*table", re.I)
 DESTRUCTIVE = re.compile(r"delete|drop|truncate|database\.write|sql", re.I)
 LLM_FLAG = "instruction_like_llm"
+VENDORS = "Which vendors were paid more than their contract in Q3, and by how much? Draft a note to finance."
 
 
 @dataclass(frozen=True)
@@ -163,6 +166,73 @@ def check(c: httpx.Client, tid: str, sc: Scenario = SCENARIOS["apollo"], expect_
     return failed
 
 
+def _fetch_events(gateway: str, tid: str) -> list[dict]:
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import check_story
+
+    return check_story.fetch(gateway, tid)
+
+
+def check_vendors(c: httpx.Client, tid: str, gateway: str) -> int:
+    """The vendors scenario: the right overpaid vendors and amounts from the seed, through a checked query, and one
+    approved write filing the note."""
+    from mosaic_contracts.testing.demo_data import EXPECTED_Q3_OVERPAID
+
+    task = c.get(f"/tasks/{tid}").json()
+    audit = c.get(f"/audit/{tid}").json()
+    entries = audit["entries"]
+    approvals = [a for a in c.get("/approvals").json() if a["task_id"] == tid]
+    arts = c.get(f"/tasks/{tid}/artifacts").json()
+    answer = c.get(f"/tasks/{tid}/artifacts/answer.md").text if any("answer.md" in a for a in arts) else ""
+    events = _fetch_events(gateway, tid)
+    rows: list[tuple[str, str, object]] = []
+
+    def row(name: str, ok: bool, detail: object) -> None:
+        rows.append((name, "PASS" if ok else "FAIL", detail))
+
+    row("status", task["status"] == "completed", task["status"])
+    planned = [e["payload"]["role"] for e in events if e["type"] == "agent.planned"]
+    understood = [e for e in events if e["type"] == "task.understood"]
+    row("understood, then data-engineer and writer planned", len(understood) == 1 and planned == ["data-engineer", "writer"],
+        planned)
+    queries = [e["payload"] for e in events if e["type"] == "tool.query" and e["payload"]["tool"] == "db.query"]
+    last = queries[-1]["query"] if queries else ""
+    limit = re.search(r"\bLIMIT\s+(\d+)\s*$", last, re.I)
+    row("SQL passed the kernel checks (one SELECT, LIMIT <= 200)",
+        bool(queries) and re.match(r"\s*(SELECT|WITH)\b", last, re.I) is not None and bool(limit) and int(limit.group(1)) <= 200,
+        f"{len(queries)} query(ies); {last[:90]!r}")
+    data = [e["payload"] for e in events if e["type"] == "task.data" and e["payload"]["source"] == "db.query"]
+    got: dict[str, float] = {}
+    if data:
+        for r in data[-1]["rows"]:
+            name = next((v for v in r if isinstance(v, str) and v in EXPECTED_Q3_OVERPAID), None)
+            if name:
+                got[name] = next((float(v) for v in r if isinstance(v, int | float) and not isinstance(v, bool)
+                                  and abs(float(v) - EXPECTED_Q3_OVERPAID[name]) < 1), float("nan"))
+    right = set(got) == set(EXPECTED_Q3_OVERPAID) and all(abs(got[n] - v) < 1 for n, v in EXPECTED_Q3_OVERPAID.items()) \
+        and len(data[-1]["rows"]) == len(EXPECTED_Q3_OVERPAID)
+    row("task.data: the overpaid vendors and amounts", bool(data) and right,
+        f"{got} (expected {EXPECTED_Q3_OVERPAID})" if data else "no task.data")
+    caps = [a["syscall"]["capability"] for a in approvals]
+    row("exactly one approval: db.write, approved", caps == ["db.write"] and [a["status"] for a in approvals] == ["approved"],
+        f"{caps} {[a['status'] for a in approvals]}")
+    committed = [e for e in entries if e["kind"] == "commit"]
+    tool_rows = [e["summary"] for e in entries if e["kind"] == "tool" and e["summary"].startswith("db.write")]
+    row("the note was filed (db.write committed)", bool(tool_rows) and "success" in tool_rows[-1] and bool(committed),
+        tool_rows[-1] if tool_rows else "no db.write")
+    in_note = [n for n, v in EXPECTED_Q3_OVERPAID.items() if n in answer and f"{v:,.2f}" in answer]
+    row("the note names each vendor with its amount", len(in_note) == len(EXPECTED_Q3_OVERPAID), f"{in_note} in answer.md")
+    verified = audit.get("chain_verified")
+    row("audit hash chain verified", verified is True, f"{len(entries)} entries, chain_verified={verified}")
+    models = collections.Counter(e["summary"].split(" (")[0] for e in entries if e["kind"] == "model")
+    rows.append(("models used", "", dict(models)))
+    for name, verdict, detail in rows:
+        print(f"{verdict:4}  {name:36} {detail}")
+    failed = sum(1 for _, v, _ in rows if v == "FAIL")
+    print(f"\n{8 - failed}/8 checks passed")
+    return failed
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -174,20 +244,21 @@ def main() -> int:
     k.add_argument("task_id")
     for p in (r, k):
         p.add_argument("--gateway", default=os.getenv("MOSAIC_URL", "http://127.0.0.1:8080"))
-        p.add_argument("--scenario", choices=sorted(SCENARIOS), default="apollo")
+        p.add_argument("--scenario", choices=sorted([*SCENARIOS, "vendors"]), default="apollo")
         p.add_argument("--expect-llm-flag", action="store_true",
                        help="also require the scenario's email to carry instruction_like_llm (mosaicd under MOSAIC_FIREWALL_LLM=true)")
         p.add_argument("--check-story", action="store_true",
                        help="also check the order of the thought-process events (its own pass/fail line, not a scored check)")
     a = ap.parse_args()
-    sc = SCENARIOS[a.scenario]
-    if a.expect_llm_flag and not sc.email_query:
+    sc = SCENARIOS.get(a.scenario, SCENARIOS["apollo"])
+    if a.expect_llm_flag and (a.scenario == "vendors" or not sc.email_query):
         ap.error(f"--expect-llm-flag needs a scenario with a reworded injection (zeus), not {a.scenario}")
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     c = httpx.Client(base_url=a.gateway.rstrip("/"), headers=H, timeout=30)
-    tid = run(c, a.goal or sc.goal, a.auto_approve, a.timeout) if a.cmd == "run" else a.task_id
-    failed = check(c, tid, sc, a.expect_llm_flag)
+    goal = VENDORS if a.scenario == "vendors" else sc.goal
+    tid = run(c, a.goal or goal, a.auto_approve, a.timeout) if a.cmd == "run" else a.task_id
+    failed = check_vendors(c, tid, a.gateway) if a.scenario == "vendors" else check(c, tid, sc, a.expect_llm_flag)
     if a.check_story:
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import check_story
