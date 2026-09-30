@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import re
 from functools import lru_cache
+from typing import Any
 
 from .schema.common import PRIVACY_ORDER, PrivacyLevel
 
@@ -90,3 +91,39 @@ def okf_file_to_org_path(okf_file: str) -> str:
 def estimate_tokens(text: str) -> int:
     """Cheap, model-agnostic estimate (≈4 chars/token). Use the same one everywhere for budgets."""
     return max(1, len(text) // 4)
+
+
+def redact_url(url: str) -> str:
+    """Hide credentials in a URL/DSN: postgresql+psycopg://mosaic:pw@db:5432/x -> postgresql+psycopg://mosaic:***@db:5432/x.
+
+    Query parameters that look secret (password, token, key, secret) are masked too. Anything unparseable is returned
+    as "***" rather than risk leaking it.
+    """
+    from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
+    try:
+        parts = urlsplit(url)
+        netloc = parts.netloc
+        if "@" in netloc:
+            creds, host = netloc.rsplit("@", 1)
+            user = creds.split(":", 1)[0]
+            netloc = f"{user}:***@{host}" if user else f"***@{host}"
+        query = urlencode([(k, "***" if _SECRET_KEY.search(k) else v) for k, v in parse_qsl(parts.query, keep_blank_values=True)], safe="*")
+        return urlunsplit((parts.scheme, netloc, parts.path, query, parts.fragment))
+    except ValueError:
+        return "***"
+
+
+_SECRET_KEY = re.compile(r"pass(word)?|secret|token|api[_-]?key|^key$|credential|private", re.IGNORECASE)
+
+
+def policy_summary(doc: Any) -> Any:
+    """PolicyDocument -> PolicySummary ("what needs a human"). Same answer for the gateway and the mock."""
+    from .schema.policy import ApprovalMode
+    from .schema.system import PolicySummary
+
+    return PolicySummary(
+        policy=doc.policy, priority=doc.priority, agents=list(doc.applies_to.agents), roles=list(doc.applies_to.roles),
+        requires_approval=sorted(c for c, m in doc.approval.items() if m == ApprovalMode.REQUIRED),
+        auto_approved=sorted(c for c, m in doc.approval.items() if m == ApprovalMode.AUTO),
+        denied=sorted({c for c, m in doc.approval.items() if m == ApprovalMode.NEVER} | set(doc.tools.deny)))

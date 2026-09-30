@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "mOSaic",
-  "description": "mOSaic contracts v0.8.0",
+  "description": "mOSaic contracts v0.9.0",
   "type": "object",
   "$defs": {
     "PrincipalKind": {
@@ -3945,6 +3945,302 @@
       ],
       "title": "SystemStatus",
       "type": "object"
+    },
+    "StackComponent": {
+      "additionalProperties": false,
+      "properties": {
+        "component": {
+          "description": "ServiceBundle attribute, e.g. knowledge, models, sandbox",
+          "type": "string"
+        },
+        "mode": {
+          "description": "real | fake | fake(fallback)",
+          "type": "string"
+        },
+        "implementation": {
+          "description": "Implementing class, e.g. mosaic_knowledge.kfs.KnowledgeFS",
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "detail": {
+          "default": "",
+          "type": "string"
+        }
+      },
+      "required": [
+        "component",
+        "mode",
+        "implementation",
+        "ok"
+      ],
+      "title": "StackComponent",
+      "type": "object"
+    },
+    "RuntimeVersions": {
+      "additionalProperties": false,
+      "properties": {
+        "mosaic": {
+          "type": "string"
+        },
+        "contract": {
+          "type": "string"
+        },
+        "python": {
+          "type": "string"
+        },
+        "node": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Node.js on the server, if installed (the console build)"
+        }
+      },
+      "required": [
+        "mosaic",
+        "contract",
+        "python"
+      ],
+      "title": "RuntimeVersions",
+      "type": "object"
+    },
+    "ModelRoute": {
+      "additionalProperties": false,
+      "properties": {
+        "task_class": {
+          "description": "planning | reasoning | ... | default | latency_critical | embedding",
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "local": {
+          "default": true,
+          "type": "boolean"
+        },
+        "available": {
+          "description": "The model is present in the runtime (ollama list)",
+          "type": "boolean"
+        },
+        "context_window": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "task_class",
+        "model",
+        "available"
+      ],
+      "title": "ModelRoute",
+      "type": "object"
+    },
+    "ModelsConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "config_file": {
+          "description": "Routing file in use, relative to the repo, e.g. models/models.7b-only.yaml",
+          "type": "string"
+        },
+        "default": {
+          "type": "string"
+        },
+        "embedding": {
+          "type": "string"
+        },
+        "remote_enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "routes": {
+          "items": {
+            "$ref": "#/$defs/ModelRoute"
+          },
+          "type": "array"
+        },
+        "models": {
+          "items": {
+            "$ref": "#/$defs/ModelInfo"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "config_file",
+        "default",
+        "embedding"
+      ],
+      "title": "ModelsConfig",
+      "type": "object"
+    },
+    "PolicySummary": {
+      "additionalProperties": false,
+      "properties": {
+        "policy": {
+          "type": "string"
+        },
+        "priority": {
+          "type": "integer"
+        },
+        "agents": {
+          "description": "applies_to.agents",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "roles": {
+          "description": "applies_to.roles",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "requires_approval": {
+          "description": "Capabilities that need a human",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "auto_approved": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "denied": {
+          "description": "approval: never, plus tools.deny",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "policy",
+        "priority"
+      ],
+      "title": "PolicySummary",
+      "type": "object"
+    },
+    "FirewallConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "regex": {
+          "default": true,
+          "description": "Pattern screening; always on",
+          "type": "boolean"
+        },
+        "llm_classifier": {
+          "default": false,
+          "description": "MOSAIC_FIREWALL_LLM",
+          "type": "boolean"
+        }
+      },
+      "title": "FirewallConfig",
+      "type": "object"
+    },
+    "EndpointInfo": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "gateway | database | redis | ollama | jira | ...",
+          "type": "string"
+        },
+        "url": {
+          "description": "Credentials are always redacted (user:***@host)",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "url"
+      ],
+      "title": "EndpointInfo",
+      "type": "object"
+    },
+    "SystemConfig": {
+      "additionalProperties": false,
+      "description": "GET /system/config: one read-only document describing the running system. Never contains secrets.",
+      "properties": {
+        "versions": {
+          "$ref": "#/$defs/RuntimeVersions"
+        },
+        "env": {
+          "default": "dev",
+          "type": "string"
+        },
+        "stack": {
+          "items": {
+            "$ref": "#/$defs/StackComponent"
+          },
+          "type": "array"
+        },
+        "models": {
+          "$ref": "#/$defs/ModelsConfig"
+        },
+        "agents": {
+          "items": {
+            "$ref": "#/$defs/AgentManifest"
+          },
+          "type": "array"
+        },
+        "tools": {
+          "items": {
+            "$ref": "#/$defs/ToolSpec"
+          },
+          "type": "array"
+        },
+        "policies": {
+          "items": {
+            "$ref": "#/$defs/PolicySummary"
+          },
+          "type": "array"
+        },
+        "firewall": {
+          "$ref": "#/$defs/FirewallConfig"
+        },
+        "feature_flags": {
+          "additionalProperties": {
+            "type": "boolean"
+          },
+          "type": "object"
+        },
+        "endpoints": {
+          "items": {
+            "$ref": "#/$defs/EndpointInfo"
+          },
+          "type": "array"
+        },
+        "paths": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "okf_dir, policies_dir, manifests_dir, data_dir, models_config",
+          "type": "object"
+        }
+      },
+      "required": [
+        "versions",
+        "models"
+      ],
+      "title": "SystemConfig",
+      "type": "object"
     }
   },
   "properties": {
@@ -4014,6 +4310,9 @@
     "EmbedResponse": {
       "$ref": "#/$defs/EmbedResponse"
     },
+    "EndpointInfo": {
+      "$ref": "#/$defs/EndpointInfo"
+    },
     "ErrorInfo": {
       "$ref": "#/$defs/ErrorInfo"
     },
@@ -4031,6 +4330,9 @@
     },
     "FilesystemRules": {
       "$ref": "#/$defs/FilesystemRules"
+    },
+    "FirewallConfig": {
+      "$ref": "#/$defs/FirewallConfig"
     },
     "GpuStatus": {
       "$ref": "#/$defs/GpuStatus"
@@ -4113,6 +4415,12 @@
     "ModelResponse": {
       "$ref": "#/$defs/ModelResponse"
     },
+    "ModelRoute": {
+      "$ref": "#/$defs/ModelRoute"
+    },
+    "ModelsConfig": {
+      "$ref": "#/$defs/ModelsConfig"
+    },
     "Mount": {
       "$ref": "#/$defs/Mount"
     },
@@ -4139,6 +4447,9 @@
     },
     "PolicyDocument": {
       "$ref": "#/$defs/PolicyDocument"
+    },
+    "PolicySummary": {
+      "$ref": "#/$defs/PolicySummary"
     },
     "Principal": {
       "$ref": "#/$defs/Principal"
@@ -4179,6 +4490,9 @@
     "RunTimeline": {
       "$ref": "#/$defs/RunTimeline"
     },
+    "RuntimeVersions": {
+      "$ref": "#/$defs/RuntimeVersions"
+    },
     "SandboxInfo": {
       "$ref": "#/$defs/SandboxInfo"
     },
@@ -4200,6 +4514,9 @@
     "SpawnRequest": {
       "$ref": "#/$defs/SpawnRequest"
     },
+    "StackComponent": {
+      "$ref": "#/$defs/StackComponent"
+    },
     "StreamChunk": {
       "$ref": "#/$defs/StreamChunk"
     },
@@ -4211,6 +4528,9 @@
     },
     "SyscallStatus": {
       "$ref": "#/$defs/SyscallStatus"
+    },
+    "SystemConfig": {
+      "$ref": "#/$defs/SystemConfig"
     },
     "SystemStatus": {
       "$ref": "#/$defs/SystemStatus"

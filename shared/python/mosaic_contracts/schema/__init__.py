@@ -38,4 +38,5 @@ EXPORTED_MODELS = [
     # ipc / events / audit / policy / system
     A2AMessage, Event, AuditEntry, RunTimeline, PolicyDocument,  # noqa: F405
     ComponentHealth, ResourceSnapshot, SystemStatus,  # noqa: F405
+    StackComponent, RuntimeVersions, ModelRoute, ModelsConfig, PolicySummary, FirewallConfig, EndpointInfo, SystemConfig,  # noqa: F405
 ]

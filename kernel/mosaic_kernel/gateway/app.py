@@ -44,6 +44,7 @@ from mosaic_contracts.schema import (
     SandboxInfo,
     SearchQuery,
     SpawnRequest,
+    SystemConfig,
     SystemStatus,
     Task,
     TaskCreate,
@@ -55,6 +56,7 @@ from mosaic_contracts.schema import (
 from .. import __version__
 from ..kernel import Kernel
 from ..policy.engine import load_policy_documents
+from .config import build_system_config
 
 log = logging.getLogger("mosaic.kernel.gateway")
 
@@ -108,6 +110,11 @@ def create_app(kernel: Kernel) -> FastAPI:
             "queued_tasks": k.tasks.queued(),
             "active_sandboxes": sum(1 for s in sandboxes if s.status.value == "running"),
             "tokens_last_minute": k.quotas.tokens_last_minute()})
+
+    @app.get("/system/config", response_model=SystemConfig, tags=["system"])
+    async def system_config() -> SystemConfig:
+        # permission: config.read once RBAC lands (Person C)
+        return await build_system_config(k)
 
     @app.get("/models", response_model=list[ModelInfo], tags=["system"])
     async def list_models() -> list[ModelInfo]:

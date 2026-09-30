@@ -19,9 +19,11 @@ from .schema import (
     AuditKind,
     ComponentHealth,
     Decision,
+    EndpointInfo,
     Event,
     EventType,
     EvidenceSet,
+    FirewallConfig,
     GpuStatus,
     KnowledgeEntry,
     KnowledgeListing,
@@ -30,6 +32,8 @@ from .schema import (
     MemoryScope,
     MessageType,
     ModelInfo,
+    ModelRoute,
+    ModelsConfig,
     Plan,
     PlanStep,
     PolicyDecision,
@@ -42,12 +46,15 @@ from .schema import (
     ResourceUsage,
     Risk,
     RunTimeline,
+    RuntimeVersions,
     SandboxInfo,
     SandboxSpec,
     SandboxStatus,
     SearchHit,
     SearchQuery,
+    StackComponent,
     SyscallRequest,
+    SystemConfig,
     SystemStatus,
     Task,
     TaskCreate,
@@ -58,6 +65,7 @@ from .schema import (
     VerificationStatus,
 )
 from .testing.fakes import FAKE_TOOL_SPECS, FIXTURE_MANIFESTS_DIR, load_manifests
+from .util import policy_summary
 
 TASK_ID = "T-1842"
 T0 = datetime(2026, 9, 27, 10, 0, 0, tzinfo=UTC)
@@ -220,6 +228,37 @@ def system_status() -> SystemStatus:
                         components=[ComponentHealth(component=c, ok=True, mode="fake") for c in comps])
 
 
+def system_config() -> SystemConfig:
+    from . import CONTRACT_VERSION
+
+    stack = [("event_bus", "mosaic_kernel.events.bus.RedisEventBus"), ("policy", "mosaic_kernel.policy.engine.YamlPolicyEngine"),
+             ("models", "mosaic_models.router.router.PolicyRouter"), ("knowledge", "mosaic_knowledge.kfs.KnowledgeFS"),
+             ("firewall", "mosaic_knowledge.firewall.ContextFirewall"), ("memory", "mosaic_knowledge.memory.MemoryManager"),
+             ("agent_runtime", "mosaic_agents.runtime.Runtime"), ("tools", "mosaic_execution.tools.Executor"),
+             ("sandbox", "mosaic_execution.sandbox.DockerSandboxManager"),
+             ("browser", "mosaic_execution.browser.driver.PlaywrightDriver"), ("probe", "mosaic_models.gpu.probe.HostProbe")]
+    routes = [("planning", "qwen2.5:7b-instruct"), ("reasoning", "qwen2.5:7b-instruct"), ("summarization", "qwen2.5:7b-instruct"),
+              ("default", "qwen2.5:7b-instruct"), ("latency_critical", "qwen2.5:7b-instruct"), ("embedding", "nomic-embed-text")]
+    return SystemConfig(
+        versions=RuntimeVersions(mosaic="0.1.0", contract=CONTRACT_VERSION, python="3.12.10", node="24.18.0"),
+        env="dev",
+        stack=[StackComponent(component=c, mode="real", implementation=impl, ok=True) for c, impl in stack],
+        models=ModelsConfig(config_file="models/models.7b-only.yaml", default="qwen2.5:7b-instruct", embedding="nomic-embed-text",
+                            remote_enabled=False,
+                            routes=[ModelRoute(task_class=t, model=m, available=True,
+                                               context_window=None if m == "nomic-embed-text" else 32768) for t, m in routes],
+                            models=[m for m in models() if m.name != "llama3.1:8b"]),
+        agents=manifests(), tools=tool_specs(), policies=[policy_summary(policy_document())],
+        firewall=FirewallConfig(regex=True, llm_classifier=False),
+        feature_flags={"knowledge_watch": False, "firewall_llm": False},
+        endpoints=[EndpointInfo(name="gateway", url="http://0.0.0.0:8089"),
+                   EndpointInfo(name="database", url="postgresql+psycopg://mosaic:***@localhost:5434/mosaic"),
+                   EndpointInfo(name="redis", url="redis://127.0.0.1:6380/0"), EndpointInfo(name="ollama", url="http://localhost:11434"),
+                   EndpointInfo(name="jira", url="http://localhost:8090")],
+        paths={"okf_dir": "data/okf", "policies_dir": "policies", "manifests_dir": "agents/manifests", "data_dir": ".data",
+               "models_config": "models/models.7b-only.yaml"})
+
+
 def resource_snapshot() -> ResourceSnapshot:
     return ResourceSnapshot(ts=at(41), cpu_percent=37.5, ram_used_mb=11240, ram_total_mb=32768,
                             gpu=GpuStatus(name="NVIDIA RTX 4070 Laptop", utilization=0.31, memory_used_mb=5120, memory_total_mb=8188),
@@ -298,6 +337,6 @@ ALL_EXAMPLES = {
     "evidence_set": evidence, "knowledge_listing": knowledge_listing, "syscall_request": syscall,
     "policy_decision": policy_decision, "approval": approval, "a2a_message": a2a_message, "agent_result": agent_result,
     "memory_record": memory_record, "manifests": manifests, "tool_specs": tool_specs, "sandbox": sandbox,
-    "models": models, "policy_document": policy_document, "system_status": system_status,
+    "models": models, "policy_document": policy_document, "system_status": system_status, "system_config": system_config,
     "resource_snapshot": resource_snapshot, "events": events, "audit_timeline": audit_timeline,
 }

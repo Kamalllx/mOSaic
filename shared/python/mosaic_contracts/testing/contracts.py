@@ -14,6 +14,7 @@ Adding a test here is a contract change: announce it, because it can break someo
 from __future__ import annotations
 
 import asyncio
+import re
 from typing import Any
 
 import pytest
@@ -64,6 +65,7 @@ from ..schema import (
     SearchHit,
     SearchQuery,
     SyscallRequest,
+    SystemConfig,
     ToolInvocation,
     ToolResultStatus,
 )
@@ -477,3 +479,45 @@ class ResourceProbeContract:
         assert 0 <= snap.cpu_percent <= 100 and 0 < snap.ram_used_mb <= snap.ram_total_mb
         if snap.gpu is not None:
             assert 0 <= snap.gpu.utilization <= 1 and snap.gpu.memory_used_mb <= snap.gpu.memory_total_mb
+
+
+# ============================================================================ GET /system/config (gateway + mock)
+
+_SECRET_FIELD = re.compile(r"^(password|passwd|secret|client_secret|token|access_token|refresh_token|id_token|api_?key|"
+                           r"private_key|session_secret|vault_key)$", re.IGNORECASE)
+_URL_PASSWORD = re.compile(r"://[^/\s:@]*:(?!\*\*\*@)[^@\s/]+@")
+_SECRET_ASSIGN = re.compile(r"(password|passwd|secret|token|api_?key|key)=(?!\*\*\*)[^&\s]+", re.IGNORECASE)
+
+
+def find_secret_leaks(data: Any, path: str = "$") -> list[str]:
+    """Paths in a JSON document that look like unredacted secrets (field names, URL passwords, key=value pairs)."""
+    leaks: list[str] = []
+    if isinstance(data, dict):
+        for k, v in data.items():
+            if _SECRET_FIELD.match(str(k)) and v not in (None, "", "***"):
+                leaks.append(f"{path}.{k}")
+            leaks += find_secret_leaks(v, f"{path}.{k}")
+    elif isinstance(data, list):
+        for i, v in enumerate(data):
+            leaks += find_secret_leaks(v, f"{path}[{i}]")
+    elif isinstance(data, str) and (_URL_PASSWORD.search(data) or _SECRET_ASSIGN.search(data)):
+        leaks.append(path)
+    return leaks
+
+
+class SystemConfigContract:
+    """config() returns the JSON body of GET /system/config (e.g. via a TestClient)."""
+
+    def config(self) -> dict[str, Any]:
+        raise NotImplementedError
+
+    def test_validates_and_versions(self) -> None:
+        from .. import CONTRACT_VERSION
+
+        cfg = SystemConfig.model_validate(self.config())
+        assert cfg.versions.contract == CONTRACT_VERSION
+        assert cfg.models.default and cfg.models.embedding
+
+    def test_no_secrets(self) -> None:
+        leaks = find_secret_leaks(self.config())
+        assert not leaks, f"secret-looking values in /system/config: {leaks}"

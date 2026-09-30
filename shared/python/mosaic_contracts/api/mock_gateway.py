@@ -48,6 +48,7 @@ from ..schema import (
     SandboxInfo,
     SearchQuery,
     SpawnRequest,
+    SystemConfig,
     SystemStatus,
     Task,
     TaskCreate,
@@ -172,6 +173,11 @@ def build_mock_app(replay_speed: float = 4.0) -> FastAPI:
     @app.get("/system/resources", response_model=ResourceSnapshot, tags=["system"])
     async def system_resources() -> ResourceSnapshot:
         return examples.resource_snapshot()
+
+    @app.get("/system/config", response_model=SystemConfig, tags=["system"])
+    async def system_config() -> SystemConfig:
+        """Read-only description of the running system (stack, models, agents, tools, policies). Secrets redacted."""
+        return examples.system_config()
 
     @app.get("/models", response_model=list[ModelInfo], tags=["system"])
     async def list_models() -> list[ModelInfo]:
