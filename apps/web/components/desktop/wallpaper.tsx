@@ -4,59 +4,115 @@ import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useClient } from "@/app/providers";
-import { hash2, layoutMosaic, type MosaicLayout, tileAt } from "@/lib/desktop/mosaic";
+import { hash2, layoutMosaic } from "@/lib/desktop/mosaic";
 import { FOLDER_HUES } from "@/lib/desktop/palette";
 import { strList } from "@/lib/events";
 import { useAllDocs } from "./hooks";
 
-/** The field behind the tesserae: a soft multicolour gradient, like a macOS wallpaper. */
-function paintField(ctx: CanvasRenderingContext2D, w: number, h: number, dark: boolean) {
-  ctx.fillStyle = dark ? "#141824" : "#eef2fb";
-  ctx.fillRect(0, 0, w, h);
-  const blobs: [number, number, number, string][] = dark
-    ? [[0.12, 0.1, 0.7, "rgba(47,124,246,0.35)"], [0.9, 0.12, 0.6, "rgba(197,108,240,0.30)"], [0.15, 0.95, 0.65, "rgba(20,168,154,0.30)"], [0.88, 0.9, 0.6, "rgba(255,138,61,0.22)"]]
-    : [[0.1, 0.08, 0.75, "rgba(122,190,255,0.85)"], [0.92, 0.1, 0.65, "rgba(255,170,214,0.8)"], [0.12, 0.98, 0.7, "rgba(140,232,196,0.85)"], [0.9, 0.92, 0.65, "rgba(255,200,140,0.85)"], [0.5, 0.5, 0.45, "rgba(200,184,255,0.55)"]];
-  for (const [x, y, r, c] of blobs) {
-    const g = ctx.createRadialGradient(x * w, y * h, 0, x * w, y * h, r * Math.max(w, h));
-    g.addColorStop(0, c);
-    g.addColorStop(1, "rgba(255,255,255,0)");
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, w, h);
-  }
+type Flare = { t0: number; kind: "read" | "flagged" | "stale" | "changed" };
+const FLARE_MS: Record<Flare["kind"], number> = { read: 2400, flagged: 9000, stale: 12000, changed: 3000 };
+const FLARE_RGB: Record<Flare["kind"], string> = { read: "20,184,166", flagged: "239,68,68", stale: "245,158,11", changed: "59,130,246" };
+
+interface Node {
+  path: string;
+  title: string;
+  folder: string;
+  x: number;
+  y: number;
+  hue: string;
 }
 
-type Flare = { t0: number; kind: "read" | "flagged" | "stale" | "changed" };
-const FLARE_MS: Record<Flare["kind"], number> = { read: 2600, flagged: 9000, stale: 12000, changed: 3000 };
-const FLARE_COLOR: Record<Flare["kind"], string> = { read: "43,184,163", flagged: "235,106,106", stale: "217,154,37", changed: "106,155,227" };
-
-/** The desktop's wallpaper: the organisation's knowledge as a mosaic. Tiles flare when agents read them (red when the
- *  firewall flagged the document), pulse amber when a source change invalidates memories, and open in Files on click. */
-export function Wallpaper() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+/** The organisation's knowledge drawn on the desktop as a constellation: one node per /org document, each folder a
+ *  linked cluster in its own colour. Painted once; only flares animate, on a separate layer and only while live. */
+export function Wallpaper({ avoid }: { avoid?: [number, number, number, number] }) {
+  const base = useRef<HTMLCanvasElement>(null);
+  const overlay = useRef<HTMLCanvasElement>(null);
   const flares = useRef(new Map<string, Flare>());
   const kick = useRef<() => void>(() => {});
   const client = useClient();
   const router = useRouter();
   const docs = useAllDocs().data;
   const { resolvedTheme } = useTheme();
-  const dark = resolvedTheme !== "light";
+  const dark = resolvedTheme === "dark";
   const [size, setSize] = useState({ w: 0, h: 0 });
-  const [hover, setHover] = useState<{ x: number; y: number; title: string; path: string } | null>(null);
+  const [hover, setHover] = useState<Node | null>(null);
 
   useEffect(() => {
-    const on = () => setSize({ w: window.innerWidth, h: window.innerHeight });
-    on();
+    let t = 0;
+    const measure = () => setSize({ w: window.innerWidth, h: window.innerHeight });
+    const on = () => {
+      clearTimeout(t);
+      t = window.setTimeout(measure, 120);
+    };
+    measure();
     window.addEventListener("resize", on);
     return () => window.removeEventListener("resize", on);
   }, []);
 
-  const layout: MosaicLayout | null = useMemo(
-    // On wide screens the widgets take the right edge, so the folder patches sit a little left of centre.
-    () => (docs && size.w ? layoutMosaic(docs, size.w, size.h, size.w < 700 ? 22 : 28, size.w >= 1100 ? { cx: 0.42, rx: 0.31, avoid: [0.24, 0.1, 0.61, 0.46] } : {}) : null),
-    [docs, size.w, size.h],
-  );
+  const nodes: Node[] = useMemo(() => {
+    if (!docs || !size.w) return [];
+    const cell = size.w < 700 ? 24 : 30;
+    const wide = size.w >= 1100;
+    const m = layoutMosaic(docs, size.w, size.h, cell, wide ? { cx: 0.55, rx: 0.27, avoid } : {});
+    return m.tiles.map((t) => {
+      const j = hash2(t.col, t.row);
+      const k = hash2(t.row + 11, t.col + 5);
+      return { path: t.path, title: t.title ?? t.path, folder: t.folder, x: (t.col + 0.5 + (j - 0.5) * 0.6) * cell, y: (t.row + 0.5 + (k - 0.5) * 0.6) * cell, hue: FOLDER_HUES[t.folder] ?? "#8a94a6" };
+    });
+  }, [docs, size.w, size.h, avoid]);
+  const byPath = useMemo(() => new Map(nodes.map((n) => [n.path, n])), [nodes]);
 
-  // Live flares from the kernel's events.
+  // The static layer: links within each folder, the nodes, the folder names. Redrawn only when data, size or theme change.
+  useEffect(() => {
+    const c = base.current;
+    const ctx = c?.getContext("2d");
+    if (!c || !ctx || !size.w) return;
+    const dpr = Math.min(1.5, window.devicePixelRatio || 1);
+    c.width = Math.round(size.w * dpr);
+    c.height = Math.round(size.h * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, size.w, size.h);
+    const folders = new Map<string, Node[]>();
+    for (const n of nodes) folders.set(n.folder, [...(folders.get(n.folder) ?? []), n]);
+    for (const [, group] of folders) {
+      // Each node links to its nearest earlier node in the folder: a light tree, not a hairball.
+      ctx.strokeStyle = `${group[0].hue}55`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      group.forEach((n, i) => {
+        if (!i) return;
+        let best = group[0];
+        for (const m of group.slice(0, i)) if ((m.x - n.x) ** 2 + (m.y - n.y) ** 2 < (best.x - n.x) ** 2 + (best.y - n.y) ** 2) best = m;
+        ctx.moveTo(best.x, best.y);
+        ctx.lineTo(n.x, n.y);
+      });
+      ctx.stroke();
+    }
+    for (const n of nodes) {
+      ctx.fillStyle = `${n.hue}26`;
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, 9, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = n.hue;
+      ctx.strokeStyle = dark ? "#0e121c" : "#ffffff";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+    const mono = getComputedStyle(document.documentElement).getPropertyValue("--font-jetbrains-mono").trim() || "monospace";
+    ctx.font = `600 11px ${mono}, monospace`;
+    ctx.textAlign = "center";
+    ctx.fillStyle = dark ? "rgba(226,232,240,0.6)" : "rgba(15,23,42,0.5)";
+    for (const [folder, group] of folders) {
+      const top = group.reduce((a, b) => (b.y < a.y ? b : a));
+      const cx = group.reduce((s, n) => s + n.x, 0) / group.length;
+      ctx.fillText(folder, cx, top.y - 14);
+    }
+  }, [nodes, size.w, size.h, dark]);
+
+  // Live flares from the kernel's events, on the overlay; the loop runs only while one is alive.
   useEffect(
     () =>
       client.events(
@@ -67,13 +123,9 @@ export function Wallpaper() {
             const flagged = strList(e, "flagged");
             add(strList(e, "paths").filter((p) => !flagged.includes(p)), "read");
             add(flagged, "flagged");
-          } else if (e.type === "memory.invalidated") {
-            const src = e.payload?.source;
-            if (typeof src === "string") add([src], "stale");
-          } else if (e.type === "knowledge.changed") {
-            const p = e.payload?.path;
-            if (typeof p === "string") add([p], "changed");
-          } else return;
+          } else if (e.type === "memory.invalidated" && typeof e.payload?.source === "string") add([e.payload.source], "stale");
+          else if (e.type === "knowledge.changed" && typeof e.payload?.path === "string") add([e.payload.path], "changed");
+          else return;
           kick.current();
         },
         { types: ["knowledge.retrieved", "memory.invalidated", "knowledge.changed"] },
@@ -82,127 +134,90 @@ export function Wallpaper() {
   );
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext("2d");
-    if (!canvas || !ctx || !size.w) return;
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    canvas.width = Math.round(size.w * dpr);
-    canvas.height = Math.round(size.h * dpr);
+    const c = overlay.current;
+    const ctx = c?.getContext("2d");
+    if (!c || !ctx || !size.w) return;
+    const dpr = Math.min(1.5, window.devicePixelRatio || 1);
+    c.width = Math.round(size.w * dpr);
+    c.height = Math.round(size.h * dpr);
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    // Canvas fonts can't read CSS variables: resolve the bundled mono face's family name once.
-    const mono = getComputedStyle(document.documentElement).getPropertyValue("--font-jetbrains-mono").trim() || "monospace";
-    const labelInk = dark ? "rgba(226,232,240,0.7)" : "rgba(29,29,31,0.55)";
-    const cell = layout?.cell ?? 28;
-    const cols = Math.ceil(size.w / cell) + 1;
-    const rows = Math.ceil(size.h / cell) + 1;
-    const docAt = new Map((layout?.tiles ?? []).map((t) => [`${t.col},${t.row}`, t]));
-
-    const tess = (c: number, r: number, fill: string | CanvasGradient, lift = 0, gloss = false) => {
-      const j = hash2(c, r);
-      const k = hash2(r + 7, c + 13);
-      const inset = 2.2 + j * 1.6 - lift;
-      const x = c * cell + inset + (k - 0.5) * 1.6;
-      const y = r * cell + inset + (j - 0.5) * 1.6;
-      const s = cell - inset * 2;
-      ctx.save();
-      ctx.translate(x + s / 2, y + s / 2);
-      ctx.rotate((j - 0.5) * 0.07);
-      ctx.fillStyle = fill;
-      ctx.beginPath();
-      ctx.roundRect(-s / 2, -s / 2, s, s * (0.9 + k * 0.1), 4);
-      ctx.fill();
-      if (gloss) {
-        // A glossy top half and a hairline highlight, like glazed glass tesserae.
-        const g = ctx.createLinearGradient(0, -s / 2, 0, s / 2);
-        g.addColorStop(0, "rgba(255,255,255,0.45)");
-        g.addColorStop(0.5, "rgba(255,255,255,0.05)");
-        g.addColorStop(1, "rgba(0,0,0,0.08)");
-        ctx.fillStyle = g;
-        ctx.fill();
-      }
-      ctx.restore();
-    };
-
     let raf = 0;
     const draw = () => {
       const now = performance.now();
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      paintField(ctx, size.w, size.h, dark);
-      // Filler tesserae: the field the organisation's documents sit in.
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          if (docAt.has(`${c},${r}`)) continue;
-          const v = hash2(c * 3 + 1, r * 5 + 2);
-          tess(c, r, dark ? `rgba(255,255,255,${0.03 + v * 0.05})` : `rgba(255,255,255,${0.2 + v * 0.22})`);
-        }
-      }
+      ctx.clearRect(0, 0, size.w, size.h);
       let live = false;
-      for (const t of layout?.tiles ?? []) {
-        const hue = FOLDER_HUES[t.folder] ?? "#8a94a6";
-        const f = flares.current.get(t.path);
-        const age = f ? now - f.t0 : Infinity;
-        if (f && age < FLARE_MS[f.kind]) {
-          live = true;
-          const p = age / FLARE_MS[f.kind];
-          const pulse = f.kind === "flagged" || f.kind === "stale" ? 0.55 + 0.45 * Math.cos(age / 260) : 1;
-          const a = (1 - p) * pulse;
-          tess(t.col, t.row, hue, 0, true);
-          ctx.save();
-          ctx.shadowColor = `rgba(${FLARE_COLOR[f.kind]},${0.9 * a})`;
-          ctx.shadowBlur = 18 * a;
-          tess(t.col, t.row, `rgba(${FLARE_COLOR[f.kind]},${0.35 + 0.55 * a})`, 1);
-          ctx.restore();
-          // A ring that opens once when the flare starts.
-          if (age < 900 && !reduced) {
-            const q = age / 900;
-            ctx.strokeStyle = `rgba(${FLARE_COLOR[f.kind]},${0.6 * (1 - q)})`;
-            ctx.lineWidth = 1.5;
-            ctx.beginPath();
-            ctx.arc((t.col + 0.5) * cell, (t.row + 0.5) * cell, cell * (0.5 + q * 1.4), 0, Math.PI * 2);
-            ctx.stroke();
-          }
-        } else {
-          if (f) flares.current.delete(t.path);
-          tess(t.col, t.row, hue, 0, true);
+      for (const [path, f] of flares.current) {
+        const n = byPath.get(path);
+        const age = now - f.t0;
+        if (!n || age > FLARE_MS[f.kind]) {
+          flares.current.delete(path);
+          continue;
+        }
+        live = true;
+        const fade = 1 - age / FLARE_MS[f.kind];
+        const pulse = f.kind === "flagged" || f.kind === "stale" ? 0.6 + 0.4 * Math.cos(age / 220) : 1;
+        const rgb = FLARE_RGB[f.kind];
+        ctx.fillStyle = `rgba(${rgb},${0.28 * fade * pulse})`;
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, 16, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = `rgba(${rgb},${0.9 * fade})`;
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, 5.5, 0, Math.PI * 2);
+        ctx.fill();
+        if (!reduced && age < 1000) {
+          const q = age / 1000;
+          ctx.strokeStyle = `rgba(${rgb},${0.7 * (1 - q)})`;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(n.x, n.y, 8 + q * 30, 0, Math.PI * 2);
+          ctx.stroke();
         }
       }
-      ctx.font = `600 11px ${mono}, ui-monospace, monospace`;
-      ctx.textAlign = "center";
-      ctx.fillStyle = labelInk;
-      for (const l of layout?.labels ?? []) ctx.fillText(l.folder, l.x, l.y);
       raf = live && !reduced ? requestAnimationFrame(draw) : 0;
     };
     kick.current = () => {
       if (!raf) raf = requestAnimationFrame(draw);
     };
-    draw();
     return () => {
       cancelAnimationFrame(raf);
       kick.current = () => {};
     };
-  }, [layout, size.w, size.h, dark]);
+  }, [byPath, size.w, size.h]);
+
+  const hit = (x: number, y: number) => {
+    let best: Node | null = null;
+    let d = 144;
+    for (const n of nodes) {
+      const dd = (n.x - x) ** 2 + (n.y - y) ** 2;
+      if (dd < d) {
+        d = dd;
+        best = n;
+      }
+    }
+    return best;
+  };
 
   return (
-    <div className="absolute inset-0" aria-hidden>
+    <div className="ground absolute inset-0" aria-hidden>
+      <canvas ref={base} className="absolute inset-0 size-full" />
       <canvas
-        ref={canvasRef}
+        ref={overlay}
         className="absolute inset-0 size-full"
         onPointerMove={(e) => {
-          const t = layout && tileAt(layout, e.clientX, e.clientY);
-          setHover(t ? { x: e.clientX, y: e.clientY, title: t.title ?? t.path, path: t.path } : null);
+          const n = hit(e.clientX, e.clientY);
+          if (n?.path !== hover?.path) setHover(n);
         }}
         onPointerLeave={() => setHover(null)}
         onClick={(e) => {
-          const t = layout && tileAt(layout, e.clientX, e.clientY);
-          if (t) router.push(`/knowledge?path=${encodeURIComponent(t.path)}`);
+          const n = hit(e.clientX, e.clientY);
+          if (n) router.push(`/knowledge?path=${encodeURIComponent(n.path)}`);
         }}
         style={{ cursor: hover ? "pointer" : "default" }}
       />
       {hover && (
-        <div
-          className="pointer-events-none absolute z-10 rounded-md border border-line bg-surface-2/95 px-2.5 py-1.5 shadow-panel"
-          style={{ left: Math.min(hover.x + 14, size.w - 280), top: hover.y + 14 }}
-        >
+        <div className="panel pointer-events-none absolute z-10 rounded-lg px-2.5 py-1.5" style={{ left: Math.min(hover.x + 14, size.w - 300), top: hover.y + 14 }}>
           <p className="text-sm font-medium">{hover.title}</p>
           <p className="font-mono text-xs text-text-2">{hover.path}</p>
         </div>
