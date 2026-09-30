@@ -9,13 +9,14 @@ import { useClient } from "@/app/providers";
 import { INVALIDATIONS_KEY, invalidationTitle } from "@/components/global-events";
 import { EvidenceChip, formatTime } from "@/components/status";
 import { strList } from "@/lib/events";
+import { groupMemories, replacesOf } from "@/lib/memory-groups";
 import { cn } from "@/lib/utils";
 
 const KINDS: (MemoryKind | "all")[] = ["all", "episodic", "semantic", "working"];
 
 function MemoryRow({ m, changed }: { m: MemoryRecord; changed: string[] }) {
   const importance = Math.max(0, Math.min(1, m.importance ?? 0));
-  const replaces = m.tags?.find((t) => t.startsWith("replaces:"))?.slice("replaces:".length);
+  const replaces = replacesOf(m);
   const isReconsolidated = m.tags?.includes("reconsolidated");
   return (
     <li
@@ -82,53 +83,8 @@ function MemoryRow({ m, changed }: { m: MemoryRecord; changed: string[] }) {
   );
 }
 
-/** Group stale memories with their re-derived replacements so the transition is obvious. */
-function groupMemories(memories: MemoryRecord[]): Array<{ stale?: MemoryRecord; fresh?: MemoryRecord }> {
-  const groups: Array<{ stale?: MemoryRecord; fresh?: MemoryRecord }> = [];
-  const replacedIds = new Set<string>();
-
-  // Collect all re-derived records and which IDs they replace.
-  const byReplaces = new Map<string, MemoryRecord>();
-  for (const m of memories) {
-    const replaces = m.tags?.find((t) => t.startsWith("replaces:"))?.slice("replaces:".length);
-    if (replaces) {
-      byReplaces.set(replaces, m);
-      replacedIds.add(replaces);
-    }
-  }
-
-  // Build groups: stale + fresh side by side; standalone records as single entries.
-  const handled = new Set<string>();
-  for (const m of memories) {
-    if (handled.has(m.memory_id)) continue;
-    if (m.stale && byReplaces.has(m.memory_id)) {
-      // This stale record has a re-derived replacement — show them together.
-      const fresh = byReplaces.get(m.memory_id)!;
-      groups.push({ stale: m, fresh });
-      handled.add(m.memory_id);
-      handled.add(fresh.memory_id);
-    } else if (!replacedIds.has(m.memory_id)) {
-      // A standalone record (not replaced by anything in the current view).
-      groups.push({ fresh: m });
-      handled.add(m.memory_id);
-    } else {
-      // Its replacement pair will be handled when we reach the stale record — skip for now.
-      // But if the stale record is not in the current filtered view, show the fresh record alone.
-      const alreadyPaired = memories.some((x) => x.stale && byReplaces.get(x.memory_id)?.memory_id === m.memory_id);
-      if (!alreadyPaired) {
-        groups.push({ fresh: m });
-        handled.add(m.memory_id);
-      }
-    }
-  }
-
-  return groups;
-}
-
-function ReplacementGroup({ stale, fresh, changed }: { stale?: MemoryRecord; fresh?: MemoryRecord; changed: string[] }) {
-  if (!stale) return <MemoryRow m={fresh!} changed={changed} />;
-  if (!fresh) return <MemoryRow m={stale} changed={changed} />;
-  // Both present: show as a paired group.
+/** A re-derived memory above the stale records it replaces, so the transition reads at a glance. */
+function ReplacementGroup({ memory, replaced, changed }: { memory: MemoryRecord; replaced: MemoryRecord[]; changed: string[] }) {
   return (
     <li className="rounded-lg border-2 border-brand/30 bg-brand-subtle/10">
       <div className="flex items-center gap-2 border-b border-brand/20 px-4 py-1.5">
@@ -136,8 +92,10 @@ function ReplacementGroup({ stale, fresh, changed }: { stale?: MemoryRecord; fre
         <span className="text-xs font-semibold text-brand">Memory re-derived from changed source</span>
       </div>
       <ul className="divide-y divide-brand/10">
-        <MemoryRow m={stale} changed={changed} />
-        <MemoryRow m={fresh} changed={changed} />
+        <MemoryRow m={memory} changed={changed} />
+        {replaced.map((r) => (
+          <MemoryRow key={r.memory_id} m={r} changed={changed} />
+        ))}
       </ul>
     </li>
   );
@@ -291,11 +249,11 @@ function MemoryScreen() {
               <p className="mt-1 text-xs text-muted-foreground">Memories appear after a task completes and agents consolidate what they learned.</p>
             </li>
           )}
-          {groups.map((g, i) =>
-            g.stale && g.fresh ? (
-              <ReplacementGroup key={`group-${i}`} stale={g.stale} fresh={g.fresh} changed={changed} />
+          {groups.map(({ memory, replaced }) =>
+            replaced.length ? (
+              <ReplacementGroup key={memory.memory_id} memory={memory} replaced={replaced} changed={changed} />
             ) : (
-              <MemoryRow key={g.fresh?.memory_id ?? g.stale?.memory_id ?? i} m={g.fresh ?? g.stale!} changed={changed} />
+              <MemoryRow key={memory.memory_id} m={memory} changed={changed} />
             ),
           )}
         </ul>
