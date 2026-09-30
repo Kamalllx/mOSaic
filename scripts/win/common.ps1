@@ -18,6 +18,7 @@ $ModelsConfig = Get-Setting "MOSAIC_MODELS_CONFIG" "./models/models.yaml"
 $ChatModel = Get-Setting "MOSAIC_DEFAULT_CHAT_MODEL" "qwen2.5:7b-instruct"
 $DemoDatabaseUrl = Get-Setting "MOSAIC_DEMO_DATABASE_URL" "postgresql+psycopg://mosaic:mosaic@127.0.0.1:$PgPort/mosaic"
 $DemoRedisUrl = Get-Setting "MOSAIC_DEMO_REDIS_URL" "redis://127.0.0.1:$RedisPort/1"
+$DemoDataUrl = Get-Setting "MOSAIC_DEMO_DATA_URL" "postgresql+psycopg://mosaic:mosaic@127.0.0.1:$PgPort/mosaic_demo_data"
 $Gateway = "http://127.0.0.1:$GatewayPort"
 $Logs = Join-Path $Repo ".data\logs"
 New-Item -ItemType Directory -Force $Logs | Out-Null

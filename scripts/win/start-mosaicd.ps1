@@ -10,6 +10,7 @@ $env:MOSAIC_SANDBOX_ENDPOINT = "port"
 $env:MOSAIC_JIRA_URL = "inprocess"
 $env:MOSAIC_DATABASE_URL = $DemoDatabaseUrl
 $env:MOSAIC_REDIS_URL = $DemoRedisUrl
+$env:MOSAIC_DEMO_DATA_URL = $DemoDataUrl       # the db tool (scripts/seed_demo_data.py fills it)
 $env:MOSAIC_MODELS_CONFIG = $ModelsConfig
 $env:MOSAIC_GATEWAY_PORT = $GatewayPort
 $env:MOSAIC_URL = "http://localhost:$GatewayPort"
