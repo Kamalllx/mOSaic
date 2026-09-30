@@ -190,23 +190,23 @@ export function TerminalApp() {
   }
 
   return (
-    <div className="-m-4 flex h-[calc(100%+2rem)] flex-col bg-[#0a0d11] font-mono text-[13px] leading-relaxed text-[#d6dde6]" onClick={() => field.current?.focus()}>
+    <div className="-m-4 flex h-[calc(100%+2rem)] flex-col bg-[#fbfcfe] dark:bg-[#0d1117] font-mono text-[13px] leading-relaxed text-[#1f2933] dark:text-[#d6dde6]" onClick={() => field.current?.focus()}>
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3" role="log" aria-live="polite">
         {lines.map((l, i) => (
-          <pre key={i} className={cn("whitespace-pre-wrap break-words", l.kind === "err" && "text-[#f08a8a]", l.kind === "ok" && "text-[#5fd3a8]", l.kind === "dim" && "text-[#7f8a98]", l.kind === "in" && "text-[#9fe3d6]")}>
+          <pre key={i} className={cn("whitespace-pre-wrap break-words", l.kind === "err" && "text-[#d93a4a] dark:text-[#f08a8a]", l.kind === "ok" && "text-[#0e9f6e] dark:text-[#5fd3a8]", l.kind === "dim" && "text-[#7a8594]", l.kind === "in" && "text-[#2563eb] dark:text-[#9fe3d6]")}>
             {l.text || " "}
           </pre>
         ))}
         <div ref={end} />
       </div>
       <form
-        className="flex items-center gap-2 border-t border-white/10 px-4 py-2"
+        className="flex items-center gap-2 border-t border-hairline px-4 py-2"
         onSubmit={(e) => {
           e.preventDefault();
           if (!busy) submit();
         }}
       >
-        <span className="text-[#9fe3d6]">{cwd}$</span>
+        <span className="text-[#2563eb] dark:text-[#9fe3d6]">{cwd}$</span>
         <input
           ref={field}
           autoFocus
@@ -233,9 +233,9 @@ export function TerminalApp() {
           spellCheck={false}
           autoCapitalize="off"
           autoComplete="off"
-          className="min-w-0 flex-1 bg-transparent caret-[#2bb8a3] outline-none"
+          className="min-w-0 flex-1 bg-transparent caret-[#16b67a] outline-none"
         />
-        {busy && <Orb state="working" theme="dark" label="running" />}
+        {busy && <Orb state="working" label="running" />}
       </form>
     </div>
   );
