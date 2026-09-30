@@ -1,9 +1,6 @@
-import type { Metadata } from "next";
-import { Desktop } from "@/components/desktop/desktop";
+"use client";
 
-export const metadata: Metadata = { title: "Connections — mOSaic" };
-
-/** Renders the desktop; the URL drives which window opens. */
-export default function ConnectionsPage() {
-  return <Desktop />;
+/** A desktop route: the root layout's desktop opens the window for this URL. */
+export default function Page() {
+  return null;
 }

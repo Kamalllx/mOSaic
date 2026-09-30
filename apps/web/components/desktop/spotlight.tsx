@@ -12,6 +12,7 @@ import { APPS } from "@/lib/desktop/routes";
 import { folderHue } from "@/lib/desktop/palette";
 import { isActive } from "@/lib/events";
 import { MosaicError } from "@/lib/mosaic-client";
+import { useSession } from "@/components/session";
 import { cn } from "@/lib/utils";
 import { AppTile } from "./app-icons";
 import { useAllDocs, useTasks } from "./hooks";
@@ -59,6 +60,9 @@ export function Spotlight({ open, onClose }: { open: boolean; onClose: () => voi
     router.push(url);
     close();
   };
+  const { me, can } = useSession();
+  const mayStart = can("task.create");
+  const role = me?.role;
   const start = useMutation({
     mutationFn: (goal: string) => client.createTask({ goal, priority }),
     onSuccess: (t) => {
@@ -75,7 +79,7 @@ export function Spotlight({ open, onClose }: { open: boolean; onClose: () => voi
   const rows = useMemo<Row[]>(() => {
     const needle = q.trim().toLowerCase();
     const out: Row[] = [];
-    if (needle) out.push({ id: "run", label: `Ask mOSaic: “${q.trim()}”`, detail: "runs as a new task", icon: <CornerDownLeft className="size-4 text-brand" />, run: () => start.mutate(q.trim()) });
+    if (needle && mayStart) out.push({ id: "run", label: `Ask mOSaic: “${q.trim()}”`, detail: "runs as a new task", icon: <CornerDownLeft className="size-4 text-brand" />, run: () => start.mutate(q.trim()) });
     const has = (...s: (string | undefined)[]) => !!needle && s.some((x) => x?.toLowerCase().includes(needle));
     for (const a of DOCK_APPS) if (has(APPS[a].title, a)) out.push({ id: `app:${a}`, label: APPS[a].title, detail: "app", icon: <AppTile app={a} size={22} />, run: () => go(APPS[a].home) });
     for (const t of tasks.filter((t) => has(t.goal, t.task_id)).slice(0, 3))
@@ -85,7 +89,7 @@ export function Spotlight({ open, onClose }: { open: boolean; onClose: () => voi
     return out;
     // go and start are recreated each render; the rows only depend on what is typed and the data
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, docs, tasks]);
+  }, [q, docs, tasks, mayStart]);
   const active = Math.min(sel, Math.max(0, rows.length - 1));
 
   if (!open) return null;
@@ -127,7 +131,7 @@ export function Spotlight({ open, onClose }: { open: boolean; onClose: () => voi
                 rows[active]?.run();
               }
             }}
-            placeholder="Ask mOSaic to investigate, find or fix something…"
+            placeholder={mayStart ? "Ask mOSaic to investigate, find or fix something…" : "Search apps, tasks and documents…"}
             aria-label="Ask mOSaic"
             className="min-h-8 flex-1 resize-none bg-transparent pt-0.5 text-[21px] leading-snug outline-none placeholder:text-text-2/70"
           />
@@ -186,9 +190,11 @@ export function Spotlight({ open, onClose }: { open: boolean; onClose: () => voi
               </button>
             ))}
           </div>
-          <span className="hidden font-mono sm:inline">↵ run · ↑↓ choose · esc close</span>
+          <span className="hidden font-mono sm:inline">{mayStart ? "↵ run" : "↵ open"} · ↑↓ choose · esc close</span>
+          {!mayStart && <span className="ml-auto">Your role ({role ?? "none"}) can search but not start tasks.</span>}
           <button
             type="button"
+            hidden={!mayStart}
             disabled={!q.trim() || start.isPending}
             onClick={() => start.mutate(q.trim())}
             className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-lg bg-brand px-4 text-sm font-semibold text-white shadow-sm transition-transform hover:bg-brand-hover active:scale-[0.97] disabled:opacity-40"

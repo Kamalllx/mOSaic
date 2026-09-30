@@ -2,6 +2,7 @@ import { GeistSans } from "geist/font/sans";
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import { Desktop } from "@/components/desktop/desktop";
+import { SessionGate } from "@/components/session";
 import "./globals.css";
 import { Providers } from "./providers";
 
@@ -25,7 +26,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${GeistSans.variable} ${jetbrainsMono.variable} h-full`} suppressHydrationWarning>
       <body className="h-full overflow-hidden">
         <Providers>
-          <Desktop />
+          <SessionGate>
+            <Desktop />
+          </SessionGate>
           {children}
         </Providers>
       </body>

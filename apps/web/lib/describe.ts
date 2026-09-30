@@ -146,6 +146,12 @@ export function describeEvent(e: Event): EventLine {
       const title = `Retrieved ${plural(num(e, "hits"), "document")}${hidden ? ` · ${hidden} hidden by policy` : ""}${flagged ? ` · ${flagged} flagged by the firewall` : ""}`;
       return { icon: flagged ? ShieldAlert : BookOpenText, family: flagged ? "danger" : "knowledge", title, detail: p("query") };
     }
+    case "ingest.progress":
+      return { icon: BookOpenText, family: p("stage") === "error" ? "danger" : "knowledge", title: `Ingest ${p("file")}: ${p("stage")}`, detail: e.payload?.path ? p("path") : e.payload?.error ? p("error") : undefined };
+    case "mount.synced":
+      return { icon: RefreshCw, family: "knowledge", title: `Folder ${p("org_path")} synced (${plural(num(e, "files"), "file")})`, detail: p("host_path") };
+    case "connector.changed":
+      return { icon: Wrench, family: "tool", title: `Connector ${p("connector_id")} ${p("status")}` };
     case "memory.invalidated": {
       const n = strList(e, "invalidated").length;
       return { icon: Brain, family: "danger", title: `Memory invalidated: ${plural(n, "record")} stale`, detail: `${p("source")} changed · affects ${strList(e, "affected_agents").join(", ") || "no agents"}` };

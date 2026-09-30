@@ -7,6 +7,7 @@ import { Orb } from "@/components/desktop/orb";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useClient } from "@/app/providers";
+import { useSession } from "@/components/session";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { MosaicError } from "@/lib/mosaic-client";
@@ -65,6 +66,7 @@ export function ApprovalCard({
 }) {
   const client = useClient();
   const qc = useQueryClient();
+  const { me, can } = useSession();
   const [comment, setComment] = useState("");
   const sc = approval.syscall;
   const pending = (approval.status ?? "pending") === "pending";
@@ -156,7 +158,12 @@ export function ApprovalCard({
         </Section>
       </div>
 
-      {pending ? (
+      {pending && !can("approval.resolve") ? (
+        <p className="mt-5 flex items-center gap-2 rounded-xl border border-dashed border-line bg-surface-2 px-3 py-2.5 text-sm text-text-2">
+          <ShieldCheck className="size-4 shrink-0" aria-hidden />
+          Waiting for an approver. Your role ({me?.role ?? "none"}) can see this request but not decide it.
+        </p>
+      ) : pending ? (
         <footer className="mt-5 space-y-3">
           <Textarea
             value={comment}

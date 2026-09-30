@@ -1,221 +1,231 @@
 "use client";
 
+import type { Connector, ConnectorSyncResult } from "@mosaic/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Cable, CheckCircle2, ExternalLink, GitBranch, RefreshCw, Unplug, XCircle } from "lucide-react";
+import { CalendarDays, GitBranch, KeyRound, RefreshCw, ShieldCheck, Unplug } from "lucide-react";
+import Link from "next/link";
+import { useState } from "react";
 import { toast } from "sonner";
 import { useClient } from "@/app/providers";
+import { AgentAvatar } from "@/components/desktop/agent-avatar";
 import { Loading } from "@/components/desktop/orb";
-import type { ConnectorId, ConnectorInfo, ConnectorStatus } from "@/lib/mosaic-client";
-import { MosaicError } from "@/lib/mosaic-client";
+import { useSession } from "@/components/session";
+import { formatTime } from "@/components/status";
 import { cn } from "@/lib/utils";
+import { AppHeader, button, Card, errText, field, NotAllowed, Pill } from "./kit";
 
-function StatusBadge({ status }: { status: ConnectorStatus }) {
+const LOOK: Record<string, { icon: typeof GitBranch; tint: string; account: string; accountLabel: string; tokenLabel: string; help: string }> = {
+  github: {
+    icon: GitBranch,
+    tint: "#24292f",
+    account: "acme/reconciliation",
+    accountLabel: "Repository",
+    tokenLabel: "Personal access token (repo scope)",
+    help: "Agents read issues, pull requests and files; opening an issue or commenting waits for an approver.",
+  },
+  google_calendar: {
+    icon: CalendarDays,
+    tint: "#1a73e8",
+    account: "primary",
+    accountLabel: "Calendar",
+    tokenLabel: "OAuth access token (calendar scope)",
+    help: "Agents read free/busy and upcoming events; creating a meeting with a Meet link waits for an approver.",
+  },
+};
+
+function SyncResult({ r }: { r: ConnectorSyncResult }) {
+  const paths = [...(r.created ?? []), ...(r.updated ?? [])];
   return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-mono text-xs font-semibold",
-        status === "connected" && "bg-st-completed/15 text-st-completed",
-        status === "disconnected" && "bg-surface-3 text-text-2",
-        status === "error" && "bg-st-failed/15 text-st-failed",
-      )}
-    >
-      {status === "connected" ? <CheckCircle2 className="size-3" aria-hidden /> : status === "error" ? <XCircle className="size-3" aria-hidden /> : null}
-      {status}
-    </span>
+    <div className="rounded-xl bg-surface-2 p-2.5 text-xs">
+      <p className="font-medium">
+        {paths.length} {paths.length === 1 ? "document" : "documents"} brought into /org
+        {r.errors?.length ? <span className="text-st-failed"> · {r.errors.length} failed</span> : null}
+      </p>
+      <ul className="mt-1 space-y-0.5 font-mono">
+        {paths.slice(0, 5).map((p) => (
+          <li key={p}>
+            <Link href={`/knowledge?path=${encodeURIComponent(p)}`} className="text-brand hover:underline">{p}</Link>
+          </li>
+        ))}
+        {paths.length > 5 && <li className="text-text-2">and {paths.length - 5} more</li>}
+        {r.errors?.map((e) => <li key={e} className="text-st-failed">{e}</li>)}
+      </ul>
+    </div>
   );
 }
 
-const CONNECTOR_ICON: Record<ConnectorId, React.ElementType> = {
-  github: GitBranch,
-  google_calendar: Cable,
-};
-
-const CONNECTOR_SCOPES_HELP: Record<ConnectorId, string[]> = {
-  github: ["Read repos, issues, PRs, file contents", "Create issues and comments (requires approval)"],
-  google_calendar: ["Read free/busy and events", "Create events with Meet links (requires approval)"],
-};
-
-function ConnectorCard({ connector }: { connector: ConnectorInfo }) {
+function ConnectorCard({ c, canManage }: { c: Connector; canManage: boolean }) {
   const client = useClient();
   const qc = useQueryClient();
-  const Icon = CONNECTOR_ICON[connector.connector_id] ?? Cable;
-
+  const look = LOOK[c.connector_id] ?? LOOK.github;
+  const Icon = look.icon;
+  const [open, setOpen] = useState(false);
+  const [token, setToken] = useState("");
+  const [account, setAccount] = useState("");
+  const [result, setResult] = useState<ConnectorSyncResult | null>(null);
+  const refresh = () => qc.invalidateQueries({ queryKey: ["connectors"] });
   const connect = useMutation({
-    mutationFn: () => client.connectOAuth(connector.connector_id),
-    onSuccess: (data) => {
-      // In production, navigate the user to data.auth_url for OAuth
-      toast.info("OAuth flow would open", { description: data.auth_url });
-      qc.invalidateQueries({ queryKey: ["connectors"] });
+    mutationFn: () => client.connect(c.connector_id, { token: token.trim() || null, account: account.trim() || null }),
+    onSuccess: (x) => {
+      refresh();
+      setOpen(false);
+      setToken("");
+      toast.success(`${x.name} connected`, { description: x.mode === "live" ? "The token is in the vault; agents can use it through governed syscalls." : "Using the built-in demo data (no token given)." });
     },
-    onError: (e) => toast.error("Couldn't start connection", { description: e instanceof MosaicError ? e.message : String(e) }),
+    onError: (e) => toast.error("Not connected", { description: errText(e) }),
   });
-
   const disconnect = useMutation({
-    mutationFn: () => client.disconnectConnector(connector.connector_id),
+    mutationFn: () => client.disconnect(c.connector_id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["connectors"] });
-      toast.success(`${connector.name} disconnected`);
+      refresh();
+      setResult(null);
+      toast.success(`${c.name} disconnected`, { description: "Its token was deleted from the vault." });
     },
-    onError: (e) => toast.error("Couldn't disconnect", { description: e instanceof MosaicError ? e.message : String(e) }),
+    onError: (e) => toast.error("Not disconnected", { description: errText(e) }),
   });
-
   const sync = useMutation({
-    mutationFn: () => client.syncConnector(connector.connector_id),
-    onSuccess: () => toast.success("Sync queued"),
-    onError: (e) => toast.error("Couldn't sync", { description: e instanceof MosaicError ? e.message : String(e) }),
+    mutationFn: () => client.syncConnector(c.connector_id),
+    onSuccess: (r) => {
+      refresh();
+      setResult(r);
+    },
+    onError: (e) => toast.error("Sync failed", { description: errText(e) }),
   });
+  const connected = c.status === "connected";
 
   return (
-    <article className="rounded-xl border border-line bg-surface-1 p-5 shadow-panel">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span className="inline-flex size-10 items-center justify-center rounded-xl bg-surface-3">
-            <Icon className="size-5" aria-hidden />
-          </span>
-          <div>
-            <p className="font-semibold">{connector.name}</p>
-            <StatusBadge status={connector.status} />
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {connector.status === "connected" && (
-            <>
-              <button
-                type="button"
-                onClick={() => sync.mutate()}
-                disabled={sync.isPending}
-                aria-label={`Sync ${connector.name}`}
-                className="rounded-md border border-line p-1.5 hover:bg-surface-3 disabled:opacity-50"
-              >
-                <RefreshCw className={cn("size-4 text-text-2", sync.isPending && "animate-spin")} aria-hidden />
-              </button>
-              <button
-                type="button"
-                onClick={() => disconnect.mutate()}
-                disabled={disconnect.isPending}
-                aria-label={`Disconnect ${connector.name}`}
-                className="rounded-md border border-line p-1.5 hover:bg-surface-3 disabled:opacity-50"
-              >
-                <Unplug className="size-4 text-text-2" aria-hidden />
-              </button>
-            </>
-          )}
-          {connector.status !== "connected" && (
-            <button
-              type="button"
-              onClick={() => connect.mutate()}
-              disabled={connect.isPending}
-              className="rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-[var(--on-brand)] hover:bg-brand-hover disabled:opacity-50"
-            >
-              Connect
-            </button>
-          )}
+    <Card className="flex flex-col gap-3">
+      <div className="flex items-start gap-3">
+        <span className="flex size-11 shrink-0 items-center justify-center rounded-xl text-white" style={{ background: look.tint }}>
+          <Icon className="size-5.5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="flex flex-wrap items-center gap-2 font-semibold">
+            {c.name}
+            <Pill tone={connected ? "ok" : "neutral"}>{c.status}</Pill>
+            {connected && (
+              <Pill tone={c.mode === "live" ? "brand" : "warn"} title={c.mode === "live" ? "A real token from the vault" : "Built-in stand-in with the demo company's data"}>
+                {c.mode === "live" ? "live" : "demo data"}
+              </Pill>
+            )}
+          </p>
+          <p className="mt-0.5 text-sm text-text-2">{look.help}</p>
         </div>
       </div>
 
-      <div className="mt-4 grid gap-3 @md:grid-cols-2">
-        <div>
-          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-text-2">Capabilities</p>
-          <ul className="space-y-1">
-            {CONNECTOR_SCOPES_HELP[connector.connector_id].map((s) => (
-              <li key={s} className="flex items-start gap-1.5 text-xs text-text-2">
-                <CheckCircle2 className="mt-0.5 size-3 shrink-0 text-brand" aria-hidden />
-                {s}
-              </li>
-            ))}
-          </ul>
-        </div>
-        {connector.status === "connected" && (
-          <div className="space-y-1 text-xs text-text-2">
-            {connector.last_sync && (
-              <p>
-                Last sync: <span className="font-mono">{new Date(connector.last_sync).toLocaleString()}</span>
-              </p>
-            )}
-            {connector.connected_by && (
-              <p>
-                Connected by: <span className="font-mono">{connector.connected_by}</span>
-              </p>
-            )}
-            {connector.scopes && connector.scopes.length > 0 && (
-              <div>
-                <p className="mb-0.5 font-semibold uppercase tracking-wider">Scopes</p>
-                <div className="flex flex-wrap gap-1">
-                  {connector.scopes.map((s) => (
-                    <span key={s} className="rounded bg-surface-3 px-1.5 py-0.5 font-mono">{s}</span>
-                  ))}
-                </div>
-              </div>
-            )}
-            {connector.recent_agents && connector.recent_agents.length > 0 && (
-              <div>
-                <p className="mb-0.5 font-semibold uppercase tracking-wider">Recently used by</p>
-                <div className="flex flex-wrap gap-1">
-                  {connector.recent_agents.map((a) => (
-                    <span key={a} className="rounded bg-surface-3 px-1.5 py-0.5 font-mono">{a}</span>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </article>
-  );
-}
-
-export function ConnectionsApp() {
-  const client = useClient();
-  const connectors = useQuery({
-    queryKey: ["connectors"],
-    queryFn: () => client.connectors(),
-    refetchInterval: 30_000,
-  });
-
-  return (
-    <div className="mx-auto max-w-3xl space-y-5">
-      <div>
-        <h1 className="flex items-center gap-2 text-2xl font-semibold">
-          <Cable className="size-6 text-brand" aria-hidden />
-          Connections
-        </h1>
-        <p className="mt-1 text-sm text-text-2">
-          Connected services are registered as governed tools. Agents call them through the policy engine, and privileged
-          writes require approval.
-        </p>
-      </div>
-
-      {connectors.isError && (
-        <div className="flex flex-col items-center gap-3 rounded-xl border border-st-failed/50 bg-st-failed/8 p-8 text-center">
-          <XCircle className="size-8 text-st-failed opacity-70" aria-hidden />
-          <p className="text-sm text-st-failed">Gateway unreachable: {String(connectors.error)}</p>
-          <button type="button" onClick={() => connectors.refetch()} className="rounded-md border border-line px-3 py-1.5 text-sm hover:bg-surface-3">
-            Retry
-          </button>
-        </div>
-      )}
-
-      {connectors.isLoading && <Loading label="Loading connectors" state="working" />}
-
-      {connectors.isSuccess && connectors.data.length === 0 && (
-        <div className="rounded-xl border border-line bg-surface-1 px-6 py-12 text-center shadow-panel">
-          <Cable className="mx-auto mb-3 size-10 text-muted-foreground opacity-40" aria-hidden />
-          <p className="text-sm font-medium text-text-2">No connected services.</p>
-          <p className="mt-1 text-xs text-muted-foreground">Connect GitHub or Google Calendar to let agents read and write through governed actions.</p>
-        </div>
-      )}
-
-      <div className="space-y-4">
-        {(connectors.data ?? []).map((c) => (
-          <ConnectorCard key={c.connector_id} connector={c} />
+      <div className="flex flex-wrap gap-1.5">
+        {(c.capabilities ?? []).map((cap) => (
+          <Pill key={cap} mono tone={cap.endsWith(".write") ? "warn" : "neutral"} title={cap.endsWith(".write") ? "Needs an approver (policies/default.yaml)" : "Allowed"}>
+            {cap}
+            {cap.endsWith(".write") && <ShieldCheck className="size-3" />}
+          </Pill>
         ))}
       </div>
 
-      <p className="text-xs text-muted-foreground">
-        Need another integration?{" "}
-        <a href="https://github.com" target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 text-brand hover:underline">
-          Open an issue <ExternalLink className="size-3" aria-hidden />
-        </a>
+      {connected && (
+        <dl className="grid grid-cols-2 gap-2 text-xs">
+          <div className="rounded-lg bg-surface-2 px-2.5 py-1.5">
+            <dt className="text-text-2">Connected by</dt>
+            <dd className="font-mono">{c.connected_by ?? "…"}{c.connected_at ? ` · ${formatTime(c.connected_at)}` : ""}</dd>
+          </div>
+          <div className="rounded-lg bg-surface-2 px-2.5 py-1.5">
+            <dt className="text-text-2">Last sync</dt>
+            <dd className="font-mono">{c.last_sync ? formatTime(c.last_sync) : "never"}</dd>
+          </div>
+        </dl>
+      )}
+
+      {!!c.recent_agents?.length && (
+        <div className="flex items-center gap-2 text-xs text-text-2">
+          <span>Used recently by</span>
+          {c.recent_agents.slice(0, 5).map((a) => (
+            <span key={a} className="flex items-center gap-1 rounded-full bg-surface-2 py-0.5 pr-2 pl-0.5 font-mono" title={a}>
+              <AgentAvatar agent={a} size={18} state="COMPLETED" /> {a.replace(/-agent.*$/, "")}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {result && <SyncResult r={result} />}
+
+      {canManage && open && !connected && (
+        <form
+          className="space-y-2 rounded-xl border border-hairline bg-surface-2 p-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            connect.mutate();
+          }}
+        >
+          <label className="block text-xs">
+            <span className="mb-1 block font-medium">{look.accountLabel}</span>
+            <input value={account} onChange={(e) => setAccount(e.target.value)} placeholder={look.account} className={cn(field, "w-full bg-surface-1 font-mono")} />
+          </label>
+          <label className="block text-xs">
+            <span className="mb-1 flex items-center gap-1 font-medium">
+              <KeyRound className="size-3" /> {look.tokenLabel}
+            </span>
+            <input type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} placeholder="leave empty to use the built-in demo data" className={cn(field, "w-full bg-surface-1 font-mono")} />
+          </label>
+          <p className="text-[11px] text-text-2">Stored encrypted in the vault. Never shown again, never logged, never given to an agent.</p>
+          <div className="flex gap-2">
+            <button type="submit" disabled={connect.isPending} className={button.primary}>
+              Connect
+            </button>
+            <button type="button" onClick={() => setOpen(false)} className={button.quiet}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+
+      {canManage && (
+        <div className="mt-auto flex flex-wrap gap-2 pt-1">
+          {connected ? (
+            <>
+              <button type="button" onClick={() => sync.mutate()} disabled={sync.isPending} className={button.primary}>
+                <RefreshCw className={cn("size-4", sync.isPending && "animate-spin")} /> {sync.isPending ? "Syncing…" : "Sync into /org"}
+              </button>
+              <button type="button" onClick={() => disconnect.mutate()} disabled={disconnect.isPending} className={button.quiet}>
+                <Unplug className="size-4" /> Disconnect
+              </button>
+            </>
+          ) : (
+            !open && (
+              <button type="button" onClick={() => setOpen(true)} className={button.primary}>
+                Connect {c.name}
+              </button>
+            )
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/** Outside services as governed tools: connect an account, and agents may use it only through syscalls that policy
+ *  checks, audit records and (for writes) a person approves. */
+export function ConnectionsApp() {
+  const client = useClient();
+  const { me, can } = useSession();
+  const connectors = useQuery({ queryKey: ["connectors"], queryFn: () => client.connectors(), refetchInterval: 20_000 });
+  const canManage = can("connectors.manage");
+  const live = (connectors.data ?? []).filter((c) => c.status === "connected").length;
+
+  return (
+    <div className="mx-auto max-w-5xl space-y-4">
+      <AppHeader app="connections" title="Connections" sub="Outside services your agents may use, through governed tool calls only">
+        <Pill tone={live ? "ok" : "neutral"}>{live} connected</Pill>
+      </AppHeader>
+      {!canManage && <NotAllowed role={me?.role} permission="connectors.manage" what="connect or disconnect services" />}
+      {connectors.isPending && <Loading label="Loading connections" state="working" />}
+      {connectors.isError && <p className="text-sm text-st-failed">Could not load connections: {errText(connectors.error)}</p>}
+      <div className="grid gap-4 @3xl:grid-cols-2">
+        {(connectors.data ?? []).map((c) => (
+          <ConnectorCard key={c.connector_id} c={c} canManage={canManage} />
+        ))}
+      </div>
+      <p className="text-xs text-text-2">
+        Every call an agent makes through a connector is a syscall: checked against policy, written to the audit journal, and paused for approval when it writes. Syncing copies issues, READMEs and upcoming meetings into <span className="font-mono">/org/github</span> and <span className="font-mono">/org/calendar</span>, where agents can search them.
       </p>
     </div>
   );

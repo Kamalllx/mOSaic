@@ -1,363 +1,248 @@
 "use client";
 
+import type { Member, OrgRole } from "@mosaic/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2, ChevronDown, Crown, MailPlus, Shield, Trash2, UserCog, Users } from "lucide-react";
+import { Check, Mail, Trash2, UserPlus } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useClient } from "@/app/providers";
 import { Loading } from "@/components/desktop/orb";
-import type { MemberRole, OrgMember } from "@/lib/mosaic-client";
-import { MosaicError } from "@/lib/mosaic-client";
+import { PersonAvatar, useSession } from "@/components/session";
 import { cn } from "@/lib/utils";
+import { AppHeader, button, Card, errText, field, NotAllowed, Pill } from "./kit";
 
-const ROLE_ORDER: MemberRole[] = ["owner", "admin", "approver", "member", "viewer"];
+const RANK = ["viewer", "member", "approver", "admin", "owner"];
 
-const ROLE_LABEL: Record<MemberRole, string> = {
-  owner: "Owner",
-  admin: "Admin",
-  approver: "Approver",
-  member: "Member",
-  viewer: "Viewer",
+/** What each permission means, in the words the roles table uses. */
+const PERMISSION_LABEL: Record<string, string> = {
+  "task.create": "Start tasks",
+  "task.cancel": "Stop tasks and processes",
+  "approval.resolve": "Approve or reject actions",
+  "knowledge.read": "Read /org and results",
+  "knowledge.ingest": "Add knowledge, mount folders",
+  "connectors.manage": "Connect GitHub, Calendar",
+  "config.read": "See system settings",
+  "config.manage": "Change system settings",
+  "members.manage": "Invite and manage people",
 };
 
-const ROLE_ICON: Record<MemberRole, React.ElementType> = {
-  owner: Crown,
-  admin: Shield,
-  approver: UserCog,
-  member: Users,
-  viewer: Users,
-};
-
-function RoleBadge({ role }: { role: MemberRole }) {
-  const Icon = ROLE_ICON[role];
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-mono text-xs font-semibold",
-        role === "owner" && "bg-st-waiting/15 text-st-waiting",
-        role === "admin" && "bg-brand/15 text-brand",
-        role === "approver" && "bg-brand-subtle/30 text-foreground",
-        (role === "member" || role === "viewer") && "bg-surface-3 text-text-2",
-      )}
-    >
-      <Icon className="size-3" aria-hidden />
-      {ROLE_LABEL[role]}
-    </span>
-  );
-}
-
-function MemberRow({
-  m,
-  orgId,
-  canManage,
-}: {
-  m: OrgMember;
-  orgId: string;
-  canManage: boolean;
-}) {
+function MemberRow({ m, orgId, roles, canManage, myRole, me }: { m: Member; orgId: string; roles: OrgRole[]; canManage: boolean; myRole?: string | null; me?: string }) {
   const client = useClient();
   const qc = useQueryClient();
-  const [menuOpen, setMenuOpen] = useState(false);
-
-  const update = useMutation({
-    mutationFn: (role: MemberRole) => client.updateMember(orgId, m.user_id, { role }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["org-members", orgId] });
-      setMenuOpen(false);
-      toast.success("Role updated");
+  const [confirm, setConfirm] = useState(false);
+  const key = m.user_id || m.email;
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["org-members", orgId] });
+    qc.invalidateQueries({ queryKey: ["me"] });
+  };
+  const setRole = useMutation({
+    mutationFn: (role: string) => client.setRole(orgId, key, role),
+    onSuccess: (x) => {
+      refresh();
+      toast.success(`${x.name || x.email} is now ${x.role}`);
     },
-    onError: (e) => toast.error("Couldn't update role", { description: e instanceof MosaicError ? e.message : String(e) }),
+    onError: (e) => toast.error("Role not changed", { description: errText(e) }),
   });
-
   const remove = useMutation({
-    mutationFn: () => client.removeMember(orgId, m.user_id),
+    mutationFn: () => client.removeMember(orgId, key),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["org-members", orgId] });
-      toast.success("Member removed");
+      refresh();
+      toast.success(`${m.name || m.email} removed`);
     },
-    onError: (e) => toast.error("Couldn't remove member", { description: e instanceof MosaicError ? e.message : String(e) }),
+    onError: (e) => toast.error("Not removed", { description: errText(e) }),
   });
+  // Only an owner can hand out (or take away) ownership.
+  const grantable = roles.filter((r) => myRole === "owner" || r.role !== "owner").map((r) => r.role);
+  const self = me !== undefined && (m.user_id === me || m.email === me);
+  const editable = canManage && !self && (myRole === "owner" || m.role !== "owner");
 
   return (
-    <li className="flex items-center gap-3 px-4 py-3">
-      {/* Avatar */}
-      <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-surface-3 font-semibold text-sm uppercase" aria-hidden>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        {m.avatar ? <img src={m.avatar} alt="" className="size-9 rounded-full object-cover" /> : m.name.slice(0, 2)}
-      </span>
+    <li className="flex flex-wrap items-center gap-3 px-3 py-2.5">
+      <PersonAvatar name={m.name} email={m.email} url={m.avatar_url} size={34} />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium">{m.name}</p>
+        <p className="flex items-center gap-2 truncate text-sm font-medium">
+          {m.name || m.email.split("@")[0].replace(/^./, (c) => c.toUpperCase())}
+          {self && <Pill tone="brand">you</Pill>}
+          {m.status === "invited" && (
+            <Pill tone="warn">
+              <Mail className="size-3" /> invited
+            </Pill>
+          )}
+        </p>
         <p className="truncate font-mono text-xs text-text-2">{m.email}</p>
       </div>
-      {m.status === "invited" && (
-        <span className="rounded-md border border-line px-1.5 py-0.5 font-mono text-xs text-text-2">invited</span>
+      {editable ? (
+        <select
+          value={m.role}
+          onChange={(e) => setRole.mutate(e.target.value)}
+          disabled={setRole.isPending}
+          aria-label={`Role of ${m.email}`}
+          className={cn(field, "h-8 w-32 font-mono text-xs")}
+        >
+          {grantable.includes(m.role) ? null : <option value={m.role}>{m.role}</option>}
+          {grantable.map((r) => (
+            <option key={r} value={r}>{r}</option>
+          ))}
+        </select>
+      ) : (
+        <Pill mono tone={m.role === "owner" ? "brand" : "neutral"}>{m.role}</Pill>
       )}
-      <RoleBadge role={m.role} />
-      {canManage && m.role !== "owner" && (
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => setMenuOpen((o) => !o)}
-            aria-label={`Change role for ${m.name}`}
-            aria-expanded={menuOpen}
-            className="rounded p-1 hover:bg-surface-3"
-          >
-            <ChevronDown className="size-4 text-text-2" aria-hidden />
+      {editable &&
+        (confirm ? (
+          <span className="flex items-center gap-1">
+            <button type="button" onClick={() => remove.mutate()} disabled={remove.isPending} className={cn(button.danger, "h-8")}>
+              Remove
+            </button>
+            <button type="button" onClick={() => setConfirm(false)} className={cn(button.quiet, "h-8")}>
+              Keep
+            </button>
+          </span>
+        ) : (
+          <button type="button" onClick={() => setConfirm(true)} aria-label={`Remove ${m.email}`} className="rounded-lg p-2 text-text-2 hover:bg-st-failed/10 hover:text-st-failed">
+            <Trash2 className="size-4" />
           </button>
-          {menuOpen && (
-            <>
-              <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} aria-hidden />
-              <ul className="absolute right-0 z-50 mt-1 w-36 overflow-hidden rounded-lg border border-line bg-surface-1 shadow-panel">
-                {ROLE_ORDER.filter((r) => r !== "owner").map((r) => (
-                  <li key={r}>
-                    <button
-                      type="button"
-                      onClick={() => update.mutate(r)}
-                      disabled={update.isPending}
-                      className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-surface-3 disabled:opacity-50"
-                    >
-                      <RoleBadge role={r} />
-                    </button>
-                  </li>
-                ))}
-                <li className="border-t border-line">
-                  <button
-                    type="button"
-                    onClick={() => remove.mutate()}
-                    disabled={remove.isPending}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-st-failed hover:bg-st-failed/8 disabled:opacity-50"
-                  >
-                    <Trash2 className="size-3.5" aria-hidden />
-                    Remove
-                  </button>
-                </li>
-              </ul>
-            </>
-          )}
-        </div>
-      )}
+        ))}
     </li>
   );
 }
 
-function InviteForm({ orgId }: { orgId: string }) {
+function InviteForm({ orgId, roles, myRole }: { orgId: string; roles: OrgRole[]; myRole?: string | null }) {
   const client = useClient();
   const qc = useQueryClient();
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<MemberRole>("member");
-  const [open, setOpen] = useState(false);
-
+  const [role, setRole] = useState("member");
   const invite = useMutation({
-    mutationFn: () => client.inviteMember(orgId, { email, role }),
-    onSuccess: () => {
+    mutationFn: () => client.invite(orgId, { email: email.trim(), role }),
+    onSuccess: (m) => {
       qc.invalidateQueries({ queryKey: ["org-members", orgId] });
+      toast.success(`Invited ${m.email} as ${m.role}`, { description: "They join the moment they sign in with that email." });
       setEmail("");
-      setOpen(false);
-      toast.success("Invite sent");
     },
-    onError: (e) => toast.error("Couldn't send invite", { description: e instanceof MosaicError ? e.message : String(e) }),
+    onError: (e) => toast.error("Invite not sent", { description: errText(e) }),
   });
-
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="flex items-center gap-2 rounded-md border border-line bg-surface-2 px-3 py-2 text-sm hover:bg-surface-3"
-      >
-        <MailPlus className="size-4" aria-hidden />
-        Invite member
-      </button>
-    );
-  }
-
   return (
     <form
+      className="flex flex-wrap items-center gap-2"
       onSubmit={(e) => {
         e.preventDefault();
-        invite.mutate();
+        if (email.includes("@")) invite.mutate();
       }}
-      className="flex flex-wrap items-end gap-2 rounded-xl border border-line bg-surface-2 p-3"
     >
-      <div className="flex-1 min-w-48">
-        <label className="mb-1 block text-xs font-medium text-text-2">Email address</label>
-        <input
-          type="email"
-          required
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="colleague@company.com"
-          className="h-9 w-full rounded-md border border-line bg-surface-1 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
-        />
-      </div>
-      <div>
-        <label className="mb-1 block text-xs font-medium text-text-2">Role</label>
-        <select
-          value={role}
-          onChange={(e) => setRole(e.target.value as MemberRole)}
-          className="h-9 rounded-md border border-line bg-surface-1 px-2 text-sm"
-        >
-          {ROLE_ORDER.filter((r) => r !== "owner").map((r) => (
-            <option key={r} value={r}>{ROLE_LABEL[r]}</option>
+      <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="colleague@company.com" aria-label="Email to invite" className={cn(field, "flex-1")} />
+      <select value={role} onChange={(e) => setRole(e.target.value)} aria-label="Role" className={cn(field, "w-32 font-mono text-xs")}>
+        {roles
+          .filter((r) => myRole === "owner" || r.role !== "owner")
+          .map((r) => (
+            <option key={r.role} value={r.role}>{r.role}</option>
           ))}
-        </select>
-      </div>
-      <div className="flex gap-2">
-        <button
-          type="submit"
-          disabled={invite.isPending}
-          className="h-9 rounded-md bg-brand px-4 text-sm font-medium text-[var(--on-brand)] hover:bg-brand-hover disabled:opacity-50"
-        >
-          Send invite
-        </button>
-        <button
-          type="button"
-          onClick={() => setOpen(false)}
-          className="h-9 rounded-md border border-line px-3 text-sm hover:bg-surface-3"
-        >
-          Cancel
-        </button>
-      </div>
+      </select>
+      <button type="submit" disabled={invite.isPending || !email.includes("@")} className={button.primary}>
+        <UserPlus className="size-4" /> Invite
+      </button>
     </form>
   );
 }
 
-function RolesTable() {
-  const client = useClient();
-  const org = useQuery({ queryKey: ["org-me"], queryFn: () => client.getOrg() });
-  const orgId = org.data?.org_id ?? "acme";
-  const roles = useQuery({
-    queryKey: ["org-roles", orgId],
-    queryFn: () => client.orgRoles(orgId),
-    enabled: !!org.data,
-  });
-
-  if (roles.isLoading) return <Loading label="Loading roles" state="working" />;
-  if (roles.isError) return <p className="text-sm text-st-failed">Could not load roles.</p>;
-
+/** Roles down the side, permissions across: what each level of power may do, read from policies/rbac/roles.yaml. */
+function RoleMatrix({ roles, myRole }: { roles: OrgRole[]; myRole?: string | null }) {
+  const perms = Object.keys(PERMISSION_LABEL).filter((p) => roles.some((r) => r.permissions?.includes(p)));
+  const ordered = [...roles].sort((a, b) => RANK.indexOf(b.role) - RANK.indexOf(a.role));
   return (
-    <div className="overflow-x-auto rounded-xl border border-line bg-surface-1 shadow-panel">
-      <table className="w-full text-sm">
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[520px] text-sm">
         <thead>
-          <tr className="border-b border-line bg-surface-2 text-left text-xs font-semibold uppercase tracking-wider text-text-2">
-            <th className="px-4 py-2.5">Role</th>
-            <th className="px-4 py-2.5">Description</th>
-            <th className="px-4 py-2.5">Permissions</th>
+          <tr className="text-left text-xs text-text-2">
+            <th className="pb-2 font-medium">Permission</th>
+            {ordered.map((r) => (
+              <th key={r.role} className="pb-2 text-center font-mono font-semibold">
+                <span className={cn("rounded-md px-1.5 py-0.5", r.role === myRole && "bg-brand text-white")}>{r.role}</span>
+              </th>
+            ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-line">
-          {(roles.data ?? []).map((r) => (
-            <tr key={r.role}>
-              <td className="px-4 py-3 align-top">
-                <RoleBadge role={r.role as MemberRole} />
+        <tbody className="divide-y divide-hairline">
+          {perms.map((p) => (
+            <tr key={p}>
+              <td className="py-1.5 pr-3">
+                <span className="block">{PERMISSION_LABEL[p]}</span>
+                <span className="font-mono text-[11px] text-text-2">{p}</span>
               </td>
-              <td className="px-4 py-3 align-top text-text-2">{r.description}</td>
-              <td className="px-4 py-3 align-top">
-                <div className="flex flex-wrap gap-1">
-                  {r.permissions.map((p) => (
-                    <span key={p} className="rounded bg-surface-3 px-1.5 py-0.5 font-mono text-xs text-text-2">{p}</span>
-                  ))}
-                </div>
-              </td>
+              {ordered.map((r) => (
+                <td key={r.role} className={cn("text-center", r.role === myRole && "bg-brand-subtle/40")}>
+                  {r.permissions?.includes(p) ? <Check className="mx-auto size-4 text-st-completed" aria-label="yes" /> : <span className="text-text-2/40" aria-label="no">·</span>}
+                </td>
+              ))}
             </tr>
           ))}
         </tbody>
       </table>
+      <ul className="mt-3 grid gap-2 @xl:grid-cols-2">
+        {ordered.map((r) => (
+          <li key={r.role} className="text-xs text-text-2">
+            <span className="font-mono font-semibold text-foreground">{r.role}</span> · {r.description}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
 
+/** The organization: who is in it, what each of them may do, and invitations. */
 export function OrganizationApp() {
   const client = useClient();
-  const [tab, setTab] = useState<"members" | "roles">("members");
+  const { me, can } = useSession();
+  const org = useQuery({ queryKey: ["org-me"], queryFn: () => client.myOrg(), refetchInterval: 30_000 });
+  const orgId = org.data?.org_id;
+  const members = useQuery({ queryKey: ["org-members", orgId], queryFn: () => client.members(orgId!), enabled: !!orgId, refetchInterval: 30_000 });
+  const roles = useQuery({ queryKey: ["org-roles", orgId], queryFn: () => client.roles(orgId!), enabled: !!orgId, staleTime: 5 * 60_000 });
+  const canManage = can("members.manage");
+  const list = [...(members.data ?? [])].sort((a, b) => RANK.indexOf(b.role) - RANK.indexOf(a.role) || a.email.localeCompare(b.email));
+  const invited = list.filter((m) => m.status === "invited").length;
 
-  const org = useQuery({ queryKey: ["org-me"], queryFn: () => client.getOrg(), refetchInterval: 30_000 });
-  const orgId = org.data?.org_id ?? "acme";
-  const members = useQuery({
-    queryKey: ["org-members", orgId],
-    queryFn: () => client.orgMembers(orgId),
-    enabled: !!org.data,
-    refetchInterval: 30_000,
-  });
-
-  // In production this comes from the session principal. For now hard-code "admin" so
-  // we always show the invite/manage UI in the demo without an auth layer.
-  const myRole = "admin" as MemberRole;
-  const canManage = myRole === "owner" || myRole === "admin";
+  if (org.isError) return <p className="p-6 text-sm text-st-failed">Could not load the organization: {errText(org.error)}</p>;
+  if (!org.data) return <Loading label="Loading the organization" state="working" />;
 
   return (
-    <div className="mx-auto max-w-4xl space-y-5">
-      {/* Header */}
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-semibold">
-            <Building2 className="size-6 text-brand" aria-hidden />
-            {org.isLoading ? <span className="h-7 w-40 animate-pulse rounded bg-surface-3" aria-hidden /> : (org.data?.name ?? "Organization")}
-          </h1>
-          {org.data?.domain && <p className="mt-1 text-sm text-text-2">{org.data.domain}</p>}
+    <div className="mx-auto max-w-6xl space-y-4">
+      <AppHeader
+        app="organization"
+        title={org.data.name}
+        sub={
+          <>
+            <span className="font-mono">{org.data.org_id}</span>
+            {org.data.domain && <> · anyone at <span className="font-mono">@{org.data.domain}</span> joins as a member</>}
+          </>
+        }
+      >
+        <div className="flex items-center gap-2">
+          <Pill>{list.length - invited} {list.length - invited === 1 ? "member" : "members"}</Pill>
+          {invited > 0 && <Pill tone="warn">{invited} invited</Pill>}
+          {me?.role && <Pill tone="brand" mono>you: {me.role}</Pill>}
         </div>
-        {org.data && (
-          <span className="font-mono text-sm text-text-2">
-            {org.data.member_count} {org.data.member_count === 1 ? "member" : "members"}
-          </span>
-        )}
-      </div>
+      </AppHeader>
 
-      {/* Tabs */}
-      <div role="tablist" aria-label="Organization sections" className="flex gap-1 overflow-hidden rounded-xl border border-line bg-surface-1 p-1">
-        {(["members", "roles"] as const).map((t) => (
-          <button
-            key={t}
-            role="tab"
-            aria-selected={tab === t}
-            type="button"
-            onClick={() => setTab(t)}
-            className={cn("flex-1 rounded-lg py-2 text-sm font-medium capitalize transition-colors", tab === t ? "bg-surface-3 text-foreground" : "text-text-2 hover:bg-surface-2")}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
-
-      {tab === "members" && (
-        <div className="space-y-3">
-          {canManage && <InviteForm orgId={orgId} />}
-          <section aria-label="Members list" className="overflow-hidden rounded-xl border border-line bg-surface-1 shadow-panel">
-            {members.isError && (
-              <div className="flex flex-col items-center gap-3 p-8 text-center">
-                <p className="text-sm text-st-failed">Gateway unreachable: {String(members.error)}</p>
-                <button type="button" onClick={() => members.refetch()} className="rounded-md border border-line px-3 py-1.5 text-sm hover:bg-surface-3">
-                  Retry
-                </button>
-              </div>
-            )}
-            {members.isLoading && <Loading label="Loading members" state="working" />}
-            {members.isSuccess && members.data.length === 0 && (
-              <div className="px-4 py-10 text-center">
-                <Users className="mx-auto mb-2 size-8 text-muted-foreground opacity-40" aria-hidden />
-                <p className="text-sm font-medium text-text-2">No members yet.</p>
-                {canManage && <p className="mt-1 text-xs text-muted-foreground">Invite people using the form above.</p>}
-              </div>
-            )}
-            {members.isSuccess && (
-              <ul className="divide-y divide-line">
-                {members.data.map((m) => (
-                  <MemberRow key={m.user_id} m={m} orgId={orgId} canManage={canManage} />
+      <div className="grid gap-4 @[1180px]:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+        <Card title="People">
+          <div className="space-y-3">
+            {canManage ? <InviteForm orgId={org.data.org_id} roles={roles.data ?? []} myRole={me?.role} /> : <NotAllowed role={me?.role} permission="members.manage" what="invite people or change roles" />}
+            {members.isPending ? (
+              <Loading label="Loading members" state="working" />
+            ) : (
+              <ul className="divide-y divide-hairline rounded-xl border border-hairline">
+                {list.map((m) => (
+                  <MemberRow key={m.email} m={m} orgId={org.data.org_id} roles={roles.data ?? []} canManage={canManage} myRole={me?.role} me={me?.user.user_id} />
                 ))}
               </ul>
             )}
-          </section>
-        </div>
-      )}
-
-      {tab === "roles" && (
-        <div className="space-y-3">
-          <p className="text-sm text-text-2">
-            Role definitions are read from <span className="font-mono">policies/roles.yaml</span>. An administrator can adjust permissions without a code change.
+          </div>
+        </Card>
+        <Card title="What each role may do" aside={<span className="font-mono text-[11px] text-text-2">policies/rbac/roles.yaml</span>}>
+          {roles.data ? <RoleMatrix roles={roles.data} myRole={me?.role} /> : <Loading label="Loading roles" state="working" />}
+          <p className="mt-3 text-xs text-text-2">
+            Roles decide what people may ask of mOSaic. What agents may do is decided separately, by policy: an approver still signs off on every risky action an agent proposes.
           </p>
-          <RolesTable />
-        </div>
-      )}
+        </Card>
+      </div>
     </div>
   );
 }

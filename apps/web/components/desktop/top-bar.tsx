@@ -1,12 +1,13 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Bell, Search } from "lucide-react";
+import { Bell, LogOut, Search, Settings2, UserRound, Users } from "lucide-react";
 import Link from "next/link";
 import { useTheme } from "next-themes";
 import { Menubar } from "radix-ui";
 import { useSyncExternalStore } from "react";
 import { useClient } from "@/app/providers";
+import { PersonAvatar, useSession } from "@/components/session";
 import { APPS, type AppId } from "@/lib/desktop/routes";
 import type { Win } from "@/lib/desktop/windows";
 import { isActive } from "@/lib/events";
@@ -77,6 +78,7 @@ export function TopBar({ front, wins, actions, compact }: { front?: Win; wins: W
   // A shell-style path for the front window: ~/tasks/T-1c15, ~/knowledge?path=…
   const crumb = front ? `~${front.url.split("?")[0]}` : "~";
   const up = status.data?.ready;
+  const { me, signOut, switchUser } = useSession();
 
   return (
     <header className="chrome relative z-[5000] flex h-[30px] shrink-0 items-center gap-1 border-x-0 border-t-0 px-2.5 text-[13px] text-foreground">
@@ -161,6 +163,39 @@ export function TopBar({ front, wins, actions, compact }: { front?: Win; wins: W
           {pending > 0 && <span className="font-mono text-xs font-bold">{pending}</span>}
         </Link>
         <span className="whitespace-nowrap px-1.5 tabular-nums">{clock}</span>
+        {me && (
+          <Menubar.Root className="flex items-center">
+            <Menubar.Menu>
+              <Menubar.Trigger className="flex items-center gap-1.5 rounded-md py-0.5 pr-1.5 pl-0.5 font-sans outline-none hover:bg-surface-3 data-[state=open]:bg-surface-3" aria-label={`Signed in as ${me.user.email}`}>
+                <PersonAvatar name={me.user.name} email={me.user.email} url={me.user.avatar_url} size={20} />
+                {!compact && <span className="max-w-32 truncate text-[12.5px] font-medium">{me.org?.name ?? me.user.email}</span>}
+              </Menubar.Trigger>
+              <Menubar.Portal>
+                <Menubar.Content className={content} align="end" sideOffset={5}>
+                  <div className="flex items-center gap-2.5 px-2.5 py-2">
+                    <PersonAvatar name={me.user.name} email={me.user.email} url={me.user.avatar_url} size={34} />
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold">{me.user.name || me.user.email}</p>
+                      <p className="truncate text-xs text-text-2">{me.user.email}</p>
+                    </div>
+                  </div>
+                  {me.org && (
+                    <p className="mx-2.5 mb-1.5 flex items-center justify-between gap-3 rounded-md bg-surface-2 px-2 py-1 text-xs">
+                      <span className="truncate font-medium">{me.org.name}</span>
+                      <span className="font-mono text-text-2">{me.role}</span>
+                    </p>
+                  )}
+                  <Sep />
+                  <Item label="Organization" icon={<Users className="size-3.5" />} onSelect={() => actions.openApp("organization")} />
+                  <Item label="Settings" keys={KEYS.settings} icon={<Settings2 className="size-3.5" />} onSelect={() => actions.openApp("settings")} />
+                  <Sep />
+                  <Item label="Switch user…" icon={<UserRound className="size-3.5" />} onSelect={switchUser} />
+                  <Item label={me.mode === "google" ? "Sign out" : "Sign out (lock)"} icon={<LogOut className="size-3.5" />} onSelect={signOut} />
+                </Menubar.Content>
+              </Menubar.Portal>
+            </Menubar.Menu>
+          </Menubar.Root>
+        )}
       </div>
     </header>
   );

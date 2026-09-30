@@ -5,7 +5,22 @@ import type {
   AgentManifest,
   AgentProcess,
   Approval,
+  AuthConfig,
   Checkpoint,
+  Connector,
+  ConnectorConnect,
+  ConnectorSyncResult,
+  IngestResult,
+  KnowledgeMount,
+  KnowledgeMountCreate,
+  Me,
+  Member,
+  MemberInvite,
+  Org,
+  OrgCreate,
+  OrgRole,
+  Session,
+  SystemConfig,
   EvidenceSet,
   Event,
   GraphResult,
@@ -27,58 +42,60 @@ import type {
 import { ORG_HEADER, USER_HEADER, WS_EVENTS_PATH } from "@mosaic/contracts";
 
 
-// ---- Identity / org / connector types -----------------------------------------------
-// These are gateway-local shapes (not yet in the shared contract) for the new Phase 2 surfaces.
-
-export type MemberRole = "owner" | "admin" | "approver" | "member" | "viewer";
-export type MemberStatus = "active" | "invited";
-
-export interface OrgMember {
-  user_id: string;
-  email: string;
-  name: string;
-  avatar?: string;
-  role: MemberRole;
-  status: MemberStatus;
-  joined_at?: string;
-}
-
-export interface Org {
-  org_id: string;
-  name: string;
-  domain?: string;
-  created_at: string;
-  member_count: number;
-}
-
-export interface RoleDefinition {
-  role: MemberRole;
-  description: string;
-  permissions: string[];
-}
-
-export type ConnectorId = "github" | "google_calendar";
-export type ConnectorStatus = "connected" | "disconnected" | "error";
-
-export interface ConnectorInfo {
-  connector_id: ConnectorId;
-  name: string;
-  status: ConnectorStatus;
-  scopes?: string[];
-  last_sync?: string;
-  connected_by?: string;
-  connected_at?: string;
-  recent_agents?: string[];
-}
-
-export interface IngestProgressEvent {
+/** One file's progress through upload, conversion and indexing, from `ingest.progress` events. */
+export interface IngestProgress {
   file: string;
-  stage: "converting" | "writing" | "indexing" | "done" | "error";
-  error?: string;
-  path?: string;
+  stage: "received" | "indexed" | "skipped" | "error";
+  path?: string | null;
+  error?: string | null;
 }
-// -------------------------------------------------------------------------------------
 
+/** Where the signed-in session lives in this browser. A tiny external store, so React reads it with
+ *  useSyncExternalStore: other tabs signing in or out are seen through the storage event. */
+export const SESSION_KEY = "mosaic.session";
+const SESSION_EVENT = "mosaic:session";
+
+export function parseSession(raw: string | null): Session | null {
+  if (!raw) return null;
+  try {
+    const s = JSON.parse(raw) as Session;
+    return s.token && new Date(s.expires_at).getTime() > Date.now() ? s : null;
+  } catch {
+    return null;
+  }
+}
+
+export function readSessionRaw(): string {
+  try {
+    return window.localStorage.getItem(SESSION_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function loadSession(): Session | null {
+  return typeof window === "undefined" ? null : parseSession(readSessionRaw());
+}
+
+export function saveSession(s: Session | null) {
+  try {
+    if (s) window.localStorage.setItem(SESSION_KEY, JSON.stringify(s));
+    else window.localStorage.removeItem(SESSION_KEY);
+  } catch {
+    /* storage blocked: the session lasts until the next reload */
+  }
+  window.dispatchEvent(new Event(SESSION_EVENT));
+}
+
+export function subscribeSession(onChange: () => void): () => void {
+  const onStorage = (e: StorageEvent) => e.key === SESSION_KEY && onChange();
+  window.addEventListener(SESSION_EVENT, onChange);
+  window.addEventListener("storage", onStorage);
+  return () => {
+    window.removeEventListener(SESSION_EVENT, onChange);
+    window.removeEventListener("storage", onStorage);
+  };
+}
 
 export class MosaicError extends Error {
   constructor(public status: number, public code: string, message: string) {
@@ -98,24 +115,52 @@ export function artifactUrl(baseUrl: string, ref: string): string | null {
   return `${baseUrl}/tasks/${encodeURIComponent(m[1])}/artifacts/${name}`;
 }
 
-export function createMosaicClient(baseUrl = DEFAULT_BASE_URL, user = "alice", org = "acme") {
-  const headers = { "Content-Type": "application/json", [USER_HEADER]: user, [ORG_HEADER]: org };
+export function createMosaicClient(baseUrl = DEFAULT_BASE_URL, user = "alice", org = "acme", token: string | null = null) {
+  // Signed in: the session token. Otherwise (dev mode) the X-Mosaic-User/Org headers, which the gateway treats as alice@acme.
+  const auth = (): Record<string, string> => (token ? { Authorization: `Bearer ${token}` } : { [USER_HEADER]: user, [ORG_HEADER]: org });
+  const json = () => ({ "Content-Type": "application/json", ...auth() });
+
+  async function fail(res: Response): Promise<never> {
+    const err = await res.json().catch(() => ({ code: "INTERNAL", message: res.statusText }));
+    throw new MosaicError(res.status, err.code ?? "INTERNAL", err.message ?? err.detail ?? res.statusText);
+  }
 
   async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
-    const res = await fetch(`${baseUrl}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ code: "INTERNAL", message: res.statusText }));
-      throw new MosaicError(res.status, err.code ?? "INTERNAL", err.message ?? err.detail ?? res.statusText);
-    }
-    return res.json() as Promise<T>;
+    const res = await fetch(`${baseUrl}${path}`, { method, headers: json(), body: body === undefined ? undefined : JSON.stringify(body) });
+    if (!res.ok) return fail(res);
+    return (res.status === 204 ? undefined : res.json()) as Promise<T>;
   }
   const q = (params: Record<string, string | number | undefined>) => {
     const s = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]));
     return s.size ? `?${s}` : "";
   };
 
+  const withToken = (url: string | null) => (url && token ? `${url}${url.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}` : url);
+  const orgPath = (orgId: string) => `/orgs/${encodeURIComponent(orgId)}`;
+
   return {
     baseUrl,
+    /** The session this client sends, if any (a new client is made when it changes). */
+    token,
+    // identity and the org
+    authConfig: () => call<AuthConfig>("GET", "/auth/config"),
+    devLogin: (email: string, name = "") => call<Session>("POST", "/auth/dev", { email, name }),
+    googleLogin: (idToken: string) => call<Session>("POST", "/auth/google", { id_token: idToken }),
+    me: () => call<Me>("GET", "/auth/me"),
+    logout: () => call<void>("POST", "/auth/logout"),
+    createOrg: (body: OrgCreate) => call<Org>("POST", "/orgs", body),
+    myOrg: () => call<Org>("GET", "/orgs/me"),
+    members: (orgId: string) => call<Member[]>("GET", `${orgPath(orgId)}/members`),
+    invite: (orgId: string, body: MemberInvite) => call<Member>("POST", `${orgPath(orgId)}/members`, body),
+    setRole: (orgId: string, member: string, role: string) =>
+      call<Member>("PATCH", `${orgPath(orgId)}/members/${encodeURIComponent(member)}`, { role }),
+    removeMember: (orgId: string, member: string) => call<void>("DELETE", `${orgPath(orgId)}/members/${encodeURIComponent(member)}`),
+    roles: (orgId: string) => call<OrgRole[]>("GET", `${orgPath(orgId)}/roles`),
+    // connectors (GitHub, Google Calendar): governed tools; tokens go to the vault and never come back
+    connectors: () => call<Connector[]>("GET", "/connectors"),
+    connect: (id: string, body: ConnectorConnect = {}) => call<Connector>("POST", `/connectors/${encodeURIComponent(id)}/connect`, body),
+    disconnect: (id: string) => call<void>("DELETE", `/connectors/${encodeURIComponent(id)}`),
+    syncConnector: (id: string) => call<ConnectorSyncResult>("POST", `/connectors/${encodeURIComponent(id)}/sync`),
     // tasks
     createTask: (body: TaskCreate) => call<Task>("POST", "/tasks", body),
     listTasks: () => call<Task[]>("GET", "/tasks"),
@@ -123,15 +168,12 @@ export function createMosaicClient(baseUrl = DEFAULT_BASE_URL, user = "alice", o
     cancelTask: (id: string) => call<Task>("POST", `/tasks/${id}/cancel`),
     taskArtifacts: (id: string) => call<string[]>("GET", `/tasks/${id}/artifacts`),
     /** URL of an artifact's bytes (for <img src>, links); null if `ref` isn't artifact://<task>/<name>. */
-    artifactUrl: (ref: string) => artifactUrl(baseUrl, ref),
+    artifactUrl: (ref: string) => withToken(artifactUrl(baseUrl, ref)),
     artifactText: async (ref: string) => {
       const url = artifactUrl(baseUrl, ref);
       if (!url) throw new MosaicError(400, "BAD_REQUEST", `not an artifact ref: ${ref}`);
-      const res = await fetch(url, { headers });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ code: "INTERNAL", message: res.statusText }));
-        throw new MosaicError(res.status, err.code ?? "INTERNAL", err.message ?? res.statusText);
-      }
+      const res = await fetch(url, { headers: auth() });
+      if (!res.ok) return fail(res);
       return res.text();
     },
     // processes
@@ -166,33 +208,23 @@ export function createMosaicClient(baseUrl = DEFAULT_BASE_URL, user = "alice", o
     policies: () => call<PolicyDocument[]>("GET", "/policies"),
     // system
     status: () => call<SystemStatus>("GET", "/system/status"),
+    systemConfig: () => call<SystemConfig>("GET", "/system/config"),
     resources: () => call<ResourceSnapshot>("GET", "/system/resources"),
     sandboxes: (taskId?: string) => call<SandboxInfo[]>("GET", `/sandboxes${q({ task_id: taskId })}`),
-    // upload (multipart – returns IngestResult-compatible shape)
-    upload: async (files: File[], folder: string, privacy = "internal") => {
+    // files from outside /org: uploads, and folders of this computer mounted into /org/mnt/<name>
+    upload: async (files: File[], folder = "/org/uploads", privacy?: string) => {
       const fd = new FormData();
-      for (const f of files) fd.append("files", f);
+      for (const f of files) fd.append("files", f, f.name);
       fd.append("target_folder", folder);
-      fd.append("privacy", privacy);
-      const res = await fetch(`${baseUrl}/knowledge/upload`, { method: "POST", headers: { [USER_HEADER]: user, [ORG_HEADER]: org }, body: fd });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ code: "INTERNAL", message: res.statusText }));
-        throw new MosaicError(res.status, err.code ?? "INTERNAL", err.message ?? res.statusText);
-      }
-      return res.json() as Promise<{ ingested: number; paths: string[] }>;
+      if (privacy) fd.append("privacy", privacy);
+      const res = await fetch(`${baseUrl}/knowledge/upload`, { method: "POST", headers: auth(), body: fd });
+      if (!res.ok) return fail(res);
+      return res.json() as Promise<IngestResult>;
     },
-    // identity / org / members
-    getOrg: () => call<Org>("GET", "/orgs/me"),
-    orgMembers: (orgId: string) => call<OrgMember[]>("GET", `/orgs/${encodeURIComponent(orgId)}/members`),
-    inviteMember: (orgId: string, body: { email: string; role: MemberRole }) => call<OrgMember>("POST", `/orgs/${encodeURIComponent(orgId)}/members`, body),
-    updateMember: (orgId: string, userId: string, body: { role: MemberRole }) => call<OrgMember>("PATCH", `/orgs/${encodeURIComponent(orgId)}/members/${encodeURIComponent(userId)}`, body),
-    removeMember: (orgId: string, userId: string) => call<void>("DELETE", `/orgs/${encodeURIComponent(orgId)}/members/${encodeURIComponent(userId)}`),
-    orgRoles: (orgId: string) => call<RoleDefinition[]>("GET", `/orgs/${encodeURIComponent(orgId)}/roles`),
-    // connectors
-    connectors: () => call<ConnectorInfo[]>("GET", "/connectors"),
-    connectOAuth: (connectorId: ConnectorId) => call<{ auth_url: string }>("POST", `/connectors/${connectorId}/connect`),
-    disconnectConnector: (connectorId: ConnectorId) => call<void>("DELETE", `/connectors/${connectorId}`),
-    syncConnector: (connectorId: ConnectorId) => call<{ queued: boolean }>("POST", `/connectors/${connectorId}/sync`),
+    mounts: () => call<KnowledgeMount[]>("GET", "/knowledge/mounts"),
+    addMount: (body: KnowledgeMountCreate) => call<KnowledgeMount>("POST", "/knowledge/mounts", body),
+    syncMount: (name: string) => call<KnowledgeMount>("POST", `/knowledge/mounts/${encodeURIComponent(name)}/sync`),
+    removeMount: (name: string) => call<void>("DELETE", `/knowledge/mounts/${encodeURIComponent(name)}`),
 
     /** Subscribe to the live event stream, reconnecting with exponential backoff. Returns an unsubscribe function.
      *  The real gateway replays a task's history on connect, so consumers must de-duplicate by event_id. */
@@ -200,8 +232,11 @@ export function createMosaicClient(baseUrl = DEFAULT_BASE_URL, user = "alice", o
       onEvent: (e: Event) => void,
       opts: { taskId?: string; types?: string[]; onStatus?: (s: StreamStatus) => void } = {},
     ): () => void {
-      const url = new URL(WS_EVENTS_PATH + q({ task_id: opts.taskId, types: opts.types?.join(",") }), baseUrl);
-      url.protocol = url.protocol.replace("http", "ws");
+      const socketUrl = () => {
+        const url = new URL(WS_EVENTS_PATH + q({ task_id: opts.taskId, types: opts.types?.join(","), token: token ?? undefined }), baseUrl);
+        url.protocol = url.protocol.replace("http", "ws");
+        return url;
+      };
       let ws: WebSocket | null = null;
       let stopped = false;
       let attempt = 0;
@@ -209,7 +244,7 @@ export function createMosaicClient(baseUrl = DEFAULT_BASE_URL, user = "alice", o
 
       const connect = () => {
         opts.onStatus?.(attempt === 0 ? "connecting" : "reconnecting");
-        ws = new WebSocket(url);
+        ws = new WebSocket(socketUrl());
         ws.onopen = () => {
           attempt = 0;
           opts.onStatus?.("open");
