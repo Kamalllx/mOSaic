@@ -76,7 +76,7 @@ def test_specialists_think_in_counts_never_in_retrieved_text():
         for t in thoughts:
             assert t.pid == ctx.pid and not any(sn in t.text for sn in snippets), (name, t.text)
     _, finance = _thoughts(FinanceAgent(), "finance-agent", FINANCE_REPLY)
-    assert finance[-1].text.endswith("overrun 6.2 lakh (31%).")
+    assert "lakh" not in finance[-1].text and finance[-1].text.endswith("with cited evidence.")  # counts, not model figures
 
 
 def test_the_firewall_thought_counts_flagged_documents():
@@ -93,3 +93,19 @@ def test_think_never_fails_a_run():
     ctx = ctx_for("finance-agent")
     asyncio.run(think(ctx, "a-very-long-step-label-that-goes-past-forty-chars", "x" * 500))
     assert ctx.narrations[0].text == "x" * 240 and len(ctx.narrations[0].step) == 40
+
+
+def test_agents_are_announced_in_the_order_they_are_created():
+    # What qwen2.5:7b planned for Zeus: research twice, the action step in the middle of the list.
+    plan = {"rationale": "r", "steps": [
+        {"step_id": "s1", "agent": "research-agent", "goal": "vendor"},
+        {"step_id": "s2", "agent": "finance-agent", "goal": "budget"},
+        {"step_id": "s3", "agent": "engineering-agent", "goal": "slip", "depends_on": ["s2"]},
+        {"step_id": "s4", "agent": "action-agent", "goal": "tracker"},
+        {"step_id": "s5", "agent": "research-agent", "goal": "more vendor"},
+    ]}
+    ctx, spawned = _planner_ctx(plan, SYNTHESIS, children=WITH_FINDINGS)
+    asyncio.run(PlannerAgent().run(ZEUS, ctx))
+    roles = [n.role for n in ctx.narrations if isinstance(n, AgentPlanned)]
+    assert roles == [a for a, _ in spawned] == ["research-agent", "finance-agent", "research-agent", "engineering-agent",
+                                                  "action-agent"]

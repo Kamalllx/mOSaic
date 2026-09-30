@@ -143,7 +143,7 @@ class EngineeringAgent(MosaicAgent):
                           level="warning")
             eng_out.slip_weeks = weeks
         await ctx.log(f"engineering-agent: analysis complete — {eng_out.slip_weeks} weeks slip, {len(eng_out.blockers)} blockers")
-        await think(ctx, "analyze", f"Found {plural(len(eng_out.blockers), 'blocker')} behind a {plural(eng_out.slip_weeks, 'week')} slip.")
+        await think(ctx, "analyze", f"Found {plural(len(eng_out.blockers), 'blocker')} behind a {eng_out.slip_weeks}-week slip.")
 
         retrieved = {h.path for h in evidence.hits}
         for d in eng_out.blockers:

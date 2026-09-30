@@ -95,13 +95,15 @@ class FinanceAgent(MosaicAgent):
             )
 
         await ctx.log(f"finance-agent: analysis complete — overrun {finance_out.overrun_lakh}L ({finance_out.overrun_pct}%)")
-        await think(ctx, "analyze", f"Found {plural(len(finance_out.drivers), 'cost driver')}; "
-                                    f"overrun {finance_out.overrun_lakh:g} lakh ({finance_out.overrun_pct:g}%).")
 
         retrieved = {h.path for h in evidence.hits} | {h.path for h in policies.hits}
         for d in finance_out.drivers:
             if isinstance(d, dict):
                 d["evidence"] = await keep_retrieved(ctx, d.get("evidence", []), retrieved, "drivers")
+        # Counts only: the 7B's own overrun figures can be off (the planner's synthesis states the checked ones), and a
+        # wrong number on the live story is worse than none.
+        cited = sum(1 for d in finance_out.drivers if isinstance(d, dict) and d.get("evidence"))
+        await think(ctx, "analyze", f"Found {plural(len(finance_out.drivers), 'cost driver')}, {cited} with cited evidence.")
 
         # Send evidence to parent if we have one
         if ctx.ppid:

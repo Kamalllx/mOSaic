@@ -111,6 +111,19 @@ def understood(goal: str, project: str, steps: list[PlanStep]) -> TaskUnderstood
                           capabilities_needed=list(caps)[:20], plan_summary=f"{summary}."[:240])
 
 
+def execution_order(steps: list[PlanStep]) -> list[PlanStep]:
+    """The steps in the order run() spawns them: rounds of ready steps, each round in plan order."""
+    done: set[str] = set()
+    order: list[PlanStep] = []
+    remaining = list(steps)
+    while remaining:
+        ready = [s for s in remaining if all(d in done for d in s.depends_on)] or remaining  # a cycle ends run() too
+        order += ready
+        done.update(s.step_id for s in ready)
+        remaining = [s for s in remaining if s not in ready]
+    return order
+
+
 def planned(step: PlanStep) -> AgentPlanned:
     why, scope, caps = SPECIALIST_ROLES.get(step.agent, (f"Assigned by the plan as step {step.step_id}", [], []))
     return AgentPlanned(role=step.agent, why=why, scope=scope, capabilities=caps)
@@ -218,7 +231,7 @@ class PlannerAgent(MosaicAgent):
 
         await ctx.log(f"planner: executing {len(steps)} steps")
         await narrate(ctx, understood(goal, project, steps))
-        for s in steps:
+        for s in execution_order(steps):  # the order the kernel will create them in
             await narrate(ctx, planned(s))
 
         # 5 & 6. Execute steps respecting depends_on (parallel where possible)
