@@ -16,16 +16,13 @@ import {
 import "@xyflow/react/dist/style.css";
 import { Hourglass, Pause, Play, Skull } from "lucide-react";
 import { useTheme } from "next-themes";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { NODE_H, NODE_W, columnsFor, layout } from "@/lib/process-layout";
 import { agentTone } from "@/lib/tones";
 import { cn } from "@/lib/utils";
 import { AgentStateBadge } from "./status";
 import { availableActions, type ProcessAction, useProcessActions } from "./task/process-actions";
 
-const NODE_W = 212;
-const NODE_H = 112;
-const GAP_X = 20;
-const GAP_Y = 64;
 
 interface NodeData extends Record<string, unknown> {
   proc: AgentProcess;
@@ -124,38 +121,6 @@ function FitOnGrowth({ pids }: { pids: string }) {
   return null;
 }
 
-/** Tidy top-down layout: leaves take one slot each, parents sit centred over their children. */
-export function layout(procs: AgentProcess[]): { positions: Record<number, { x: number; y: number }>; edges: [number, number][] } {
-  const byPid = new Map(procs.map((p) => [p.pid, p]));
-  const children = new Map<number, number[]>();
-  const roots: number[] = [];
-  for (const p of [...procs].sort((a, b) => a.pid - b.pid)) {
-    if (p.ppid && byPid.has(p.ppid)) children.set(p.ppid, [...(children.get(p.ppid) ?? []), p.pid]);
-    else roots.push(p.pid);
-  }
-  const positions: Record<number, { x: number; y: number }> = {};
-  const edges: [number, number][] = [];
-  let slot = 0;
-  const place = (pid: number, depth: number): number => {
-    const kids = children.get(pid) ?? [];
-    let x: number;
-    if (!kids.length) {
-      x = slot * (NODE_W + GAP_X);
-      slot += 1;
-    } else {
-      const xs = kids.map((k) => {
-        edges.push([pid, k]);
-        return place(k, depth + 1);
-      });
-      x = (Math.min(...xs) + Math.max(...xs)) / 2;
-    }
-    positions[pid] = { x, y: depth * (NODE_H + GAP_Y) };
-    return x;
-  };
-  roots.forEach((r) => place(r, 0));
-  return { positions, edges };
-}
-
 export function ProcessTree({
   processes,
   selected = null,
@@ -168,8 +133,18 @@ export function ProcessTree({
   const { act, dialog } = useProcessActions();
   const { resolvedTheme } = useTheme();
   const procs = useMemo(() => Object.values(processes), [processes]);
+  const pane = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    const el = pane.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setWidth(e.contentRect.width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const cols = width ? columnsFor(width) : Number.POSITIVE_INFINITY;
   const { nodes, edges } = useMemo(() => {
-    const { positions, edges: pairs } = layout(procs);
+    const { positions, edges: pairs } = layout(procs, cols);
     const nodes: ProcNode[] = procs.map((p) => ({
       id: String(p.pid),
       type: "proc",
@@ -190,10 +165,10 @@ export function ProcessTree({
     return { nodes, edges };
     // `act` is recreated each render but only opens a dialog or fires a mutation; depending on it would rebuild the graph every render
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [procs, processes, selected, onSelect]);
+  }, [procs, processes, selected, onSelect, cols]);
 
   return (
-    <div className="relative h-full min-h-0">
+    <div ref={pane} className="relative h-full min-h-0">
       {procs.length === 0 ? (
         <p className="p-4 text-sm text-muted-foreground">No processes yet.</p>
       ) : (
@@ -211,7 +186,7 @@ export function ProcessTree({
             style={{ background: "transparent" }}
           >
             <Background gap={24} size={1} color="var(--line)" />
-            <FitOnGrowth pids={procs.map((p) => `${p.pid}<${p.ppid ?? ""}`).sort().join(",")} />
+            <FitOnGrowth pids={`${cols}|${procs.map((p) => `${p.pid}<${p.ppid ?? ""}`).sort().join(",")}`} />
           </ReactFlow>
         </ReactFlowProvider>
       )}
