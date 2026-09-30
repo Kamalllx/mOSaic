@@ -88,19 +88,23 @@ class CalendarBackend:
     name = "calendar"
 
     def __init__(self, token_or_mode: str = "inprocess") -> None:
-        if token_or_mode == "inprocess":
-            transport: httpx.AsyncBaseTransport | None = _MockCalendarTransport()
-            base_url = _CALENDAR_BASE
-        else:
-            transport = None
-            base_url = _CALENDAR_BASE
+        self._undo: dict[str, dict[str, Any]] = {}
+        self.client: httpx.AsyncClient
+        self.configure(None if token_or_mode == "inprocess" else token_or_mode)
+
+    @property
+    def live(self) -> bool:
+        return self._token is not None
+
+    def configure(self, token: str | None) -> None:
+        """Built-in mock without a token, the Google Calendar API with one (see GitHubBackend.configure)."""
+        self._token = token
         self.client = httpx.AsyncClient(
-            base_url=base_url,
-            transport=transport,
-            headers={"Authorization": f"Bearer {token_or_mode}"},
+            base_url=_CALENDAR_BASE,
+            transport=None if token else _MockCalendarTransport(),
+            headers={"Authorization": f"Bearer {token}"} if token else {},
             timeout=15,
         )
-        self._undo: dict[str, dict[str, Any]] = {}
 
     def spec(self) -> ToolSpec:
         return SPEC

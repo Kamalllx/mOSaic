@@ -14,6 +14,10 @@ agent.retry:      {owner: P1, risk: high,   approval: required, desc: "Kernel-in
 
 jira.read:        {owner: P1, risk: low,    approval: never,    desc: "Read issues (mock-jira in the demo)"}
 jira.write:       {owner: P1, risk: medium, approval: required, desc: "Update issues / add comments (reversible)"}
+github.read:      {owner: P1, risk: low,    approval: never,    desc: "Read repositories, issues, pull requests and files (a connected GitHub, or the built-in mock)"}
+github.write:     {owner: P1, risk: medium, approval: required, desc: "Create issues and comments (comments are reversible)"}
+calendar.read:    {owner: P1, risk: low,    approval: never,    desc: "Read events and free/busy (a connected Google Calendar, or the built-in mock)"}
+calendar.write:   {owner: P1, risk: medium, approval: required, desc: "Create events, optionally with a Meet link (reversible)"}
 fs.read:          {owner: P1, risk: low,    approval: never,    desc: "Read files in the task workspace"}
 fs.write:         {owner: P1, risk: low,    approval: auto,     desc: "Write files in the task workspace (reversible)"}
 browser.open:     {owner: "P1 executor + P4 driver", risk: medium, approval: auto,     desc: "Open a URL in the isolated sandbox browser"}

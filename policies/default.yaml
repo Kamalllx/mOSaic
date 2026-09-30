@@ -14,9 +14,11 @@ filesystem:
 network:
   allow: []
 tools:
-  allow: ["knowledge.*", "jira.read", "fs.read"]
+  allow: ["knowledge.*", "jira.read", "fs.read", "github.read", "calendar.read"]
 approval:
   jira.write: required
+  github.write: required
+  calendar.write: required
   fs.write: auto
   browser.open: auto
   database.write: required

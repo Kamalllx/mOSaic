@@ -121,20 +121,24 @@ class GitHubBackend:
     name = "github"
 
     def __init__(self, token_or_mode: str = "inprocess") -> None:
-        if token_or_mode == "inprocess":
-            # Dev mode: use a mock transport that returns plausible data
-            transport = _MockTransport()
-            base_url = "https://api.github.com"
-        else:
-            transport = None
-            base_url = "https://api.github.com"
+        self._undo: dict[str, dict[str, Any]] = {}
+        self.client: httpx.AsyncClient
+        self.configure(None if token_or_mode == "inprocess" else token_or_mode)
+
+    @property
+    def live(self) -> bool:
+        return self._token is not None
+
+    def configure(self, token: str | None) -> None:
+        """Switch between the built-in mock (no token) and the real API. The gateway calls this when an org connects
+        or disconnects GitHub; the token stays inside this backend and the vault, never in an invocation or a log."""
+        self._token = token
         self.client = httpx.AsyncClient(
-            base_url=base_url,
-            transport=transport,
-            headers={"Authorization": f"Bearer {token_or_mode}", "Accept": "application/vnd.github+json"},
+            base_url="https://api.github.com",
+            transport=None if token else _MockTransport(),
+            headers={"Accept": "application/vnd.github+json", **({"Authorization": f"Bearer {token}"} if token else {})},
             timeout=15,
         )
-        self._undo: dict[str, dict[str, Any]] = {}
 
     def spec(self) -> ToolSpec:
         return SPEC
@@ -244,33 +248,63 @@ def _flatten_issue(i: dict[str, Any]) -> dict[str, Any]:
 
 
 class _MockTransport(httpx.AsyncBaseTransport):
-    """In-process mock for dev/demo: returns plausible data without hitting GitHub."""
+    """In-process stand-in for GitHub (dev and the demo): the demo company's repository, and it remembers what is written,
+    so verification and rollback behave like the real API."""
+
+    ISSUES = [
+        {"number": 12, "title": "Backfill failed on duplicate reconciliation ids", "state": "open",
+         "body": "The APOLLO-12 migration backfill stopped at 38% on duplicate recon_id values.", "labels": [{"name": "apollo"}]},
+        {"number": 31, "title": "Upgrade to PayCo SDK v5 (blocked on certification)", "state": "open",
+         "body": "PayCo moved v5 GA to 2026-10-20; the certification blocks our release.", "labels": [{"name": "vendor"}]},
+    ]
+    README = "\n".join([
+        "# reconciliation",
+        "",
+        "Acme's payment reconciliation pipeline (Project Apollo).",
+        "",
+        "- `backfill/`: the migration backfill",
+        "- `sdk/`: the PayCo SDK integration",
+        "",
+    ])
+
+    def __init__(self) -> None:
+        self.comments: dict[int, dict[str, Any]] = {}
+        self.created: list[dict[str, Any]] = []
+
+    def _issue(self, i: dict[str, Any]) -> dict[str, Any]:
+        return {"html_url": f"https://github.com/acme/reconciliation/issues/{i['number']}", "assignee": None,
+                "created_at": "2026-09-01T09:00:00Z", **i}
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        import base64 as _b64
         import json as _json
-        path = request.url.path
-        if "/repos/" in path and path.endswith("/issues"):
-            return httpx.Response(200, json=[
-                {"number": 1, "title": "Demo issue", "state": "open", "body": "Created by mOSaic demo.",
-                 "html_url": "https://github.com/demo/repo/issues/1", "labels": [], "assignee": None,
-                 "created_at": "2024-03-01T00:00:00Z"},
-            ])
-        if "/repos" in path and "/issues/" in path and request.method == "POST" and "comments" not in path:
-            return httpx.Response(201, json={"number": 99, "title": "New issue", "state": "open", "body": "",
-                                             "html_url": "https://github.com/demo/repo/issues/99", "labels": [],
-                                             "assignee": None, "created_at": "2024-03-01T00:00:00Z"})
-        if "comments" in path and request.method == "POST":
-            return httpx.Response(201, json={"id": 12345, "body": _json.loads(request.content).get("body", "")})
-        if "comments" in path and request.method == "DELETE":
-            return httpx.Response(204)
-        if "/user/repos" in path or "/orgs/" in path and "repos" in path:
-            return httpx.Response(200, json=[
-                {"name": "demo-repo", "full_name": "demo-org/demo-repo",
-                 "description": "The mOSaic demo repository", "open_issues_count": 3},
-            ])
+
+        path, method = request.url.path, request.method
+        if path.endswith("/issues") and method == "GET":
+            return httpx.Response(200, json=[self._issue(i) for i in self.ISSUES + self.created])
+        if path.endswith("/issues") and method == "POST":
+            body = _json.loads(request.content)
+            issue = {"number": 100 + len(self.created), "title": body.get("title", ""), "state": "open", "body": body.get("body", ""),
+                     "labels": [{"name": n} for n in body.get("labels", [])]}
+            self.created.append(issue)
+            return httpx.Response(201, json=self._issue(issue))
+        if "/issues/comments/" in path:
+            cid = int(path.rsplit("/", 1)[-1])
+            if method == "DELETE":
+                return httpx.Response(204 if self.comments.pop(cid, None) else 404)
+            return httpx.Response(200, json=self.comments[cid]) if cid in self.comments else httpx.Response(404, json={"message": "Not Found"})
+        if path.endswith("/comments") and method == "POST":
+            cid = 12345 + len(self.comments)
+            self.comments[cid] = {"id": cid, "body": _json.loads(request.content).get("body", "")}
+            return httpx.Response(201, json=self.comments[cid])
+        if "/issues/" in path and method == "GET":
+            number = int(path.rsplit("/", 1)[-1])
+            found = next((i for i in self.ISSUES + self.created if i["number"] == number), None)
+            return httpx.Response(200, json=self._issue(found)) if found else httpx.Response(404, json={"message": "Not Found"})
+        if path.endswith("/repos"):
+            return httpx.Response(200, json=[{"name": "reconciliation", "full_name": "acme/reconciliation",
+                                              "description": "Payment reconciliation pipeline (Project Apollo)", "open_issues_count": 2}])
         if "/contents/" in path:
-            import base64 as _b64
-            content = _b64.b64encode(b"# Mock file\n\nThis is a mock file from the dev transport.").decode()
-            return httpx.Response(200, json={"path": path.split("/contents/")[-1], "sha": "abc123",
-                                             "encoding": "base64", "content": content})
+            return httpx.Response(200, json={"path": path.split("/contents/")[-1], "sha": "a1b2c3", "encoding": "base64",
+                                             "content": _b64.b64encode(self.README.encode()).decode()})
         return httpx.Response(404, json={"message": "Not Found"})
