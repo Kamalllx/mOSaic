@@ -1,6 +1,6 @@
 "use client";
 
-import { BellRing, Brain, Cpu, FolderTree, Gauge, ListChecks, type LucideIcon, ScrollText, SquareTerminal, Workflow } from "lucide-react";
+import { BellRing, Brain, Building2, Cable, Cpu, FolderTree, Gauge, ListChecks, type LucideIcon, ScrollText, SquareTerminal, Upload, Workflow } from "lucide-react";
 import type { AppId } from "@/lib/desktop/routes";
 import { cn } from "@/lib/utils";
 
@@ -15,6 +15,9 @@ export const APP_ICON: Record<AppId, LucideIcon> = {
   programs: Cpu,
   monitor: Gauge,
   terminal: SquareTerminal,
+  organization: Building2,
+  connections: Cable,
+  ingest: Upload,
 };
 
 /** Each app's colour: one vivid hue, used for its tile, its window's accent line and its rail indicator. */
@@ -29,6 +32,9 @@ export const APP_TINT: Record<AppId, string> = {
   programs: "#22a35a",
   monitor: "#ef4444",
   terminal: "#111827",
+  organization: "#0ea5e9",
+  connections: "#ec4899",
+  ingest: "#f97316",
 };
 
 /** An app's icon: its glyph on a flat tile in the app's colour, with a one-pixel top light. Cheap to paint. */

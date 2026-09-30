@@ -6,8 +6,8 @@ import type { Win } from "@/lib/desktop/windows";
 import { cn } from "@/lib/utils";
 import { AppTile } from "./app-icons";
 
-/** The dock's apps, in order; Alt+1..8 opens them. */
-export const DOCK_APPS: AppId[] = ["tasks", "approvals", "files", "memory", "journals", "programs", "monitor", "terminal"];
+/** The rail's apps, in order; Alt+1..9 opens the first nine. */
+export const DOCK_APPS: AppId[] = ["tasks", "approvals", "files", "memory", "journals", "programs", "monitor", "terminal", "organization", "connections", "ingest"];
 
 /** One place for every shortcut, so the menus, the cheat sheet and the handler agree. Alt, not Ctrl or Cmd: the browser
  *  and the OS keep most Ctrl/Cmd combinations for themselves. */
@@ -25,7 +25,7 @@ export const KEYS = {
 export const SHEET: [string, string][] = [
   [KEYS.spotlight, "Ask mOSaic, open an app, a task or a document (also Ctrl K)"],
   [KEYS.switch, "Switch windows (hold Alt, tap ` to move, release to open)"],
-  ["Alt 1 … 8", "Open a dock app"],
+  ["Alt 1 … 9", "Open a rail app"],
   [KEYS.terminal, "Terminal"],
   [KEYS.close, "Close the front window"],
   [KEYS.minimize, "Minimise it"],

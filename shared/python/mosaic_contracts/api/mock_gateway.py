@@ -70,6 +70,37 @@ class _State:
         self.listeners: list[tuple[str | None, list[str], asyncio.Queue]] = []
         self.history: dict[str, list[Event]] = {}
         self.knowledge = FakeKnowledgeService(models=FakeModelRouter(), firewall=FakeContextFirewall())
+        # Phase-2: org, members, connectors (mock data only — no shared contract changes)
+        self.org = {"org_id": "acme", "name": "Acme Corp", "domain": "acme.example.com",
+                    "created_at": "2024-01-01T00:00:00Z", "member_count": 2}
+        self.members: list[dict[str, Any]] = [
+            {"user_id": "alice", "email": "alice@acme.example.com", "name": "Alice Admin",
+             "role": "owner", "status": "active", "joined_at": "2024-01-01T00:00:00Z"},
+            {"user_id": "bob", "email": "bob@acme.example.com", "name": "Bob Builder",
+             "role": "member", "status": "active", "joined_at": "2024-01-15T00:00:00Z"},
+        ]
+        self.connectors: list[dict[str, Any]] = [
+            {"connector_id": "github", "name": "GitHub", "status": "connected",
+             "scopes": ["repo", "issues"], "last_sync": "2024-03-01T12:00:00Z",
+             "connected_by": "alice", "connected_at": "2024-02-01T00:00:00Z",
+             "recent_agents": ["action-agent", "research-agent"]},
+            {"connector_id": "google_calendar", "name": "Google Calendar", "status": "disconnected",
+             "scopes": [], "recent_agents": []},
+        ]
+        self._roles = [
+            {"role": "owner", "description": "Unrestricted access including configuration and ownership transfer.",
+             "permissions": ["task.create", "task.cancel", "approval.resolve", "knowledge.read",
+                             "knowledge.ingest", "connectors.manage", "config.read", "config.manage", "members.manage"]},
+            {"role": "admin", "description": "Full operational access; cannot change billing or transfer ownership.",
+             "permissions": ["task.create", "task.cancel", "approval.resolve", "knowledge.read",
+                             "knowledge.ingest", "connectors.manage", "config.read", "members.manage"]},
+            {"role": "approver", "description": "Can resolve approval requests in addition to member permissions.",
+             "permissions": ["task.create", "knowledge.read", "approval.resolve"]},
+            {"role": "member", "description": "Can submit tasks and read knowledge.",
+             "permissions": ["task.create", "knowledge.read"]},
+            {"role": "viewer", "description": "Read-only access to tasks and knowledge.",
+             "permissions": ["knowledge.read"]},
+        ]
 
     async def emit(self, event: Event) -> None:
         if event.task_id:
@@ -358,6 +389,75 @@ def build_mock_app(replay_speed: float = 4.0) -> FastAPI:
     @app.get("/sandboxes", response_model=list[SandboxInfo], tags=["execution"])
     async def sandboxes(task_id: str | None = None) -> list[SandboxInfo]:
         return [examples.sandbox()]
+
+    # ------------------------------------------------------------------ orgs / identity (Phase 2)
+    @app.get("/orgs/me", tags=["identity"])
+    async def org_me() -> dict[str, Any]:
+        return st.org
+
+    @app.get("/orgs/{org_id}/members", tags=["identity"])
+    async def org_members(org_id: str) -> list[dict[str, Any]]:
+        return st.members
+
+    @app.post("/orgs/{org_id}/members", status_code=201, tags=["identity"])
+    async def invite_member(org_id: str, body: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        member: dict[str, Any] = {"user_id": new_id("U"), "email": body["email"], "name": body["email"].split("@")[0],
+                                  "role": body.get("role", "member"), "status": "invited",
+                                  "joined_at": utcnow().isoformat()}
+        st.members.append(member)
+        st.org = {**st.org, "member_count": len(st.members)}
+        return member
+
+    @app.patch("/orgs/{org_id}/members/{user_id}", tags=["identity"])
+    async def update_member(org_id: str, user_id: str, body: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        for i, m in enumerate(st.members):
+            if m["user_id"] == user_id:
+                st.members[i] = {**m, "role": body.get("role", m["role"])}
+                return st.members[i]
+        raise MosaicError("NOT_FOUND", f"member {user_id}")
+
+    @app.delete("/orgs/{org_id}/members/{user_id}", status_code=204, tags=["identity"])
+    async def remove_member(org_id: str, user_id: str) -> None:
+        st.members = [m for m in st.members if m["user_id"] != user_id]
+        st.org = {**st.org, "member_count": len(st.members)}
+
+    @app.get("/orgs/{org_id}/roles", tags=["identity"])
+    async def org_roles(org_id: str) -> list[dict[str, Any]]:
+        return st._roles
+
+    # ------------------------------------------------------------------ connectors (Phase 2)
+    @app.get("/connectors", tags=["connectors"])
+    async def list_connectors() -> list[dict[str, Any]]:
+        return st.connectors
+
+    @app.post("/connectors/{connector_id}/connect", status_code=200, tags=["connectors"])
+    async def connector_connect(connector_id: str) -> dict[str, Any]:
+        # Return a mock OAuth URL (in production this would redirect to the provider)
+        return {"auth_url": f"https://mock-oauth.example.com/{connector_id}/auth?mock=true"}
+
+    @app.delete("/connectors/{connector_id}", status_code=204, tags=["connectors"])
+    async def connector_disconnect(connector_id: str) -> None:
+        for c in st.connectors:
+            if c["connector_id"] == connector_id:
+                c["status"] = "disconnected"
+                c.pop("last_sync", None)
+                return
+        raise MosaicError("NOT_FOUND", f"connector {connector_id}")
+
+    @app.post("/connectors/{connector_id}/sync", tags=["connectors"])
+    async def connector_sync(connector_id: str) -> dict[str, Any]:
+        return {"queued": True}
+
+    # ------------------------------------------------------------------ upload (Phase 2)
+    @app.post("/knowledge/upload", tags=["knowledge"])
+    async def knowledge_upload(request: Request) -> dict[str, Any]:
+        form = await request.form()
+        files = form.getlist("files")
+        target_folder = form.get("target_folder", "/org/uploads")
+        # In the mock, just acknowledge; real implementation calls converters + writes OKF objects
+        ingested = len(files) if hasattr(files, "__len__") else 1
+        paths = [f"{target_folder}/{getattr(f, 'filename', 'file')}" for f in files] if isinstance(files, list) else []
+        return {"ingested": ingested, "paths": paths}
 
     # ------------------------------------------------------------------ events
     @app.websocket("/ws/events")

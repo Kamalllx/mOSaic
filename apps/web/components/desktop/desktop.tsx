@@ -5,11 +5,14 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useClient } from "@/app/providers";
 import { ApprovalsApp } from "@/components/apps/approvals";
+import { ConnectionsApp } from "@/components/apps/connections";
 import { FilesApp } from "@/components/apps/files";
+import { IngestApp } from "@/components/apps/ingest";
 import { JournalApp } from "@/components/apps/journal";
 import { JournalsApp } from "@/components/apps/journals";
 import { MemoryApp } from "@/components/apps/memory";
 import { MonitorApp } from "@/components/apps/monitor";
+import { OrganizationApp } from "@/components/apps/organization";
 import { ProgramsApp } from "@/components/apps/programs";
 import { TaskApp } from "@/components/apps/task";
 import { TasksApp } from "@/components/apps/tasks";
@@ -51,6 +54,12 @@ function AppBody({ win }: { win: Win }) {
       return <MonitorApp />;
     case "terminal":
       return <TerminalApp />;
+    case "organization":
+      return <OrganizationApp />;
+    case "connections":
+      return <ConnectionsApp />;
+    case "ingest":
+      return <IngestApp />;
   }
 }
 
@@ -197,9 +206,10 @@ function DesktopInner() {
         const next = cur === null ? (stack.length > 1 ? 1 : 0) : (cur + (e.shiftKey ? stack.length - 1 : 1)) % stack.length;
         switchRef.current = next;
         setSwitcher(next);
-      } else if (/^Digit[1-8]$/.test(e.code)) {
+      } else if (/^Digit[1-9]$/.test(e.code)) {
         e.preventDefault();
-        openApp(DOCK_APPS[Number(e.code.slice(5)) - 1]);
+        const app = DOCK_APPS[Number(e.code.slice(5)) - 1];
+        if (app) openApp(app);
       } else if (k === "w" && top) {
         e.preventDefault();
         dispatch({ type: "close", key: top.key });
