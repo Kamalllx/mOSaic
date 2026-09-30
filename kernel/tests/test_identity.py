@@ -193,3 +193,14 @@ def test_uploads_and_mounted_folders_flow_into_org(dev, tmp_path):
     assert [x["name"] for x in dev.get("/knowledge/mounts").json()] == ["laptop"]
     assert dev.delete("/knowledge/mounts/laptop").status_code == 204
     assert dev.get("/knowledge/mounts").json() == []
+
+
+def test_a_signed_in_person_pairs_their_phone_with_a_one_time_code(dev):
+    priya = signin(dev, "priya@acme.example", "Priya")
+    code = dev.post("/auth/pair", headers=priya).json()["code"]
+    assert len(code) == 9 and code[4] == "-"
+    phone = dev.post("/auth/pair/redeem", json={"code": code.lower().replace("-", " ")}).json()
+    assert (phone["me"]["user"]["email"], phone["me"]["role"]) == ("priya@acme.example", "approver")
+    assert phone["token"] != priya["Authorization"][7:]  # the phone has a session of its own
+    assert dev.post("/auth/pair/redeem", json={"code": code}).status_code == 401  # one use
+    assert dev.post("/auth/pair/redeem", json={"code": "ABCD-EFGH"}).status_code == 401

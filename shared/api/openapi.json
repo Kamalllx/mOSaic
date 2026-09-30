@@ -3,7 +3,7 @@
   "info": {
     "title": "mOSaic Gateway API",
     "description": "Contract for the mOSaic kernel gateway. Served here by the mock implementation.",
-    "version": "0.10.0"
+    "version": "0.11.0"
   },
   "paths": {
     "/health": {
@@ -1756,6 +1756,68 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Me"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/pair": {
+      "post": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Auth Pair",
+        "operationId": "auth_pair_auth_pair_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PairCode"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/pair/redeem": {
+      "post": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Auth Pair Redeem",
+        "operationId": "auth_pair_redeem_auth_pair_redeem_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PairRedeem"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -4601,6 +4663,44 @@
           "role"
         ],
         "title": "OrgRole"
+      },
+      "PairCode": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "Eight characters, e.g. K7QM-4ZPD; case and the dash are ignored"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "code",
+          "expires_at"
+        ],
+        "title": "PairCode",
+        "description": "Signs the same person in on another device: shown in the console, typed into the phone. One use, minutes long."
+      },
+      "PairRedeem": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "maxLength": 16,
+            "minLength": 6,
+            "title": "Code"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "code"
+        ],
+        "title": "PairRedeem"
       },
       "PolicyAppliesTo": {
         "properties": {

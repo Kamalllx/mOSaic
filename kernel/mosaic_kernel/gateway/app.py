@@ -50,6 +50,8 @@ from mosaic_contracts.schema import (
     Org,
     OrgCreate,
     OrgRole,
+    PairCode,
+    PairRedeem,
     PolicyDocument,
     Principal,
     PrincipalKind,
@@ -321,6 +323,14 @@ def create_app(kernel: Kernel) -> FastAPI:
     @app.get("/auth/me", response_model=Me, tags=["identity"])
     async def auth_me(c: Caller = Authed) -> Me:
         return me_of(identity, c)
+
+    @app.post("/auth/pair", response_model=PairCode, tags=["identity"])
+    async def auth_pair(c: Caller = Member_) -> PairCode:
+        return identity.pair(c.user_id, c.org_id)
+
+    @app.post("/auth/pair/redeem", response_model=Session, tags=["identity"])
+    async def auth_pair_redeem(body: PairRedeem) -> Session:
+        return identity.redeem(body)
 
     @app.post("/auth/logout", status_code=204, tags=["identity"])
     async def auth_logout(c: Caller = Authed) -> None:

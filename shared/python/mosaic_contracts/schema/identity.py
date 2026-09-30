@@ -111,6 +111,17 @@ class Session(Contract):
     me: Me
 
 
+class PairCode(Contract):
+    """Signs the same person in on another device: shown in the console, typed into the phone. One use, minutes long."""
+
+    code: str = Field(description="Eight characters, e.g. K7QM-4ZPD; case and the dash are ignored")
+    expires_at: datetime
+
+
+class PairRedeem(Contract):
+    code: str = Field(min_length=6, max_length=16)
+
+
 # --------------------------------------------------------------------------- connectors
 
 

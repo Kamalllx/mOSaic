@@ -252,7 +252,7 @@ export type TrustLevel4 = "verified" | "trusted" | "unverified" | "untrusted";
 export type VerificationStatus2 = "unverified" | "verified" | "disputed" | "stale";
 
 /**
- * mOSaic contracts v0.10.0
+ * mOSaic contracts v0.11.0
  */
 export interface MOSaic {
   A2AMessage?: A2AMessage;
@@ -336,6 +336,8 @@ export interface MOSaic {
   Org?: Org;
   OrgCreate?: OrgCreate;
   OrgRole?: OrgRole;
+  PairCode?: PairCode;
+  PairRedeem?: PairRedeem;
   Plan?: Plan;
   PlanStep?: PlanStep;
   PolicyAppliesTo?: PolicyAppliesTo;
@@ -1511,6 +1513,26 @@ export interface OrgRole {
   role: string;
   description?: string;
   permissions?: string[];
+}
+/**
+ * Signs the same person in on another device: shown in the console, typed into the phone. One use, minutes long.
+ *
+ * This interface was referenced by `MOSaic`'s JSON-Schema
+ * via the `definition` "PairCode".
+ */
+export interface PairCode {
+  /**
+   * Eight characters, e.g. K7QM-4ZPD; case and the dash are ignored
+   */
+  code: string;
+  expires_at: string;
+}
+/**
+ * This interface was referenced by `MOSaic`'s JSON-Schema
+ * via the `definition` "PairRedeem".
+ */
+export interface PairRedeem {
+  code: string;
 }
 /**
  * This interface was referenced by `MOSaic`'s JSON-Schema

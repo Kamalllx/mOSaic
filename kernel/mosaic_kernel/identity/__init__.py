@@ -39,6 +39,8 @@ from mosaic_contracts.schema import (
     Org,
     OrgCreate,
     OrgRole,
+    PairCode,
+    PairRedeem,
     Principal,
     PrincipalKind,
     PrivacyLevel,
@@ -60,6 +62,7 @@ CREATE TABLE IF NOT EXISTS members(org_id TEXT NOT NULL, email TEXT NOT NULL, us
                                    status TEXT NOT NULL, joined_at TEXT, invited_by TEXT, PRIMARY KEY(org_id, email));
 CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, org_id TEXT,
                                     expires_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS pairings(code_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, org_id TEXT, expires_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS vault(org_id TEXT NOT NULL, key TEXT NOT NULL, blob TEXT NOT NULL, meta TEXT NOT NULL,
                                  PRIMARY KEY(org_id, key));
 """
@@ -93,6 +96,10 @@ def load_roles(path: Path) -> list[OrgRole]:
 
 def _slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:32] or "org"
+
+
+PAIR_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O or 1/I: read off one screen, typed on another
+PAIR_MINUTES = 5
 
 
 def _hash(token: str) -> str:
@@ -287,10 +294,10 @@ class Identity:
         self.db.execute("DELETE FROM members WHERE org_id=? AND email=?", (org_id, row["email"]))
 
     # ------------------------------------------------------------------ sessions and sign-in
-    def issue(self, user: UserInfo) -> Session:
+    def issue(self, user: UserInfo, org_id: str | None = None) -> Session:
         token = secrets.token_urlsafe(32)
         expires = utcnow() + timedelta(hours=self.settings.session_hours)
-        org_id = self.home_org(user.user_id)
+        org_id = org_id or self.home_org(user.user_id)
         self.db.execute("INSERT INTO sessions VALUES (?,?,?,?)", (_hash(token), user.user_id, org_id, expires.isoformat()))
         return Session(token=token, expires_at=expires, me=self.me(user.user_id, org_id))
 
@@ -304,6 +311,28 @@ class Identity:
 
     def revoke(self, token: str) -> None:
         self.db.execute("DELETE FROM sessions WHERE token_hash=?", (_hash(token),))
+
+    # ------------------------------------------------------------------ pairing another device (the phone)
+    def pair(self, user_id: str, org_id: str | None) -> PairCode:
+        """A one-time code for this person's next device; it signs them in there with a session of its own."""
+        if not self._user(user_id):
+            raise MosaicError("BAD_REQUEST", "sign in first; a header caller has no account to pair")
+        raw = "".join(secrets.choice(PAIR_ALPHABET) for _ in range(8))
+        expires = utcnow() + timedelta(minutes=PAIR_MINUTES)
+        self.db.execute("DELETE FROM pairings WHERE expires_at < ?", (utcnow().isoformat(),))
+        self.db.execute("INSERT INTO pairings VALUES (?,?,?,?)", (_hash(raw), user_id, org_id, expires.isoformat()))
+        return PairCode(code=f"{raw[:4]}-{raw[4:]}", expires_at=expires)
+
+    def redeem(self, body: PairRedeem) -> Session:
+        raw = re.sub(r"[^A-Z0-9]", "", body.code.upper())
+        row = self.db.one("SELECT * FROM pairings WHERE code_hash=?", (_hash(raw),))
+        if not row or row["expires_at"] < utcnow().isoformat():
+            raise MosaicError("UNAUTHENTICATED", "that code is wrong or has expired; make a new one in the console")
+        self.db.execute("DELETE FROM pairings WHERE code_hash=?", (_hash(raw),))
+        user = self._user(row["user_id"])
+        if user is None:
+            raise MosaicError("UNAUTHENTICATED", "that account no longer exists")
+        return self.issue(user, row["org_id"])
 
     def dev_login(self, body: DevLogin) -> Session:
         if self.mode != AuthMode.DEV:

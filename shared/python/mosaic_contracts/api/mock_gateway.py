@@ -56,6 +56,8 @@ from ..schema import (
     Org,
     OrgCreate,
     OrgRole,
+    PairCode,
+    PairRedeem,
     PolicyDocument,
     Principal,
     PrincipalKind,
@@ -430,6 +432,14 @@ def build_mock_app(replay_speed: float = 4.0) -> FastAPI:
     @app.get("/auth/me", response_model=Me, tags=["identity"])
     async def auth_me() -> Me:
         return _me()
+
+    @app.post("/auth/pair", response_model=PairCode, tags=["identity"])
+    async def auth_pair() -> PairCode:
+        return PairCode(code="MOCK-PAIR", expires_at=utcnow())
+
+    @app.post("/auth/pair/redeem", response_model=Session, tags=["identity"])
+    async def auth_pair_redeem(body: PairRedeem) -> Session:
+        return Session(token="mock-session", expires_at=utcnow(), me=_me())
 
     @app.post("/auth/logout", status_code=204, tags=["identity"])
     async def auth_logout() -> None:

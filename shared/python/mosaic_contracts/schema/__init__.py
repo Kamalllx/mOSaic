@@ -41,6 +41,6 @@ EXPORTED_MODELS = [
     ComponentHealth, ResourceSnapshot, SystemStatus,  # noqa: F405
     StackComponent, RuntimeVersions, ModelRoute, ModelsConfig, PolicySummary, FirewallConfig, EndpointInfo, SystemConfig,  # noqa: F405
     # identity / connectors / mounts
-    OrgRole, UserInfo, Org, Member, OrgCreate, MemberInvite, MemberUpdate, AuthConfig, GoogleLogin, DevLogin, Me, Session,  # noqa: F405
+    OrgRole, UserInfo, Org, Member, OrgCreate, MemberInvite, MemberUpdate, AuthConfig, GoogleLogin, DevLogin, Me, Session, PairCode, PairRedeem,  # noqa: F405
     Connector, ConnectorConnect, ConnectorSyncResult, KnowledgeMount, KnowledgeMountCreate,  # noqa: F405
 ]

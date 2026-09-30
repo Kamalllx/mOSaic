@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "mOSaic",
-  "description": "mOSaic contracts v0.10.0",
+  "description": "mOSaic contracts v0.11.0",
   "type": "object",
   "$defs": {
     "PrincipalKind": {
@@ -4586,6 +4586,41 @@
       "title": "Session",
       "type": "object"
     },
+    "PairCode": {
+      "additionalProperties": false,
+      "description": "Signs the same person in on another device: shown in the console, typed into the phone. One use, minutes long.",
+      "properties": {
+        "code": {
+          "description": "Eight characters, e.g. K7QM-4ZPD; case and the dash are ignored",
+          "type": "string"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "expires_at"
+      ],
+      "title": "PairCode",
+      "type": "object"
+    },
+    "PairRedeem": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "maxLength": 16,
+          "minLength": 6,
+          "type": "string"
+        }
+      },
+      "required": [
+        "code"
+      ],
+      "title": "PairRedeem",
+      "type": "object"
+    },
     "ConnectorStatus": {
       "enum": [
         "connected",
@@ -5049,6 +5084,12 @@
     },
     "OrgRole": {
       "$ref": "#/$defs/OrgRole"
+    },
+    "PairCode": {
+      "$ref": "#/$defs/PairCode"
+    },
+    "PairRedeem": {
+      "$ref": "#/$defs/PairRedeem"
     },
     "Plan": {
       "$ref": "#/$defs/Plan"
