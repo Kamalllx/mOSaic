@@ -4,14 +4,14 @@ Defaults: non-root, read-only root fs (+ /tmp tmpfs), all capabilities dropped, 
 CPU/memory/pids limits, network=none unless allowlisted, only the task workspace mounted, forced timeout.
 Browser sandboxes (spec.display) run P4's mosaic/sandbox-browser image and expose Playwright on :3000.
 
-Endpoint mode (MOSAIC_SANDBOX_ENDPOINT): "ip" (Linux appliance: container IP on the internal network) or
-"port" (Docker Desktop on Windows/macOS: publish :3000 on 127.0.0.1). The mode only matters for display sandboxes:
-- display=False: network=none -> network_mode "none"; allowlist -> internal mosaic_sandbox only (no internet). Any mode.
-- display=True, ip mode: internal mosaic_sandbox only.
-- display=True, port mode, allowlist: default bridge (an internal network can't publish ports) + mosaic_sandbox, so
-  the browser CAN reach the internet; browser.open still checks every URL against the allowlist first, but page
-  subresources aren't filtered. Known dev-mode limit; the Linux appliance (ip mode) has no egress.
-- display=True, port mode, network=none: refused (it would have egress).
+Endpoint mode (MOSAIC_SANDBOX_ENDPOINT): "ip" (Linux appliance: mosaicd reaches the container's IP on the internal
+network) or "port" (Docker Desktop on Windows/macOS, where the host can't reach container IPs). Either way a sandbox
+never has internet:
+- display=False: network=none -> network_mode "none"; allowlist -> internal mosaic_sandbox only.
+- display=True: internal mosaic_sandbox only. In port mode a relay container (the sandbox-base image running a small
+  TCP forwarder) sits on the default bridge AND mosaic_sandbox, publishes 127.0.0.1:<port> and forwards it to the
+  browser's Playwright server, and nothing else. An internal network can't publish ports, which is why the relay
+  exists; the browser itself stays internal, so page subresources can't reach the internet either.
 """
 from __future__ import annotations
 
@@ -39,7 +39,33 @@ log = logging.getLogger("mosaic.execution.sandbox")
 LABEL = "mosaic.sandbox"
 BROWSER_IMAGE = os.getenv("MOSAIC_BROWSER_IMAGE", "mosaic/sandbox-browser:latest")
 SANDBOX_NETWORK = os.getenv("MOSAIC_SANDBOX_NETWORK", "mosaic_sandbox")
+RELAY_IMAGE = os.getenv("MOSAIC_SANDBOX_RELAY_IMAGE", "mosaic/sandbox-base:latest")
 PLAYWRIGHT_PORT = 3000
+
+# Runs in the relay container: forward every connection on :3000 to <browser>:3000, byte for byte (WebSockets included).
+RELAY_SOURCE = """
+import asyncio, sys
+target, port = sys.argv[1], int(sys.argv[2])
+async def pipe(r, w):
+    try:
+        while data := await r.read(65536):
+            w.write(data)
+            await w.drain()
+    finally:
+        w.close()
+async def handle(r, w):
+    try:
+        tr, tw = await asyncio.open_connection(target, port)
+    except OSError:
+        w.close()
+        return
+    await asyncio.gather(pipe(r, tw), pipe(tr, w), return_exceptions=True)
+async def main():
+    server = await asyncio.start_server(handle, "0.0.0.0", port)
+    async with server:
+        await server.serve_forever()
+asyncio.run(main())
+"""
 
 
 def default_endpoint_mode() -> str:
@@ -53,6 +79,7 @@ class DockerSandboxManager:
         self.endpoint_mode = endpoint_mode or default_endpoint_mode()
         self.sandboxes: dict[str, SandboxInfo] = {}
         self._containers: dict[str, Any] = {}
+        self._relays: dict[str, Any] = {}
         self._deadlines: dict[str, float] = {}
         self._reaper: asyncio.Task | None = None
         self._cleaned = False
@@ -111,14 +138,27 @@ class DockerSandboxManager:
             kw["device_requests"] = [DeviceRequest(count=-1, capabilities=[["gpu"]])]
         if spec.network == NetworkMode.NONE and not spec.display:
             kw["network_mode"] = "none"
-        elif spec.display and self.endpoint_mode == "port":
-            if spec.network == NetworkMode.NONE:
-                raise MosaicError("BAD_REQUEST", "a display sandbox with network=none needs MOSAIC_SANDBOX_ENDPOINT=ip: "
-                                                 "port mode publishes :3000 from the default bridge, which has internet")
-            kw["ports"] = {f"{PLAYWRIGHT_PORT}/tcp": ("127.0.0.1", None)}
         else:
-            kw["network"] = SANDBOX_NETWORK
+            kw["network"] = SANDBOX_NETWORK  # internal: no route to the internet, in either endpoint mode
         return kw
+
+    def relay_kwargs(self, sandbox_id: str, target: str) -> dict[str, Any]:
+        """The port-mode relay for a browser sandbox: publishes 127.0.0.1:<random> and forwards it to target:3000."""
+        return {
+            "image": RELAY_IMAGE,
+            "name": f"mosaic-{sandbox_id.lower()}-relay",
+            "detach": True,
+            "command": ["python3", "-c", RELAY_SOURCE, target, str(PLAYWRIGHT_PORT)],
+            "labels": {LABEL: sandbox_id, "mosaic.role": "relay"},
+            "ports": {f"{PLAYWRIGHT_PORT}/tcp": ("127.0.0.1", None)},
+            "mem_limit": "64m",
+            "nano_cpus": 250_000_000,
+            "pids_limit": 64,
+            "read_only": True,
+            "cap_drop": ["ALL"],
+            "user": "10001",
+            "security_opt": ["no-new-privileges"],
+        }
 
     # ------------------------------------------------------------------ SandboxManager
     async def provision(self, spec: SandboxSpec) -> SandboxInfo:
@@ -132,20 +172,25 @@ class DockerSandboxManager:
             if "network" in kw:
                 self._ensure_network()
             container = self.client().containers.run(**kw)
-            if "ports" in kw:
-                # Port mode starts on the default bridge (to publish :3000), where internal services such as
-                # vendor-docs don't resolve; join the sandbox network as well.
-                self.client().networks.get(self._ensure_network()).connect(container)
             container.reload()
-            return container
+            relay = None
+            if spec.display and self.endpoint_mode == "port":
+                # The relay starts on the default bridge (to publish its port) and joins the sandbox network to reach
+                # the browser by name; the browser never touches the bridge.
+                relay = self.client().containers.run(**self.relay_kwargs(sandbox_id, kw["name"]))
+                self.client().networks.get(self._ensure_network()).connect(relay)
+                relay.reload()
+            return container, relay
 
         try:
-            container = await asyncio.to_thread(start)
+            container, relay = await asyncio.to_thread(start)
         except MosaicError:
             raise
         except Exception as e:
             raise MosaicError("SANDBOX_FAILED", f"could not start sandbox: {e}") from e
-        endpoints = self._endpoints(container) if spec.display else {}
+        if relay is not None:
+            self._relays[sandbox_id] = relay
+        endpoints = self._endpoints(relay or container) if spec.display else {}
         info = SandboxInfo(sandbox_id=sandbox_id, status=SandboxStatus.RUNNING, spec=spec, endpoints=endpoints)
         self.sandboxes[sandbox_id], self._containers[sandbox_id] = info, container
         self._deadlines[sandbox_id] = time.monotonic() + spec.timeout_s
@@ -216,11 +261,13 @@ class DockerSandboxManager:
     async def destroy(self, sandbox_id: str) -> None:
         container = self._containers.pop(sandbox_id, None)
         self._deadlines.pop(sandbox_id, None)
-        if container is not None:
+        for c in (self._relays.pop(sandbox_id, None), container):
+            if c is None:
+                continue
             try:
-                await asyncio.to_thread(container.remove, force=True)
+                await asyncio.to_thread(c.remove, force=True)
             except Exception:
-                log.exception("removing container for %s failed", sandbox_id)
+                log.exception("removing container %s for %s failed", getattr(c, "name", "?"), sandbox_id)
         if sandbox_id in self.sandboxes:
             self.sandboxes[sandbox_id] = self.sandboxes[sandbox_id].model_copy(update={"status": SandboxStatus.DESTROYED})
 

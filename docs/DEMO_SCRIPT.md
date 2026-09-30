@@ -95,7 +95,7 @@ Needs mosaicd started with `MOSAIC_KNOWLEDGE_WATCH=true`, after a completed run 
 **Optional: security policy v2.** The finance agent checks its drivers against `/org/policies` (v2 adds CFO sign-off for emergency vendor spend, the PayCo contract), so its memories derive from `policies/security.md`. After a completed run, open `/memory`, then `copy data\demo-assets\security-policy-v2.md data\okf\policies\security.md` (or `cp` on Linux): the banner names `/org/policies/security` and finance-agent only; engineering stays fresh, and the explorer shows v2. Reset: `git checkout data/okf/policies/security.md`.
 
 ### Known limits
-- **Browser sandbox internet on Docker Desktop (Windows/macOS).** With `MOSAIC_SANDBOX_ENDPOINT=port`, the browser sandbox is attached to the default bridge network so that it can publish :3000, which gives it internet access. `browser.open` still checks each URL against the allowlist, but page subresources aren't filtered. The Linux node (`ip` mode) has no egress. Non-browser sandboxes never get internet in either mode. Accepted for the demo; the fix is deferred to P1.
+- **Browser sandbox internet on Docker Desktop:** fixed. The browser runs on the internal network in both modes; on Docker Desktop a relay container publishes its port, so page subresources can't reach the internet either (`execution/tests/test_browser_live.py::test_browser_sandbox_has_no_internet`).
 
 **Closing line:** *"It doesn't just answer questions. It runs your organization's AI, privately, on one box."*
 

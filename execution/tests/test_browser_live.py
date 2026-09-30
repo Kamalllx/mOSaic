@@ -6,21 +6,23 @@ P4's production BrowserDriver replaces `ReferenceDriver` below; this test proves
 Needs Docker + `docker build -t mosaic/sandbox-browser:latest execution/images/sandbox-browser`.
 """
 import asyncio
-import http.server
-import socket
-import threading
 
 import pytest
-from mosaic_contracts.schema import BrowserPage, SandboxInfo, ToolInvocation, ToolResultStatus
+from mosaic_contracts.schema import (
+    BrowserPage,
+    ExecRequest,
+    NetworkMode,
+    SandboxInfo,
+    SandboxSpec,
+    ToolInvocation,
+    ToolResultStatus,
+)
 from mosaic_contracts.schema.common import new_id
 from mosaic_contracts.testing.fakes import InMemoryEventBus
 from mosaic_contracts.wiring import ServiceBundle, Settings
 from mosaic_execution.artifacts.store import FsArtifactStore
 from mosaic_execution.sandbox.docker_manager import DockerSandboxManager
 from mosaic_execution.tools.sandboxed import BrowserBackend, SandboxPool
-
-PAGE = b"""<!doctype html><html><head><title>PayCo SDK v5: release status</title></head>
-<body><h1>SDK v5</h1><p>General availability moved to 2026-10-20.</p><a href="/guide.html">guide</a></body></html>"""
 
 
 class ReferenceDriver:
@@ -61,27 +63,6 @@ class ReferenceDriver:
             self._pw = None
 
 
-@pytest.fixture(scope="module")
-def site():
-    class Handler(http.server.BaseHTTPRequestHandler):
-        def do_GET(self):
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html")
-            self.end_headers()
-            self.wfile.write(PAGE)
-
-        def log_message(self, *a):
-            pass
-
-    with socket.socket() as s:
-        s.bind(("0.0.0.0", 0))
-        port = s.getsockname()[1]
-    server = http.server.ThreadingHTTPServer(("0.0.0.0", port), Handler)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    yield port
-    server.shutdown()
-
-
 def _client():
     try:
         import docker
@@ -89,22 +70,22 @@ def _client():
         c = docker.from_env()
         c.ping()
         c.images.get("mosaic/sandbox-browser:latest")
+        c.images.get("mosaic/sandbox-base:latest")
+        if not c.containers.list(filters={"name": "vendor-docs", "status": "running"}):
+            raise RuntimeError("vendor-docs isn't running (docker compose ... up -d vendor-docs)")
         return c
     except Exception as e:
         pytest.skip(f"browser sandbox unavailable: {str(e)[:120]}")
 
 
-def test_browser_open_in_real_sandbox(site, tmp_path):
+def test_browser_open_in_real_sandbox(tmp_path):
     client = _client()
     mgr = DockerSandboxManager(tmp_path / "ws", client=client)
-    if mgr.endpoint_mode != "port":
-        pytest.skip("host-served page test assumes Docker Desktop port mode")
     bus, artifacts = InMemoryEventBus(), FsArtifactStore(tmp_path / "artifacts")
     services = ServiceBundle(settings=Settings(), event_bus=bus, sandbox=mgr, browser=ReferenceDriver(), artifacts=artifacts)
     pool = SandboxPool(services)
     backend = BrowserBackend(services, pool)
-    host = "host.docker.internal"
-    allow = {"network_allow": [f"{host}:{site}"]}
+    allow = {"network_allow": ["vendor-docs:80"]}
 
     def inv(url: str) -> ToolInvocation:
         return ToolInvocation(invocation_id=new_id("INV"), syscall_id=new_id("SC"), task_id="T-browse", pid=104,
@@ -112,7 +93,7 @@ def test_browser_open_in_real_sandbox(site, tmp_path):
 
     async def go():
         denied = await backend.execute(inv("https://example.com/"))
-        opened = await backend.execute(inv(f"http://{host}:{site}/sdk-v5.html"))
+        opened = await backend.execute(inv("http://vendor-docs/sdk-v5.html"))
         png = await artifacts.get(opened.artifacts[0]) if opened.artifacts else b""
         sandbox_ids = [s.sandbox_id for s in await mgr.list("T-browse")]
         await pool.release_task("T-browse")
@@ -126,3 +107,24 @@ def test_browser_open_in_real_sandbox(site, tmp_path):
     assert png.startswith(b"\x89PNG") and len(png) > 1000
     assert [e.type for e in bus.history] == ["sandbox.started", "sandbox.screenshot", "sandbox.destroyed"]
     assert not client.containers.list(all=True, filters={"label": f"mosaic.sandbox={sandbox_ids[0]}"})
+
+
+def test_browser_sandbox_has_no_internet(tmp_path):
+    """The browser container is on the internal network only, in both endpoint modes (port mode publishes through a
+    relay), so nothing inside it (page subresources included) reaches the internet, while vendor-docs resolves."""
+    mgr = DockerSandboxManager(tmp_path / "ws", client=_client())
+
+    async def go():
+        sb = await mgr.provision(SandboxSpec(task_id="T-egress", display=True, network=NetworkMode.ALLOWLIST,
+                                             network_allow=["vendor-docs:80"]))
+        try:
+            internet = await mgr.exec(sb.sandbox_id, ExecRequest(command=["curl", "-sS", "-m", "5", "-o", "/dev/null", "https://1.1.1.1"]))
+            internal = await mgr.exec(sb.sandbox_id, ExecRequest(command=["curl", "-sS", "-m", "5", "-o", "/dev/null", "-w", "%{http_code}", "http://vendor-docs/"]))
+            return sb, internet, internal
+        finally:
+            await mgr.destroy(sb.sandbox_id)
+
+    sb, internet, internal = asyncio.run(go())
+    assert internet.exit_code != 0, f"the browser sandbox reached the internet: {internet.stdout} {internet.stderr}"
+    assert internal.stdout.strip() == "200", internal
+    assert sb.endpoints["playwright"].startswith("ws://")
