@@ -1,5 +1,6 @@
 # Role → permission table for mOSaic RBAC.
-# Loaded at startup and exposed via GET /orgs/{id}/roles.
+# Loaded at startup by kernel/mosaic_kernel/identity (not a policy document, so it lives outside policies/*.yaml)
+# and exposed via GET /orgs/{id}/roles.
 # An admin can adjust grants here without a code change.
 #
 # Roles in ascending privilege order:
