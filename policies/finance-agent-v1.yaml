@@ -4,7 +4,7 @@ priority: 10
 applies_to:
   agents: [finance-agent]
 knowledge:
-  allow: ["/org/finance/**", "/org/projects/**", "/org/decisions/**"]
+  allow: ["/org/finance/**", "/org/projects/**", "/org/decisions/**", "/org/policies/**"]
 filesystem:
   read: ["/workspace/**"]
   write: ["/workspace/reports/**"]

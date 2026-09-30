@@ -31,7 +31,17 @@ def test_finance_and_engineering_remember_their_findings():
         [mem] = ctx.memory.records.values()
         assert mem.owner == name and mem.kind == MemoryKind.EPISODIC and mem.importance >= 0.5
         assert mem.content == reply["summary"]
-        assert mem.derived_from == [reply["drivers" if "drivers" in reply else "blockers"][0]["evidence"][0]]
+        cited = [reply["drivers" if "drivers" in reply else "blockers"][0]["evidence"][0]]
+        # finance also rests on the policies it checked its drivers against (a policy change invalidates it)
+        assert mem.derived_from == (cited + ["/org/policies/security"] if name == "finance-agent" else cited)
+
+
+def test_finance_checks_its_drivers_against_the_policies():
+    ctx = ctx_for("finance-agent", {"financial analysis": FINANCE_REPLY})
+    result = asyncio.run(FinanceAgent().run("Why is Apollo over budget?", ctx))
+    assert "/org/policies/security" in result.evidence
+    prompt = ctx.models.calls[-1].messages[-1].content
+    assert "Organization policies that apply:" in prompt and "/org/policies/security" in prompt
 
 
 def test_citations_that_were_not_retrieved_are_dropped():

@@ -46,7 +46,8 @@ def test_repo_policies():
     assert ev("database.write", "engineering-agent").decision == Decision.REQUIRES_APPROVAL
     assert ev("sandbox.exec", "engineering-agent").decision == Decision.DENY        # nobody allows it
     assert ev("jira.read", "action-agent", Risk.HIGH).decision == Decision.REQUIRES_APPROVAL
-    assert engine.knowledge_allow(_agent("finance-agent", [])) == ["/org/finance/**", "/org/projects/**", "/org/decisions/**"]
+    assert engine.knowledge_allow(_agent("finance-agent", [])) == ["/org/finance/**", "/org/projects/**", "/org/decisions/**",
+                                                                  "/org/policies/**"]
 
 
 def test_deny_wins_and_never(tmp_path):

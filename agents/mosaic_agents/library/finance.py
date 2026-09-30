@@ -26,7 +26,13 @@ Rules:
 - Never fabricate numbers; if the evidence doesn't have a number, say "unknown".
 - Be precise: give the overrun in lakh (₹100,000 units) and as a percentage.
 - For each driver, identify the item, the delta (change), the cause, and the supporting /org paths.
+- Respect the organization policies you are given: if a driver (for example emergency vendor spend) needs a sign-off
+  under a policy, say so in the summary and cite the policy path.
 """
+
+# What the finance agent checks its drivers against. Its memory derives from these too, so a policy change (for example
+# security policy v2: CFO sign-off for emergency vendor spend) invalidates it.
+POLICY_QUERY = "approval and sign-off rules for vendor contracts and emergency spend"
 
 
 class FinanceAgent(MosaicAgent):
@@ -42,8 +48,10 @@ class FinanceAgent(MosaicAgent):
             scope=["/org/finance", "/org/projects", "/org/decisions"],
             top_k=8,
         )
+        policies = await gather_evidence(ctx, POLICY_QUERY, scope=["/org/policies"], top_k=3)
         evidence_text = cite(evidence)
-        await ctx.log(f"finance-agent: gathered {len(evidence.hits)} evidence hits")
+        policy_text = cite(policies)
+        await ctx.log(f"finance-agent: gathered {len(evidence.hits)} evidence hits and {len(policies.hits)} policies")
 
         if ctx.cancelled():
             return self.result(ctx, "cancelled", status=AgentResultStatus.CANCELLED)
@@ -52,6 +60,7 @@ class FinanceAgent(MosaicAgent):
         user_prompt = (
             f"Task: {goal}\n\n"
             f"Evidence from knowledge base:\n{evidence_text}\n\n"
+            f"Organization policies that apply:\n{policy_text}\n\n"
             "Based ONLY on the evidence above, produce a financial analysis as JSON:\n"
             "- overrun_lakh: total budget overrun in lakh (float)\n"
             "- overrun_pct: overrun as percentage (float)\n"
@@ -74,7 +83,7 @@ class FinanceAgent(MosaicAgent):
 
         await ctx.log(f"finance-agent: analysis complete — overrun {finance_out.overrun_lakh}L ({finance_out.overrun_pct}%)")
 
-        retrieved = {h.path for h in evidence.hits}
+        retrieved = {h.path for h in evidence.hits} | {h.path for h in policies.hits}
         for d in finance_out.drivers:
             if isinstance(d, dict):
                 d["evidence"] = await keep_retrieved(ctx, d.get("evidence", []), retrieved, "drivers")
@@ -108,7 +117,9 @@ class FinanceAgent(MosaicAgent):
 
         # Remember the finding, derived from the documents it rests on (they going stale invalidates it)
         cited = sorted({q for d in finance_out.drivers if isinstance(d, dict) for q in d.get("evidence", [])} & retrieved)
-        await remember_finding(ctx, finance_out.summary or "finance finding", cited or sorted(retrieved)[:5], tags=["finance", "apollo"])
+        consulted = sorted(h.path for h in policies.hits)
+        derived = list(dict.fromkeys([*(cited or sorted(retrieved)[:5]), *consulted]))
+        await remember_finding(ctx, finance_out.summary or "finance finding", derived, tags=["finance", "apollo"])
 
         return AgentResult(
             pid=ctx.pid,
@@ -116,5 +127,5 @@ class FinanceAgent(MosaicAgent):
             status=AgentResultStatus.COMPLETED,
             summary=finance_out.summary or f"Financial analysis complete: {finance_out.overrun_lakh}L overrun ({finance_out.overrun_pct}%)",
             output=output,
-            evidence=[h.path for h in evidence.hits],
+            evidence=[h.path for h in evidence.hits] + [h.path for h in policies.hits],
         )

@@ -7,7 +7,7 @@ runtime:
   entrypoint: mosaic_agents.library.finance:FinanceAgent
   model_policy: local-only
 memory:
-  mounts: [/org/finance, /org/projects]
+  mounts: [/org/finance, /org/projects, /org/policies]
 capabilities:
   knowledge: [read, search]
   tools: [jira.read]
