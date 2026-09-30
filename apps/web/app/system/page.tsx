@@ -1,39 +1,72 @@
 "use client";
 
-import type { Event } from "@mosaic/contracts";
+import type { Event, SandboxInfo } from "@mosaic/contracts";
 import { useQuery } from "@tanstack/react-query";
-import { Box, Camera, CircleCheck, CircleX, Cpu, Gauge, MemoryStick, MonitorCog } from "lucide-react";
+import { Box, Camera, CircleCheck, CircleX, Cpu, Gauge, Globe, HardDrive, Lock, MemoryStick, MonitorCog, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useClient } from "@/app/providers";
 import { ArtifactImage, isImage } from "@/components/artifacts";
+import { useModels, useResources } from "@/components/shell/app-shell";
 import { formatTime } from "@/components/status";
 import { str } from "@/lib/events";
 import { cn } from "@/lib/utils";
 
-function GaugeRing({ label, value, detail, icon: Icon }: { label: string; value: number | null; detail: string; icon: typeof Cpu }) {
-  const pct = value === null ? 0 : Math.max(0, Math.min(100, value));
-  const color = value === null ? "#6e7681" : pct > 85 ? "#f85149" : pct > 60 ? "#e3b341" : "#3fb950";
-  const R = 52;
-  const C = 2 * Math.PI * R;
+function Gauge2({ label, icon: Icon, pct, value, detail }: { label: string; icon: typeof Cpu; pct: number | null; value: string; detail: string }) {
+  const p = pct === null ? 0 : Math.max(0, Math.min(100, pct));
   return (
-    <div className="flex items-center gap-5 rounded-xl border bg-card p-5">
-      <svg width="132" height="132" viewBox="0 0 132 132" role="img" aria-label={`${label} ${value === null ? "n/a" : `${pct.toFixed(0)}%`}`}>
-        <circle cx="66" cy="66" r={R} fill="none" stroke="#1c2733" strokeWidth="12" />
-        <circle
-          cx="66" cy="66" r={R} fill="none" stroke={color} strokeWidth="12" strokeLinecap="round"
-          strokeDasharray={`${(pct / 100) * C} ${C}`} transform="rotate(-90 66 66)"
-          style={{ transition: "stroke-dasharray 0.6s ease" }}
-        />
-        <text x="66" y="72" textAnchor="middle" className="fill-foreground font-mono text-2xl font-bold">
-          {value === null ? "n/a" : `${pct.toFixed(0)}%`}
-        </text>
-      </svg>
-      <div>
-        <p className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground"><Icon className="size-4" /> {label}</p>
-        <p className="mt-1 font-mono text-sm">{detail}</p>
+    <div className="rounded-xl border border-line bg-surface-1 p-4 shadow-panel">
+      <p className="flex items-center gap-2 text-sm text-text-2">
+        <Icon className="size-4" aria-hidden /> {label}
+      </p>
+      <p className="mt-1 font-mono text-3xl font-bold">{value}</p>
+      <div className="mt-2 h-2 overflow-hidden rounded-full bg-surface-3" role="meter" aria-label={label} aria-valuenow={Math.round(p)} aria-valuemin={0} aria-valuemax={100}>
+        <div className={cn("h-full rounded-full transition-[width] duration-[350ms]", p > 90 ? "bg-st-failed" : p > 75 ? "bg-st-waiting" : "bg-brand")} style={{ width: `${p}%` }} />
       </div>
+      <p className="mt-1.5 truncate font-mono text-xs text-text-2" title={detail}>{detail}</p>
     </div>
+  );
+}
+
+function Section({ title, icon: Icon, children, className }: { title: string; icon: typeof Cpu; children: React.ReactNode; className?: string }) {
+  return (
+    <section className={cn("rounded-xl border border-line bg-surface-1 p-4 shadow-panel", className)}>
+      <h2 className="mb-3 flex items-center gap-2 text-[17px] font-semibold">
+        <Icon className="size-4.5 text-text-2" aria-hidden /> {title}
+      </h2>
+      {children}
+    </section>
+  );
+}
+
+function SandboxCard({ s }: { s: SandboxInfo }) {
+  const sp = s.spec;
+  const live = s.status === "running" || s.status === "provisioning";
+  const readOnly = (sp.mounts ?? []).every((m) => (m as { read_only?: boolean }).read_only !== false);
+  return (
+    <li className="rounded-lg border border-line bg-surface-2 p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className={cn("rounded-md px-1.5 py-0.5 font-mono text-xs font-semibold", live ? "bg-st-running/12 text-st-running" : "bg-surface-3 text-text-2")}>{s.status}</span>
+        <span className="font-mono text-sm">{s.sandbox_id}</span>
+        <span className="text-sm text-text-2">{sp.display ? "browser" : (sp.image ?? "container")}</span>
+        <Link href={`/tasks/${sp.task_id}`} className="ml-auto font-mono text-xs text-brand hover:underline">
+          {sp.task_id}
+        </Link>
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1.5 font-mono text-xs">
+        <span className={cn("inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5", sp.network === "none" ? "border-st-running/50 text-st-running" : "border-st-waiting/50 text-st-waiting")}>
+          <Globe className="size-3" aria-hidden /> {sp.network === "none" ? "no network" : `allowlist: ${(sp.network_allow ?? []).join(", ") || "—"}`}
+        </span>
+        <span className="rounded-md border border-line px-1.5 py-0.5 text-text-2">{sp.cpu ?? 1} CPU · {sp.memory_mb ?? 0} MB{sp.gpu ? " · GPU" : ""}</span>
+        {!!sp.mounts?.length && (
+          <span className="inline-flex items-center gap-1 rounded-md border border-line px-1.5 py-0.5 text-text-2">
+            <Lock className="size-3" aria-hidden /> {sp.mounts.length} mount{sp.mounts.length === 1 ? "" : "s"}{readOnly ? ", read-only" : ""}
+          </span>
+        )}
+        {sp.timeout_s && <span className="rounded-md border border-line px-1.5 py-0.5 text-text-2">timeout {sp.timeout_s}s</span>}
+        {sp.pid && <span className="rounded-md border border-line px-1.5 py-0.5 text-text-2">PID {sp.pid}</span>}
+      </div>
+    </li>
   );
 }
 
@@ -42,7 +75,7 @@ function useScreenshots() {
   const client = useClient();
   const [shots, setShots] = useState<Event[]>([]);
   useEffect(
-    () => client.events((e) => setShots((s) => [e, ...s.filter((x) => x.event_id !== e.event_id)].slice(0, 6)), { types: ["sandbox.screenshot"] }),
+    () => client.events((e) => setShots((s) => [e, ...s.filter((x) => x.event_id !== e.event_id)].slice(0, 4)), { types: ["sandbox.screenshot"] }),
     [client],
   );
   return shots;
@@ -67,115 +100,153 @@ function useLastTaskScreenshots() {
 export default function SystemPage() {
   const client = useClient();
   const status = useQuery({ queryKey: ["system-status"], queryFn: () => client.status(), refetchInterval: 10_000 });
-  const res = useQuery({ queryKey: ["system-resources"], queryFn: () => client.resources(), refetchInterval: 2_000 });
+  const res = useResources();
+  const models = useModels();
   const sandboxes = useQuery({ queryKey: ["sandboxes"], queryFn: () => client.sandboxes(), refetchInterval: 3_000 });
   const shots = useScreenshots();
   const last = useLastTaskScreenshots();
   const r = res.data;
   const gpu = r?.gpu;
+  const st = status.data;
+  const up = st ? (st.uptime_s < 3600 ? `${Math.round(st.uptime_s / 60)} min` : `${(st.uptime_s / 3600).toFixed(1)} h`) : "";
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <h1 className="flex items-center gap-2 text-2xl font-semibold"><MonitorCog className="size-6 text-primary" /> System</h1>
-        {status.data && (
-          <span className={cn("rounded-md px-2 py-0.5 font-mono text-xs font-bold", status.data.ready ? "bg-st-running/15 text-st-running" : "bg-st-failed/15 text-st-failed")}>
-            {status.data.ready ? "READY" : "NOT READY"}
+    <div className="mx-auto max-w-[1600px] space-y-5">
+      <div className="flex flex-wrap items-center gap-3">
+        <h1 className="flex items-center gap-2 text-2xl font-semibold">
+          <MonitorCog className="size-6 text-brand" aria-hidden /> System
+        </h1>
+        {st && (
+          <span className={cn("rounded-md px-2 py-0.5 font-mono text-xs font-bold", st.ready ? "bg-st-running/12 text-st-running" : "bg-st-failed/12 text-st-failed")}>
+            {st.ready ? "READY" : "NOT READY"}
           </span>
         )}
-        {status.data && (
-          <span className="font-mono text-xs text-muted-foreground">
-            v{status.data.version} · contracts {status.data.contract_version} · up {Math.round(status.data.uptime_s / 60)} min
+        {st && (
+          <span className="font-mono text-sm text-text-2">
+            v{st.version} · contract {st.contract_version} · up {up}
           </span>
         )}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <GaugeRing label="CPU" icon={Cpu} value={r ? r.cpu_percent : null} detail={r ? `${r.cpu_percent.toFixed(1)} %` : "…"} />
-        <GaugeRing
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Gauge2 label="CPU" icon={Cpu} pct={r ? r.cpu_percent : null} value={r ? `${r.cpu_percent.toFixed(0)}%` : "…"} detail="all cores" />
+        <Gauge2
           label="RAM"
           icon={MemoryStick}
-          value={r ? (100 * r.ram_used_mb) / Math.max(r.ram_total_mb, 1) : null}
-          detail={r ? `${(r.ram_used_mb / 1024).toFixed(1)} / ${(r.ram_total_mb / 1024).toFixed(1)} GB` : "…"}
+          pct={r ? (100 * r.ram_used_mb) / Math.max(r.ram_total_mb, 1) : null}
+          value={r ? `${(r.ram_used_mb / 1024).toFixed(1)} GB` : "…"}
+          detail={r ? `of ${(r.ram_total_mb / 1024).toFixed(1)} GB` : ""}
         />
-        <GaugeRing
-          label={gpu ? `GPU · ${gpu.name}` : "GPU"}
-          icon={Gauge}
-          value={gpu ? gpu.utilization : null}
-          detail={gpu ? `${gpu.utilization.toFixed(0)} % · VRAM ${(gpu.memory_used_mb / 1024).toFixed(1)} / ${(gpu.memory_total_mb / 1024).toFixed(1)} GB` : "no GPU reported"}
+        <Gauge2 label="GPU" icon={Gauge} pct={gpu ? gpu.utilization : null} value={gpu ? `${gpu.utilization.toFixed(0)}%` : "n/a"} detail={gpu?.name ?? "no GPU reported"} />
+        <Gauge2
+          label="VRAM"
+          icon={HardDrive}
+          pct={gpu ? (100 * gpu.memory_used_mb) / Math.max(gpu.memory_total_mb, 1) : null}
+          value={gpu ? `${(gpu.memory_used_mb / 1024).toFixed(1)} GB` : "n/a"}
+          detail={gpu ? `of ${(gpu.memory_total_mb / 1024).toFixed(1)} GB` : ""}
         />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
-        <section className="rounded-xl border bg-card p-4">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Kernel</h2>
-          <dl className="mt-2 grid grid-cols-2 gap-3 font-mono text-sm sm:grid-cols-4">
-            {[
-              ["processes", r?.running_processes],
-              ["queued tasks", r?.queued_tasks],
-              ["sandboxes", r?.active_sandboxes],
-              ["tokens / min", r?.tokens_last_minute],
-            ].map(([k, v]) => (
-              <div key={k as string} className="rounded-lg bg-secondary/60 p-3">
-                <dt className="text-xs text-muted-foreground">{k}</dt>
-                <dd className="text-2xl font-bold">{v ?? "–"}</dd>
-              </div>
-            ))}
-          </dl>
-          <h2 className="mt-5 text-sm font-semibold uppercase tracking-wider text-muted-foreground">Components</h2>
-          <ul className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-            {status.data?.components.map((c) => (
-              <li key={c.component} className="flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm" title={c.detail || undefined}>
-                {c.ok ? <CircleCheck className="size-4 text-st-running" /> : <CircleX className="size-4 text-st-failed" />}
-                <span className="truncate">{c.component}</span>
-                <span className={cn("ml-auto rounded px-1.5 font-mono text-[11px] font-bold", c.mode === "real" ? "bg-st-running/15 text-st-running" : "bg-st-waiting/15 text-st-waiting")}>
-                  {c.mode}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="space-y-4">
+          <Section title="Kernel" icon={Cpu}>
+            <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {(
+                [
+                  ["processes", r?.running_processes],
+                  ["queued tasks", r?.queued_tasks],
+                  ["sandboxes", r?.active_sandboxes],
+                  ["tokens / min", r?.tokens_last_minute],
+                ] as const
+              ).map(([k, v]) => (
+                <div key={k} className="rounded-lg border border-line bg-surface-2 px-3 py-2">
+                  <dd className="font-mono text-2xl font-bold">{v ?? "–"}</dd>
+                  <dt className="text-xs text-text-2">{k}</dt>
+                </div>
+              ))}
+            </dl>
+          </Section>
 
-        <section className="space-y-4 rounded-xl border bg-card p-4">
-          <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground"><Box className="size-4" /> Sandboxes</h2>
-          <ul className="space-y-1.5">
-            {(sandboxes.data ?? []).length === 0 && <li className="text-sm text-muted-foreground">No sandboxes.</li>}
-            {[...(sandboxes.data ?? [])].reverse().slice(0, 8).map((s) => (
-              <li key={s.sandbox_id} className="flex items-center gap-3 font-mono text-xs">
-                <span className={cn("rounded px-1.5 py-0.5 font-bold", s.status === "running" ? "bg-st-running/15 text-st-running" : "bg-secondary text-muted-foreground")}>{s.status}</span>
-                <span>{s.sandbox_id}</span>
-                <span className="text-muted-foreground">{s.spec.display ? "browser" : s.spec.image}</span>
-                <span className="text-muted-foreground">net {s.spec.network}{s.spec.network_allow?.length ? ` → ${s.spec.network_allow.join(", ")}` : ""}</span>
-                <Link href={`/tasks/${s.spec.task_id}`} className="ml-auto text-primary hover:underline">{s.spec.task_id}</Link>
-              </li>
-            ))}
-          </ul>
-          <h2 className="flex items-center gap-2 pt-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground"><Camera className="size-4" /> Latest screenshots</h2>
-          {shots.length === 0 && last.data ? (
-            <div className="space-y-1">
-              <p className="flex font-mono text-xs text-muted-foreground">
-                from the last run
-                <Link href={`/tasks/${last.data.taskId}`} className="ml-auto text-primary hover:underline">{last.data.taskId}</Link>
-              </p>
-              {last.data.refs.map((r) => <ArtifactImage key={r} artifact={r} />)}
-            </div>
-          ) : shots.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Screenshots appear here live when an agent browses inside a sandbox.</p>
-          ) : (
-            <ul className="space-y-3">
-              {shots.map((e, i) => (
-                <li key={e.event_id} className="space-y-1">
-                  <p className="flex gap-3 font-mono text-xs">
-                    <span className="text-muted-foreground">{formatTime(e.ts)}</span>
-                    <span className="text-muted-foreground">pid {e.pid}</span>
-                    <Link href={`/tasks/${e.task_id}`} className="ml-auto text-primary hover:underline">{e.task_id}</Link>
-                  </p>
-                  {str(e, "artifact") && <ArtifactImage artifact={str(e, "artifact")!} className={i === 0 ? "" : "max-w-xs opacity-80"} />}
+          <Section title={`Components (${st?.components.filter((c) => c.ok).length ?? 0}/${st?.components.length ?? 0} healthy)`} icon={CircleCheck}>
+            <ul className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+              {st?.components.map((c) => (
+                <li key={c.component} className="flex items-center gap-2 rounded-md border border-line bg-surface-2 px-2.5 py-1.5 text-sm" title={c.detail || undefined}>
+                  {c.ok ? <CircleCheck className="size-4 shrink-0 text-st-running" aria-label="ok" /> : <CircleX className="size-4 shrink-0 text-st-failed" aria-label="down" />}
+                  <span className="truncate">{c.component}</span>
+                  <span className={cn("ml-auto rounded px-1.5 font-mono text-xs font-bold", c.mode === "real" ? "bg-st-running/12 text-st-running" : "bg-st-waiting/12 text-st-waiting")}>{c.mode}</span>
                 </li>
               ))}
             </ul>
-          )}
-        </section>
+          </Section>
+
+          <Section title="Models" icon={Sparkles}>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="text-left text-xs uppercase tracking-wider text-muted-foreground">
+                  <tr>
+                    <th className="pb-2 font-semibold">Model</th>
+                    <th className="pb-2 font-semibold">Runs</th>
+                    <th className="pb-2 font-semibold">Context</th>
+                    <th className="pb-2 font-semibold">Capabilities</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {(models.data ?? []).map((m) => (
+                    <tr key={m.name} className={cn(m.available === false && "opacity-50")}>
+                      <td className="py-2 font-mono">{m.name}</td>
+                      <td className="py-2">
+                        <span className={cn("rounded-md px-1.5 font-mono text-xs font-semibold", m.local !== false ? "bg-st-running/12 text-st-running" : "bg-st-waiting/12 text-st-waiting")}>
+                          {m.local !== false ? "local" : "remote"}
+                        </span>{" "}
+                        <span className="text-xs text-text-2">{m.provider}</span>
+                      </td>
+                      <td className="py-2 font-mono text-xs text-text-2">{m.embedding_dim ? `${m.embedding_dim}-d embeddings` : m.context_window ? `${m.context_window.toLocaleString()} tokens` : "—"}</td>
+                      <td className="py-2 font-mono text-xs text-text-2">{(m.capabilities ?? []).join(" · ")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Section>
+        </div>
+
+        <div className="space-y-4">
+          <Section title={`Sandboxes (${(sandboxes.data ?? []).length})`} icon={Box}>
+            <ul className="space-y-2">
+              {(sandboxes.data ?? []).length === 0 && <li className="text-sm text-text-2">No sandboxes yet. They start when an agent browses or runs code.</li>}
+              {[...(sandboxes.data ?? [])].reverse().slice(0, 6).map((s) => (
+                <SandboxCard key={s.sandbox_id} s={s} />
+              ))}
+            </ul>
+          </Section>
+
+          <Section title="Latest sandbox screenshots" icon={Camera}>
+            {shots.length === 0 && last.data ? (
+              <div className="space-y-1.5">
+                <p className="flex font-mono text-xs text-text-2">
+                  from the last run
+                  <Link href={`/tasks/${last.data.taskId}`} className="ml-auto text-brand hover:underline">{last.data.taskId}</Link>
+                </p>
+                {last.data.refs.slice(0, 2).map((ref) => <ArtifactImage key={ref} artifact={ref} className="[&_img]:max-h-[420px] [&_img]:object-contain [&_img]:object-top" />)}
+              </div>
+            ) : shots.length === 0 ? (
+              <p className="text-sm text-text-2">Screenshots appear here live when an agent browses inside a sandbox.</p>
+            ) : (
+              <ul className="space-y-3">
+                {shots.map((e) => (
+                  <li key={e.event_id} className="space-y-1">
+                    <p className="flex gap-3 font-mono text-xs text-text-2">
+                      <span>{formatTime(e.ts)}</span>
+                      <span>PID {e.pid}</span>
+                      <Link href={`/tasks/${e.task_id}`} className="ml-auto text-brand hover:underline">{e.task_id}</Link>
+                    </p>
+                    {str(e, "artifact") && <ArtifactImage artifact={str(e, "artifact")!} className="[&_img]:max-h-[420px] [&_img]:object-contain [&_img]:object-top" />}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Section>
+        </div>
       </div>
     </div>
   );
