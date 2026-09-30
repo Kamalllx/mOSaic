@@ -24,6 +24,7 @@ from ..schema import (
     MemoryRecord,
     ModelRequest,
     ModelResponse,
+    NarrationPayload,
     PolicyDecision,
     Principal,
     RunTimeline,
@@ -119,6 +120,11 @@ class AgentContext(Protocol):
     # --- observability / lifecycle
     async def log(self, message: str, level: str = "info", data: dict[str, Any] | None = None) -> None:
         """Emits agent.log — shown live in the UI timeline."""
+
+    async def narrate(self, payload: NarrationPayload) -> None:
+        """Emits task.understood, agent.planned or agent.thought (by payload type) for the UI's story of the run.
+        The kernel stamps pid (AgentThought.pid is overwritten). Text must be a short summary written by agent code:
+        never raw model chain-of-thought or retrieved document text."""
 
     async def checkpoint(self, state: dict[str, Any]) -> str:
         """Persist agent-defined state; returns checkpoint_id. Called by agents at safe points."""

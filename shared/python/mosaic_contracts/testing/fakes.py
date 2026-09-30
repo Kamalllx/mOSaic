@@ -26,10 +26,12 @@ import yaml
 
 from ..errors import MosaicError
 from ..schema import (
+    NARRATION_EVENTS,
     A2AMessage,
     AgentManifest,
     AgentResult,
     AgentResultStatus,
+    AgentThought,
     Approval,
     ApprovalStatus,
     AuditEntry,
@@ -64,6 +66,7 @@ from ..schema import (
     ModelInfo,
     ModelRequest,
     ModelResponse,
+    NarrationPayload,
     OKFDraft,
     OKFFrontmatter,
     PolicyDecision,
@@ -860,7 +863,7 @@ def default_test_manifest(name: str = "test-agent") -> AgentManifest:
 class FakeAgentContext:
     """Stand-in for the kernel's AgentContext. P3 unit-tests agents with it; nothing else needed.
 
-    Inspect afterwards: .logs, .syscalls, .spawned, .sent, .checkpoints, .models.calls
+    Inspect afterwards: .logs, .narrations, .syscalls, .spawned, .sent, .checkpoints, .models.calls
     Inject: responses= (canned LLM replies), child_runner= (what spawned children return),
             auto_approve= (approve REQUIRES_APPROVAL syscalls), inbox messages via .inbox.put_nowait(msg)
     """
@@ -883,6 +886,7 @@ class FakeAgentContext:
         self.child_runner = child_runner
         self.inbox: asyncio.Queue[A2AMessage] = asyncio.Queue()
         self.logs: list[tuple[str, str, dict[str, Any] | None]] = []
+        self.narrations: list[NarrationPayload] = []
         self.syscalls: list[tuple[SyscallRequest, SyscallResult]] = []
         self.spawned: dict[int, tuple[str, str, asyncio.Task]] = {}
         self.sent: list[A2AMessage] = []
@@ -976,6 +980,13 @@ class FakeAgentContext:
 
     async def log(self, message: str, level: str = "info", data: dict[str, Any] | None = None) -> None:
         self.logs.append((level, message, data))
+
+    async def narrate(self, payload: NarrationPayload) -> None:
+        if type(payload) not in NARRATION_EVENTS:
+            raise MosaicError("BAD_REQUEST", f"cannot narrate {type(payload).__name__}")
+        if isinstance(payload, AgentThought):
+            payload = payload.model_copy(update={"pid": self.pid})
+        self.narrations.append(payload)
 
     async def checkpoint(self, state: dict[str, Any]) -> str:
         cid = new_id("CKPT")

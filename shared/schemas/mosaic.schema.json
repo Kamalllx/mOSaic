@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "mOSaic",
-  "description": "mOSaic contracts v0.8.0",
+  "description": "mOSaic contracts v0.10.0",
   "type": "object",
   "$defs": {
     "PrincipalKind": {
@@ -3808,6 +3808,217 @@
       "title": "PolicyDocument",
       "type": "object"
     },
+    "TaskUnderstood": {
+      "additionalProperties": false,
+      "description": "task.understood: what the planner took the goal to mean, before it assigns agents.",
+      "properties": {
+        "intent": {
+          "description": "e.g. \"investigate budget overrun and schedule slip\"",
+          "maxLength": 240,
+          "type": "string"
+        },
+        "entities": {
+          "description": "e.g. [\"Project Apollo\", \"APOLLO-12\"]",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20,
+          "type": "array"
+        },
+        "capabilities_needed": {
+          "description": "e.g. knowledge.search, jira.write",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20,
+          "type": "array"
+        },
+        "plan_summary": {
+          "maxLength": 240,
+          "type": "string"
+        }
+      },
+      "required": [
+        "intent",
+        "plan_summary"
+      ],
+      "title": "TaskUnderstood",
+      "type": "object"
+    },
+    "AgentPlanned": {
+      "additionalProperties": false,
+      "description": "agent.planned: one agent the planner decided to create, before it exists (no pid yet).",
+      "properties": {
+        "role": {
+          "description": "Role template id; the matching agent.created carries it as `template`",
+          "type": "string"
+        },
+        "why": {
+          "maxLength": 240,
+          "type": "string"
+        },
+        "scope": {
+          "description": "/org paths or globs it may read",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "capabilities": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "role",
+        "why"
+      ],
+      "title": "AgentPlanned",
+      "type": "object"
+    },
+    "AgentCreated": {
+      "additionalProperties": false,
+      "description": "agent.created: the kernel spawned an agent. `generated` is true for a manifest built for this task.",
+      "properties": {
+        "pid": {
+          "type": "integer"
+        },
+        "manifest_name": {
+          "type": "string"
+        },
+        "template": {
+          "description": "Role template id (equals agent.planned.role); the manifest name for fixed agents",
+          "type": "string"
+        },
+        "generated": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "pid",
+        "manifest_name",
+        "template"
+      ],
+      "title": "AgentCreated",
+      "type": "object"
+    },
+    "AgentThought": {
+      "additionalProperties": false,
+      "description": "agent.thought: one short visible step of an agent. `pid` is set by the kernel, not the agent.",
+      "properties": {
+        "pid": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "step": {
+          "description": "Short step label, e.g. \"search\", \"plan\", \"synthesize\"",
+          "maxLength": 40,
+          "type": "string"
+        },
+        "text": {
+          "description": "One sentence",
+          "maxLength": 240,
+          "type": "string"
+        }
+      },
+      "required": [
+        "step",
+        "text"
+      ],
+      "title": "AgentThought",
+      "type": "object"
+    },
+    "ToolQuery": {
+      "additionalProperties": false,
+      "description": "tool.query: a query a tool ran for an agent (e.g. the SQL of db.query), with its row count and duration.",
+      "properties": {
+        "pid": {
+          "type": "integer"
+        },
+        "tool": {
+          "type": "string"
+        },
+        "query": {
+          "maxLength": 4000,
+          "type": "string"
+        },
+        "rows": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "ms": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "pid",
+        "tool",
+        "query",
+        "rows",
+        "ms"
+      ],
+      "title": "ToolQuery",
+      "type": "object"
+    },
+    "TaskData": {
+      "additionalProperties": false,
+      "description": "task.data: a table of results to show. At most MAX_DATA_ROWS rows; use TaskData.capped() to truncate.",
+      "properties": {
+        "columns": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "rows": {
+          "items": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array"
+          },
+          "maxItems": 200,
+          "type": "array"
+        },
+        "source": {
+          "description": "Where the rows came from, e.g. \"db.query\" or \"/org/finance/apollo-budget\"",
+          "type": "string"
+        }
+      },
+      "required": [
+        "columns",
+        "source"
+      ],
+      "title": "TaskData",
+      "type": "object"
+    },
     "ComponentHealth": {
       "additionalProperties": false,
       "properties": {
@@ -3951,11 +4162,17 @@
     "A2AMessage": {
       "$ref": "#/$defs/A2AMessage"
     },
+    "AgentCreated": {
+      "$ref": "#/$defs/AgentCreated"
+    },
     "AgentFramework": {
       "$ref": "#/$defs/AgentFramework"
     },
     "AgentManifest": {
       "$ref": "#/$defs/AgentManifest"
+    },
+    "AgentPlanned": {
+      "$ref": "#/$defs/AgentPlanned"
     },
     "AgentProcess": {
       "$ref": "#/$defs/AgentProcess"
@@ -3968,6 +4185,9 @@
     },
     "AgentState": {
       "$ref": "#/$defs/AgentState"
+    },
+    "AgentThought": {
+      "$ref": "#/$defs/AgentThought"
     },
     "AllowDeny": {
       "$ref": "#/$defs/AllowDeny"
@@ -4224,11 +4444,17 @@
     "TaskCreate": {
       "$ref": "#/$defs/TaskCreate"
     },
+    "TaskData": {
+      "$ref": "#/$defs/TaskData"
+    },
     "TaskResult": {
       "$ref": "#/$defs/TaskResult"
     },
     "TaskStatus": {
       "$ref": "#/$defs/TaskStatus"
+    },
+    "TaskUnderstood": {
+      "$ref": "#/$defs/TaskUnderstood"
     },
     "TimelineStats": {
       "$ref": "#/$defs/TimelineStats"
@@ -4241,6 +4467,9 @@
     },
     "ToolOperation": {
       "$ref": "#/$defs/ToolOperation"
+    },
+    "ToolQuery": {
+      "$ref": "#/$defs/ToolQuery"
     },
     "ToolResult": {
       "$ref": "#/$defs/ToolResult"

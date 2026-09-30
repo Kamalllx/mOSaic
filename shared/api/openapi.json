@@ -3,7 +3,7 @@
   "info": {
     "title": "mOSaic Gateway API",
     "description": "Contract for the mOSaic kernel gateway. Served here by the mock implementation.",
-    "version": "0.8.0"
+    "version": "0.10.0"
   },
   "paths": {
     "/health": {
