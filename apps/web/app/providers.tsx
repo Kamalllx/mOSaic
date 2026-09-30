@@ -25,7 +25,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
     createMosaicClient(resolveGatewayUrl(DEFAULT_BASE_URL, typeof window === "undefined" ? undefined : window.location)),
   );
   return (
-    <ThemeProvider attribute="data-theme" defaultTheme="system" enableSystem storageKey="theme" disableTransitionOnChange>
+    <ThemeProvider attribute="data-theme" defaultTheme="light" enableSystem storageKey="theme" disableTransitionOnChange>
       <ClientContext.Provider value={client}>
         <QueryClientProvider client={queryClient}>
           <TooltipProvider delayDuration={200}>

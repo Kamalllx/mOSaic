@@ -88,6 +88,14 @@
   --shadow-window: var(--win-shadow);
   --shadow-window-idle: var(--win-shadow-idle);
   --color-grout: var(--grout);
+  --color-glass: var(--glass);
+  --color-glass-strong: var(--glass-strong);
+  --color-glass-edge: var(--glass-edge);
+  --color-hairline: var(--hairline);
+  --color-chrome-ink: var(--chrome-ink);
+  --color-tl-close: #ff5f57;
+  --color-tl-min: #febc2e;
+  --color-tl-max: #28c840;
   --ease-out-soft: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
@@ -126,6 +134,11 @@
   --ev-tool: #8aa4c2;
   --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 16px rgb(0 0 0 / 0.25);
   --grout: #07090c;
+  --glass: rgb(30 36 45 / 0.62);
+  --glass-strong: rgb(24 29 37 / 0.82);
+  --glass-edge: rgb(255 255 255 / 0.10);
+  --hairline: rgb(255 255 255 / 0.08);
+  --chrome-ink: #eef2f6;
   /* Windows light from above: a tight contact shadow and a long soft one, tinted with the grout. */
   --win-shadow: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 2px 4px rgb(2 4 8 / 0.5), 0 24px 60px -12px rgb(2 4 8 / 0.75);
   --win-shadow-idle: 0 1px 2px rgb(2 4 8 / 0.45), 0 12px 32px -12px rgb(2 4 8 / 0.6);
@@ -133,9 +146,15 @@
 
 [data-theme="light"] {
   color-scheme: light;
-  --grout: #cdd3da;
-  --win-shadow: 0 2px 4px rgb(30 41 59 / 0.12), 0 24px 60px -12px rgb(30 41 59 / 0.35);
-  --win-shadow-idle: 0 1px 2px rgb(30 41 59 / 0.1), 0 12px 32px -12px rgb(30 41 59 / 0.25);
+  --grout: #dfe6f0;
+  /* macOS-style materials: translucent chrome over the colourful wallpaper. */
+  --glass: rgb(255 255 255 / 0.58);
+  --glass-strong: rgb(255 255 255 / 0.80);
+  --glass-edge: rgb(255 255 255 / 0.70);
+  --hairline: rgb(15 23 42 / 0.10);
+  --chrome-ink: #1d1d1f;
+  --win-shadow: 0 0 0 0.5px rgb(15 23 42 / 0.18), 0 10px 24px -6px rgb(30 41 59 / 0.18), 0 32px 80px -12px rgb(30 41 59 / 0.32);
+  --win-shadow-idle: 0 0 0 0.5px rgb(15 23 42 / 0.14), 0 8px 28px -10px rgb(30 41 59 / 0.22);
   --bg: #f6f7f9;
   --surface-1: #ffffff;
   --surface-2: #f1f3f6;
@@ -254,3 +273,48 @@
   to { opacity: 1; transform: none; }
 }
 .notice-in { animation: notice-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+
+/* ---- macOS materials and motion ----------------------------------------------------------------------------- */
+.material {
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid var(--glass-edge);
+}
+.material-strong {
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: blur(36px) saturate(180%);
+  backdrop-filter: blur(36px) saturate(180%);
+  border: 1px solid var(--glass-edge);
+}
+
+@keyframes spotlight-in {
+  from { opacity: 0; transform: translateY(-14px) scale(0.955); filter: blur(10px); }
+  to { opacity: 1; transform: none; filter: none; }
+}
+@keyframes spotlight-out {
+  from { opacity: 1; transform: none; filter: none; }
+  to { opacity: 0; transform: translateY(-8px) scale(0.97); filter: blur(6px); }
+}
+.spotlight-in { animation: spotlight-in 280ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.spotlight-out { animation: spotlight-out 150ms cubic-bezier(0.4, 0, 1, 1) both; }
+
+@keyframes dock-bounce {
+  0%, 100% { transform: translateY(0); }
+  30% { transform: translateY(-14px); }
+  55% { transform: translateY(0); }
+  72% { transform: translateY(-6px); }
+}
+.dock-bounce { animation: dock-bounce 900ms cubic-bezier(0.3, 0.7, 0.4, 1) 3; }
+
+@keyframes stage-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+.stage-in { animation: stage-in 360ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+@keyframes dock-left {
+  from { transform: translateY(-24px) scale(0.98); opacity: 0.4; }
+  to { transform: none; opacity: 1; }
+}
+.dock-left-in { animation: dock-left 420ms cubic-bezier(0.16, 1, 0.3, 1) both; }
