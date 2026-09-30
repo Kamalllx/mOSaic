@@ -16,8 +16,8 @@ function Node({ entry, depth, selected, onSelect }: { entry: KnowledgeEntry; dep
     <li>
       <div
         className={cn(
-          "flex cursor-pointer items-center gap-1.5 rounded px-1.5 py-1 text-sm hover:bg-accent",
-          isSel && "bg-accent text-primary",
+          "flex cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1.5 text-sm hover:bg-surface-3",
+          isSel && "bg-surface-3 font-medium text-brand",
         )}
         style={{ paddingLeft: 6 + depth * 14 }}
         onClick={() => {
@@ -34,7 +34,7 @@ function Node({ entry, depth, selected, onSelect }: { entry: KnowledgeEntry; dep
           <FileText className="ml-5 size-4 shrink-0 text-muted-foreground" />
         )}
         <span className="truncate" title={entry.path}>{entry.title || name}</span>
-        {sensitive && <Lock className="ml-auto size-3.5 shrink-0 text-st-failed" aria-label={entry.privacy} />}
+        {sensitive && <Lock className="ml-auto size-3.5 shrink-0 text-risk-high" aria-label={entry.privacy} />}
       </div>
       {entry.is_dir && open && <Listing path={entry.path} depth={depth + 1} selected={selected} onSelect={onSelect} />}
     </li>
@@ -60,7 +60,7 @@ export function KnowledgeTree({ selected, onSelect }: { selected: string | null;
   return (
     <div>
       <div
-        className={cn("cursor-pointer rounded px-1.5 py-1 font-mono text-sm hover:bg-accent", selected === "/org" && "bg-accent text-primary")}
+        className={cn("cursor-pointer rounded-md px-1.5 py-1.5 font-mono text-sm hover:bg-surface-3", selected === "/org" && "bg-surface-3 text-brand")}
         onClick={() => onSelect("/org")}
       >
         /org
