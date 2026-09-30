@@ -43,7 +43,7 @@ export default function TasksPage() {
               role="radio"
               aria-checked={filter === f}
               onClick={() => setFilter(f)}
-              className={cn("h-9 px-3 text-sm capitalize text-text-2", filter === f && "bg-surface-3 text-foreground")}
+              className={cn("h-9 whitespace-nowrap px-2.5 text-sm capitalize text-text-2 sm:px-3", filter === f && "bg-surface-3 text-foreground")}
             >
               {f} <span className="font-mono text-xs">({all.filter((t) => matches(f, t.status)).length})</span>
             </button>

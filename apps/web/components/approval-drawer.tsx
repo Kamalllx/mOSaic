@@ -43,7 +43,8 @@ export function ApprovalDrawer({ view }: { view: TaskView }) {
       <Sheet open={open} onOpenChange={(o) => (o ? setManualOpen(true) : close())}>
         <SheetContent
           side="right"
-          className="gap-0 overflow-y-auto border-l border-line bg-background p-0 duration-220 data-[side=right]:w-screen data-[side=right]:sm:w-[720px] data-[side=right]:sm:max-w-[95vw]"
+          className="gap-0 overflow-y-auto border-l border-line bg-background p-0 duration-220 sm:max-w-none"
+          style={{ width: "min(720px, 100vw)", maxWidth: "100vw" }}
         >
           <SheetHeader className="border-b border-line px-5 py-4">
             <SheetTitle className="flex items-center gap-2 text-xl">

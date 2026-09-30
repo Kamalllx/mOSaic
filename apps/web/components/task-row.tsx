@@ -8,10 +8,10 @@ export function TaskRow({ t }: { t: Task }) {
   return (
     <Link
       href={`/tasks/${t.task_id}`}
-      className="group flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-surface-3"
+      className="group flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg px-3 py-2.5 transition-colors hover:bg-surface-3 sm:flex-nowrap"
     >
-      <TaskStatusBadge status={t.status} className="w-[10.5rem] justify-center" />
-      <div className="min-w-0 flex-1">
+      <TaskStatusBadge status={t.status} className="justify-center sm:w-[10.5rem]" />
+      <div className="order-last min-w-0 basis-full sm:order-none sm:basis-auto sm:flex-1">
         <p className="truncate text-sm">{t.goal}</p>
         <p className="font-mono text-xs text-text-2">
           {t.task_id} · {formatTime(t.created_at)}

@@ -28,7 +28,7 @@ export default function AuditIndexPage() {
         {all.map((t) => (
           <li key={t.task_id}>
             <Link href={`/audit/${t.task_id}`} className="group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-surface-3">
-              <TaskStatusBadge status={t.status} className="w-[10.5rem] justify-center" />
+              <TaskStatusBadge status={t.status} className="justify-center sm:w-[10.5rem]" />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm">{t.goal}</p>
                 <p className="font-mono text-xs text-text-2">

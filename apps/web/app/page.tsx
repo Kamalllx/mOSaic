@@ -121,7 +121,7 @@ export default function HomePage() {
             <Button className="ml-auto h-10 px-5" disabled={!canSubmit} onClick={() => submit.mutate()}>
               {submit.isPending ? <Loader2 className="size-4 animate-spin" /> : <CornerDownLeft className="size-4" />}
               Run
-              <kbd className="ml-1 rounded bg-black/15 px-1 font-mono text-xs">Ctrl+Enter</kbd>
+              <kbd className="ml-1 hidden rounded bg-black/15 px-1 font-mono text-xs sm:inline">Ctrl+Enter</kbd>
             </Button>
           </div>
         </section>

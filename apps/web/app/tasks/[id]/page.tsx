@@ -79,7 +79,7 @@ export default function TaskPage({ params }: { params: Promise<{ id: string }> }
           </div>
           <h1 className="mt-1.5 line-clamp-2 text-xl font-semibold leading-snug md:text-2xl">{String(goal ?? "…")}</h1>
         </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 md:w-auto md:shrink-0">
           <ApprovalDrawer view={view} />
           {active && (
             <Button variant="outline" size="sm" onClick={() => control.mutate("checkpoint")} disabled={control.isPending}>

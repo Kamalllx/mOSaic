@@ -175,6 +175,15 @@
   }
 }
 
+/* Radix's scroll lock reserves a scrollbar gap on <body> while a sheet is open. Phones have no scrollbar, and the gap
+   it computes there squeezes the page and zooms the layout out, pushing the approval card off screen. */
+@media (max-width: 767px) {
+  html body[data-scroll-locked] {
+    margin-right: 0 !important;
+    padding-right: 0 !important;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
