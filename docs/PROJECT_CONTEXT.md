@@ -4,13 +4,19 @@ Last updated 2026-10-01, after the phase-2 integration. Read this first, then yo
 
 State of the code:
 - **`main`** is the integrated product: the console as a desktop OS (the "Signal" look, a mosaic-floor wallpaper),
-  B's agent work, C's identity, connectors and ingestion (finished and wired to the real gateway), D's
-  `GET /system/config` with a Settings centre, the rebuilt phone app with an APK, and **mOSaic OS**, a WSL distro
-  whose `/org` is the organization's knowledge. Contract **0.11.0**.
+  B's whole phase 2 (thought-process events, dynamic agents, the SQL tool with the vendors and multitool scenarios,
+  the Playwright MCP browser, off by default), C's identity, connectors and ingestion
+  (finished and wired to the real gateway), D's `GET /system/config` with a Settings centre (D's helpers for its
+  architecture map and search), the rebuilt phone app with an APK, and **mOSaic OS**, a WSL distro whose `/org` is the
+  organization's knowledge. Contract **0.13.0**: two lines both counted from 0.9.0 (A/C: identity 0.10, sign-in codes
+  0.11; B: thought events 0.10, dynamic agents 0.11, db tool 0.12) and were joined at 0.13.0.
 - **Branches** from here: `a/…`, `b/…`, `c/…`, `d/…` off `main`; Kamal merges back into `main`.
-- **Demo**: the scored Apollo and Zeus runs pass **8/8** on real models (`scripts/demo_run.py`); the Apollo run was
-  started and approved from the phone app on the Android emulator.
-- **Tests**: 358 Python tests and 88 web tests pass; ruff, eslint and both TypeScript projects are clean.
+- **Demo**: on the full integration all four scored scenarios pass **8/8** with B's story check on real models
+  (`scripts/demo_run.py run --auto-approve --check-story [--scenario zeus|vendors|multitool]`; vendors and multitool
+  need `scripts/seed_demo_data.py` once). Before B's merge, an Apollo run was started and approved from the phone app
+  on the Android emulator and scored 8/8.
+- **Tests**: 442 Python tests (a few skip without live services such as the MCP browser image) and 93 web tests
+  pass; ruff, eslint and both TypeScript projects are clean.
 
 ---
 
@@ -303,6 +309,11 @@ See `docs/team/B-HANDOFF.md`.
 | Phone app for remote use, RBAC, approvals, live tasks, notifications, APK | Done: `apps/mobile`, `build-apk.ps1`, sign-in codes (0.11.0) |
 | Desktop: Signal look, shortcuts, Alt+Space, the visible run, faces and orbs, a mosaic wallpaper, centred Ask bar and rail | Done |
 | An OS that handles the computer's files | Done: mOSaic OS (WSL) with `/org` as a filesystem, and mounted folders |
+| Thought-process events, dynamic agents, SQL tool, MCP browser (B) | Merged from `b/mcp-browser` (B's final branch; it carries every other B branch). The desktop's run story renders the events; `scripts/seed_demo_data.py` once per machine for the vendors and multitool scenarios. See `docs/team/B-PHASE2-HANDOFF.md` |
+
+Branches still open after the integration: `d/settings` (Manjunath's own phone app, Expo Router with native Google
+sign-in; its Settings helpers are merged, the app is not, because `main`'s phone app is the one verified end to end
+against the real gateway; port native Google sign-in from it next).
 
 ### A (Kamal): the desktop and the visible run
 - **Theme.** A Mac-like, light, colourful theme across the whole UI: the menu bar, windows with traffic-light controls, a dock with magnification, a new wallpaper and landing, and a "techy terminal" accent. Not dark by default.
