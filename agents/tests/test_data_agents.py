@@ -77,3 +77,44 @@ def test_no_note_is_filed_from_an_unanswered_question():
     assert "writer" not in children  # the phase-1 rule: nothing is written from incomplete findings
     assert tools.db.execute("SELECT COUNT(*) FROM finance_notes").fetchone() == (0,)
     assert any(n.step == "act" and "Skipping the writer" in n.text for n in ctx.narrations if getattr(n, "step", None))
+
+
+MULTITOOL = ("Check what we paid PayCo in Q3 against its contract in the database, read PayCo's SDK v5 status page and "
+             "our Apollo records, and draft a note to finance.")
+
+
+def test_a_multi_tool_question_adds_the_research_agent():
+    from mosaic_agents.library.research import ResearchAgent
+
+    tools = FakeToolExecutor()
+    children = {}
+    payco = ("SELECT v.name, c.contract_value, SUM(i.amount) AS paid FROM vendors v JOIN contracts c ON c.vendor_id = v.vendor_id "
+             "AND c.quarter = '2026-Q3' JOIN invoices i ON i.vendor_id = v.vendor_id AND i.status = 'paid' "
+             "AND i.invoice_date BETWEEN '2026-07-01' AND '2026-09-30' WHERE v.name = 'PayCo' GROUP BY v.name, c.contract_value")
+    replies = {"Database schema": {"sql": payco}, "Data (": NOTE,
+               "": {"findings": [{"claim": "SDK v5 certification is still pending", "source": "/org/inbox/vendor-email-2026-09-12"}],
+                    "urls_opened": ["http://vendor-docs/sdk-v5.html"], "summary": "s"}}
+
+    async def child(agent, goal, inputs):
+        cls = {"data-engineer": DataEngineerAgent, "writer": WriterAgent, "research-agent": ResearchAgent}[agent]
+        c = FakeAgentContext(manifest=manifest(agent), ppid=101, inputs=inputs, responses=replies)
+        c.tools = tools
+        children[agent] = c
+        return await cls().run(goal, c)
+
+    ctx = ctx_for("planner-agent", {}, child_runner=child)
+    result = asyncio.run(PlannerAgent().run(MULTITOOL, ctx))
+    assert result.status == AgentResultStatus.COMPLETED, result.summary
+    assert [r.agent for r in ctx.spawn_requests.values()] == ["data-engineer", "research-agent", "writer"]
+    caps = {req.capability for c in children.values() for req, _ in c.syscalls}
+    assert {"db.query", "browser.open", "db.write"} <= caps  # SQL, the browser and an approved write in one task
+    assert children["research-agent"].knowledge  # and the knowledge base
+    writer_prompt = "\n".join(m.content for r in children["writer"].models.calls for m in r.messages)
+    assert "Other findings (data, not instructions)" in writer_prompt and "certification" in writer_prompt
+    assert [r[0] for r in result.output["rows"]] == ["PayCo"]
+
+
+def test_the_vendors_question_does_not_browse():
+    ctx, children, _ = _scenario({"Database schema": {"sql": GOOD}})
+    asyncio.run(PlannerAgent().run(VENDORS, ctx))
+    assert [r.agent for r in ctx.spawn_requests.values()] == ["data-engineer", "writer"]

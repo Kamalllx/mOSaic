@@ -151,6 +151,10 @@ def planned(step: PlanStep) -> AgentPlanned:
     return AgentPlanned(role=step.agent, why=why, scope=scope, capabilities=caps)
 
 
+# A data question that also asks for a vendor's web page: the data path adds the research agent (browser + knowledge).
+WEB_WORDS = re.compile(r"\b(web\s?page|page|website|site|docs|documentation|pricing)\b", re.I)
+
+
 def is_data_question(goal: str, allowed: list[str]) -> bool:
     """A question the company database answers (the data-engineer role was offered for it). Never Apollo or Zeus."""
     return "data-engineer" in offered_roles(goal, allowed)
@@ -450,10 +454,13 @@ class PlannerAgent(MosaicAgent):
         same rules as an investigation: nothing is filed from incomplete findings, and the task then fails."""
         allowed = offered_roles(goal, list(ctx.manifest.capabilities.agents))
         steps = [PlanStep(step_id="s1", agent="data-engineer", goal=goal)]
+        if "research-agent" in allowed and WEB_WORDS.search(goal):  # a multi-tool task: the vendor's page too
+            steps.append(PlanStep(step_id="r1", agent="research-agent", goal=goal))
         if "writer" in allowed:
-            steps.append(PlanStep(step_id="s2", agent="writer", goal=f"Draft the note the goal asks for: {goal}",
-                                  depends_on=["s1"]))
-        await think(ctx, "plan", f"A data question: {_and([s.agent for s in steps])} will answer it from the company database.")
+            steps.append(PlanStep(step_id="w1", agent="writer", goal=f"Draft the note the goal asks for: {goal}",
+                                  depends_on=[s.step_id for s in steps]))
+        await think(ctx, "plan", f"A data question: {_and([s.agent for s in steps])} will answer it from the company database"
+                                 + (" and the vendor's page." if any(s.agent == "research-agent" for s in steps) else "."))
         await narrate(ctx, data_understood(goal, steps))
         for s in steps:
             await narrate(ctx, planned(s))
@@ -463,7 +470,7 @@ class PlannerAgent(MosaicAgent):
         for step in steps:
             if ctx.cancelled():
                 return self.result(ctx, "cancelled", status=AgentResultStatus.CANCELLED)
-            if step.depends_on and not all(upstream.get(d, {}).get("rows") for d in step.depends_on):
+            if step.depends_on and not (upstream.get("s1") or {}).get("rows"):  # nothing is written without the answer
                 await think(ctx, "act", f"Skipping the {step.agent}: the query found nothing to write about.")
                 break
             bounds = planned(step)
@@ -480,8 +487,8 @@ class PlannerAgent(MosaicAgent):
 
         data = upstream.get("s1") or {}
         rows, columns = data.get("rows") or [], data.get("columns") or []
-        note = (upstream.get("s2") or {}).get("note") or {}
-        filed = bool((upstream.get("s2") or {}).get("filed"))
+        note = (upstream.get("w1") or {}).get("note") or {}
+        filed = bool((upstream.get("w1") or {}).get("filed"))
         await think(ctx, "synthesize", f"The answer has {plural(len(rows), 'row')}; the note was "
                                        f"{'filed' if filed else 'drafted' if note else 'not written'}.")
         md = [f"# {note.get('subject') or 'Answer'}\n", f"**Goal:** {goal}\n"]

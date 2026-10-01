@@ -22,6 +22,7 @@ log = logging.getLogger("mosaic.agents.data_engineer")
 
 SQL_RULES = """Write exactly ONE PostgreSQL SELECT statement that answers the task.
 - Use only the tables and columns in the schema, and follow its notes.
+- Include the identifying columns a reader needs (for example the vendor's name), not only the numbers.
 - No comments, no semicolons, nothing but the statement. End it with LIMIT 200.
 - Return JSON: {"sql": "...", "explanation": "one sentence"}."""
 MAX_ATTEMPTS = 2  # the first query, and one rewrite with the reason it was refused
