@@ -165,6 +165,10 @@ class DockerSandboxManager:
         sandbox_id = new_id("SB")
         workspace = self.workspaces_root / spec.task_id
         workspace.mkdir(parents=True, exist_ok=True)
+        # The sandbox runs as uid 10001. On a Linux host a bind mount keeps the host's ownership, so the task's own
+        # workspace must be writable by that user (Docker Desktop on Windows and macOS does not enforce this).
+        if os.name == "posix" and workspace.stat().st_uid != 10001:
+            os.chmod(workspace, 0o777)
 
         def start() -> Any:
             self._cleanup_stale()
