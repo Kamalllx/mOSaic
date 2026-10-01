@@ -18,7 +18,7 @@ const LOOK: Record<string, { icon: typeof GitBranch; tint: string; account: stri
   github: {
     icon: GitBranch,
     tint: "#24292f",
-    account: "acme/reconciliation",
+    account: "owner/repo or a github.com URL (demo: acme/reconciliation)",
     accountLabel: "Repository",
     tokenLabel: "Personal access token (repo scope)",
     help: "Agents read issues, pull requests and files; opening an issue or commenting waits for an approver.",
@@ -38,7 +38,9 @@ function SyncResult({ r }: { r: ConnectorSyncResult }) {
   return (
     <div className="rounded-xl bg-surface-2 p-2.5 text-xs">
       <p className="font-medium">
-        {paths.length} {paths.length === 1 ? "document" : "documents"} brought into /org
+        {paths.length
+          ? `${paths.length} ${paths.length === 1 ? "document" : "documents"} brought into /org`
+          : "Up to date: nothing changed since the last sync"}
         {r.errors?.length ? <span className="text-st-failed"> · {r.errors.length} failed</span> : null}
       </p>
       <ul className="mt-1 space-y-0.5 font-mono">

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import collections
 import logging
+import re
 import shutil
 from pathlib import Path
 from typing import Any
@@ -36,6 +37,16 @@ CATALOG: dict[str, dict[str, Any]] = {
     "google_calendar": {"name": "Google Calendar", "tool": "calendar", "capabilities": ["calendar.read", "calendar.write"],
                         "scopes": ["calendar.events"], "default_account": "primary"},
 }
+
+
+def github_repo(account: str) -> tuple[str, str]:
+    """`owner/repo` from what people paste: `owner/repo`, `github.com/owner/repo`, a clone URL, with or without `.git`."""
+    text = re.sub(r"^(https?://)?(www\.)?github\.com[/:]", "", account.strip().removeprefix("git@")).strip("/")
+    owner, _, repo = text.removesuffix(".git").partition("/")
+    repo = repo.split("/")[0]
+    if not owner or not repo:
+        raise MosaicError("BAD_REQUEST", f"GitHub repository must be owner/repo (for example Kamalllx/mOSaic), not {account!r}")
+    return owner, repo
 
 
 class ConnectorService:
@@ -88,8 +99,11 @@ class ConnectorService:
     async def connect(self, org_id: str, cid: str, body: ConnectorConnect, by: str) -> Connector:
         spec = self._spec(cid)
         token = (body.token or "").strip() or None
+        account = (body.account or "").strip() or spec["default_account"]
+        if cid == "github":
+            account = "/".join(github_repo(account))
         meta = {"connected_by": by, "connected_at": utcnow().isoformat(), "mode": "live" if token else "mock",
-                "account": (body.account or "").strip() or spec["default_account"]}
+                "account": account}
         self.identity.vault.put(org_id, f"connector:{cid}", {"token": token} if token else {}, meta)
         self._backend(cid).configure(token)
         c = self.get(org_id, cid)
@@ -135,7 +149,7 @@ class ConnectorService:
         result = ConnectorSyncResult()
         try:
             if cid == "github":
-                owner, _, repo = account.partition("/")
+                owner, repo = github_repo(account)
                 issues = (await self._call(cid, "list_issues", {"owner": owner, "repo": repo, "state": "all"})).get("issues", [])
                 for i in issues:
                     body = (f"# #{i['number']} {i['title']}\n\n**State:** {i['state']}  \n**Labels:** {', '.join(i.get('labels') or []) or 'none'}  \n"
@@ -161,7 +175,8 @@ class ConnectorService:
                                                            options={"frontmatter": {"source": cid, "trust": "unverified"}}))
                 result.created += res.created
                 result.updated += res.updated
-                result.errors += res.errors
+                # A README's relative links point at repository files that are not synced: expected, not a failure.
+                result.errors += [e for e in res.errors if "broken link" not in e]
         finally:
             shutil.rmtree(staging, ignore_errors=True)
         self.identity.vault.put(org_id, f"connector:{cid}", self.identity.vault.get(org_id, f"connector:{cid}") or {},
