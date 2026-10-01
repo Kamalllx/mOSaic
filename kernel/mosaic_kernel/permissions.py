@@ -17,7 +17,8 @@ log = logging.getLogger("mosaic.kernel.permissions")
 FILE = "rbac/role-capabilities.yaml"  # a subfolder: the policy engine loads every policies/*.yaml as a PolicyDocument
 # No file: behave as before permissions existed (every agent keeps its manifest's capabilities).
 _UNBOUNDED = {"capabilities": ["knowledge.*", "memory.*", "agent.*", "jira.*", "fs.*", "browser.*", "db.*", "postgres.*",
-                               "database.*", "external.*", "mcp.*", "sandbox.*"], "data_scopes": ["/org/**"]}
+                               "database.*", "external.*", "mcp.*", "sandbox.*", "github.*", "calendar.*"],
+              "data_scopes": ["/org/**"]}
 
 
 class RolePermissions:
