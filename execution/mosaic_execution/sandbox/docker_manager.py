@@ -39,6 +39,9 @@ log = logging.getLogger("mosaic.execution.sandbox")
 LABEL = "mosaic.sandbox"
 BROWSER_IMAGE = os.getenv("MOSAIC_BROWSER_IMAGE", "mosaic/sandbox-browser:latest")
 SANDBOX_NETWORK = os.getenv("MOSAIC_SANDBOX_NETWORK", "mosaic_sandbox")
+# Browser sandboxes allowed the public internet ("*") join this network instead: a plain bridge with a route out,
+# and none to mosaic_sandbox (other sandboxes, the internal vendor site).
+WEB_NETWORK = os.getenv("MOSAIC_WEB_NETWORK", "mosaic_web")
 RELAY_IMAGE = os.getenv("MOSAIC_SANDBOX_RELAY_IMAGE", "mosaic/sandbox-base:latest")
 PLAYWRIGHT_PORT = 3000
 
@@ -106,11 +109,11 @@ class DockerSandboxManager:
                 log.info("removing stale sandbox container %s", c.name)
                 c.remove(force=True)
 
-    def _ensure_network(self) -> str:
-        nets = self.client().networks.list(names=[SANDBOX_NETWORK])
+    def _ensure_network(self, name: str = SANDBOX_NETWORK) -> str:
+        nets = self.client().networks.list(names=[name])
         if not nets:
-            self.client().networks.create(SANDBOX_NETWORK, driver="bridge", internal=True, labels={LABEL: "network"})
-        return SANDBOX_NETWORK
+            self.client().networks.create(name, driver="bridge", internal=name != WEB_NETWORK, labels={LABEL: "network"})
+        return name
 
     def run_kwargs(self, sandbox_id: str, spec: SandboxSpec, workspace: Path) -> dict[str, Any]:
         """Pure function of the spec — unit-tested without Docker."""
@@ -138,6 +141,8 @@ class DockerSandboxManager:
             kw["device_requests"] = [DeviceRequest(count=-1, capabilities=[["gpu"]])]
         if spec.network == NetworkMode.NONE and not spec.display:
             kw["network_mode"] = "none"
+        elif spec.display and "*" in spec.network_allow:
+            kw["network"] = WEB_NETWORK  # the public web; the kernel checks every URL is a public host
         else:
             kw["network"] = SANDBOX_NETWORK  # internal: no route to the internet, in either endpoint mode
         return kw
@@ -174,7 +179,7 @@ class DockerSandboxManager:
             self._cleanup_stale()
             kw = self.run_kwargs(sandbox_id, spec, workspace)
             if "network" in kw:
-                self._ensure_network()
+                self._ensure_network(kw["network"])
             container = self.client().containers.run(**kw)
             container.reload()
             relay = None
@@ -182,7 +187,7 @@ class DockerSandboxManager:
                 # The relay starts on the default bridge (to publish its port) and joins the sandbox network to reach
                 # the browser by name; the browser never touches the bridge.
                 relay = self.client().containers.run(**self.relay_kwargs(sandbox_id, kw["name"]))
-                self.client().networks.get(self._ensure_network()).connect(relay)
+                self.client().networks.get(self._ensure_network(kw["network"])).connect(relay)
                 relay.reload()
             return container, relay
 

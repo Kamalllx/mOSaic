@@ -106,9 +106,11 @@ class BrowserBackend:
                     raise MosaicError("BAD_REQUEST", "only http(s) URLs")
                 if not network_allowed(a["url"], inv.constraints):
                     raise MosaicError("POLICY_DENIED", f"{a['url']} is not in the network allowlist")
+            allow = list(inv.constraints.get("network_allow", []))
+            web = "*" in allow  # the public internet: a separate sandbox on the web network, never the internal one
             spec = SandboxSpec(task_id=inv.task_id, pid=inv.pid, display=True, network=NetworkMode.ALLOWLIST,
-                               network_allow=list(inv.constraints.get("network_allow", [])), timeout_s=900)
-            sandbox = await self.pool.get((inv.task_id, "browser"), spec)
+                               network_allow=["*"] if web else allow, timeout_s=900)
+            sandbox = await self.pool.get((inv.task_id, "web" if web else "browser"), spec)
             if inv.operation == "open":
                 page = await driver.open(sandbox, a["url"])
             elif inv.operation == "click":

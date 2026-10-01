@@ -1,6 +1,8 @@
 """Tool backend protocol + result helpers shared by every backend."""
 from __future__ import annotations
 
+import ipaddress
+import socket
 from typing import Any, Protocol
 from urllib.parse import urlsplit
 
@@ -68,9 +70,28 @@ def network_allowed(url: str, constraints: dict[str, Any]) -> bool:
         return True
     target = host_port(url)
     host = target.rsplit(":", 1)[0]
+    if "*" in constraints["network_allow"]:
+        return public_host(host)
     for entry in constraints["network_allow"]:
         pattern_host, _, pattern_port = entry.partition(":")
         host_ok = pattern_host == host or (pattern_host.startswith("*.") and host.endswith(pattern_host[1:]))
         if host_ok and (not pattern_port or pattern_port == target.rsplit(":", 1)[1]):
             return True
     return False
+
+
+def public_host(host: str) -> bool:
+    """A host on the public internet: never this machine, a private network, Docker's or the organization's internal
+    services. Names are resolved, so a public name pointing at a private address is refused too."""
+    host = host.strip("[]").lower()
+    if not host or host == "localhost" or host.endswith((".local", ".internal", ".localhost")) or "." not in host:
+        return False
+    try:
+        addrs = {i[4][0] for i in socket.getaddrinfo(host, None)}
+    except OSError:
+        return False
+    for a in addrs:
+        ip = ipaddress.ip_address(a.split("%")[0])
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast or ip.is_unspecified:
+            return False
+    return True
