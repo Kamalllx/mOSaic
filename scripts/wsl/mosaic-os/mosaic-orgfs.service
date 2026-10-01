@@ -1,0 +1,16 @@
+[Unit]
+Description=mOSaic /org: the organization's knowledge as a filesystem
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Environment=MOSAIC_CONFIG_DIR=/home/mosaic/.config/mosaic
+Environment=ORGFS_OWNER=mosaic
+ExecStartPre=-/bin/umount -l /org
+ExecStart=/usr/bin/python3 /opt/mosaic/orgfs.py /org
+ExecStopPost=-/bin/umount -l /org
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

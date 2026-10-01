@@ -206,8 +206,10 @@ class FileService:
         from watchfiles import awatch
 
         host = Path(self._row(name)["host_path"])
+        # A folder inside WSL (a \\wsl.localhost path) or on a network share sends no change notifications: poll it.
+        remote = str(host).startswith("\\\\")
         try:
-            async for changes in awatch(host, debounce=800, recursive=True):
+            async for changes in awatch(host, debounce=800, recursive=True, force_polling=remote, poll_delay_ms=1500):
                 changed = [Path(p) for _, p in changes]
                 if any(not p.exists() for p in changed):
                     await self.sync(name)  # something was deleted or renamed: a full pass finds what vanished
