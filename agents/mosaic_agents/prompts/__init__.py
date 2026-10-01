@@ -120,7 +120,8 @@ class AnswerOut(BaseModel):
     """The planner's direct answer to a question that needs no specialists."""
 
     answer: str = ""
-    sources: list[str] = Field(default_factory=list, description="/org paths the answer rests on")
+    answered: bool = Field(True, description="false when the evidence does not contain the answer")
+    sources: list[str] = Field(default_factory=list, description="/org paths and URLs the answer rests on")
 
 
 class NoteOut(BaseModel):

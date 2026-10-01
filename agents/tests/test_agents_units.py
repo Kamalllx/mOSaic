@@ -110,7 +110,7 @@ def test_planner_runs_exactly_one_action_agent_last():
         {"step_id": "a3", "agent": "action-agent", "goal": "update APOLLO-40", "depends_on": ["a1"]},
     ]}
     ctx, spawned = _planner_ctx(plan, children=CHILDREN)  # specialists with findings: the action step runs
-    asyncio.run(PlannerAgent().run("Why is Apollo late?", ctx))
+    asyncio.run(PlannerAgent().run("Investigate why Apollo is late and update the tracker.", ctx))
     agents = [a for a, _ in spawned]
     assert agents.count("action-agent") == 1 and agents[-1] == "action-agent", agents
     # the plan had no research step: the planner adds the default one back (the default plan's specialists are the floor)
@@ -290,3 +290,29 @@ def test_nooa_object_agents_run_as_governed_processes():
 
     bad = ctx_for("finance-agent", {"choose the one skill": {"skill": "delete_everything", "arguments": {}}})
     assert asyncio.run(wrap(VendorAgent).run("x", bad)).status == AgentResultStatus.FAILED
+
+
+
+def test_a_focused_question_gets_only_its_specialist_and_writes_nothing():
+    from mosaic_agents.library.planner import PlannerAgent
+
+    plan = {"rationale": "r", "steps": [
+        {"step_id": "f", "agent": "finance-agent", "goal": "budget", "depends_on": []},
+        {"step_id": "e", "agent": "engineering-agent", "goal": "slip", "depends_on": []},
+        {"step_id": "r", "agent": "research-agent", "goal": "vendor", "depends_on": []},
+        {"step_id": "a", "agent": "action-agent", "goal": "update APOLLO-12", "depends_on": ["f", "e", "r"]},
+    ]}
+    ctx, spawned = _planner_ctx(plan, children=CHILDREN)
+    asyncio.run(PlannerAgent().run("Why is Apollo late?", ctx))
+    assert [a for a, _ in spawned] == ["engineering-agent"]  # no finance, no research, no tracker write
+
+
+def test_routing_questions_investigations_and_data():
+    from mosaic_agents.library.planner import is_investigation, relevant_specialists
+
+    projects = {"apollo", "zeus", "atlas"}
+    assert is_investigation("Investigate why Project Apollo is over budget and six weeks behind schedule.", projects)
+    assert is_investigation("Why is Atlas late?", projects)
+    assert not is_investigation("what projects has kamal worked on", projects)
+    assert not is_investigation("What is our risk policy for vendors?", projects)
+    assert relevant_specialists("Why is Apollo over budget?") == ["finance-agent"]
