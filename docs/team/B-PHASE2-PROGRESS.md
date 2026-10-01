@@ -255,5 +255,38 @@ Open issues:
   every folder passes on its own, and the next four full runs were green in about 3 minutes. Not reproduced.
 - A read-only database role (instead of a read-only transaction) needs a secret; left for Mishka to decide.
 
+## B5: hardening (done; done before B4, per the priority order)
+
+Branch `b/hardening` (from `b/sql-tool`): `8ba97c2` kill fix, `5839d03` tests + the data path's failure reason.
+
+- **Fixed a kernel race (phase-1 code):** `kill()` killed a process's children first, so a parent waiting on one
+  returned normally: an operator's kill of a task's root could end the task as *completed*, and the kill then failed
+  on `COMPLETED -> TERMINATED` (a 409 from the API). The target is now cancelled first, then its children.
+- Tests on a real kernel (`tests/integration/test_hardening_phase2.py`, 5): a generated agent rides out a model outage
+  (retried as the same generated agent); a generated agent's sub-agent that hangs is stopped at the wall-time quota
+  (`QUOTA_EXCEEDED`); a SQL timeout fails the task with `TIMEOUT` and the reason, nothing filed; a killed task leaves
+  no generated manifests/policies; a browser timeout is reported and the research goes on without the page.
+- The data path's failure now says why: `incomplete: data-engineer did not finish (the database did not answer: the
+  statement ran longer than 5000 ms); writer not run; nothing was filed`.
+- Already covered in B2: cleanup on success, failure, cancel, and the boot sweep after a restart.
+- Decision: a browser timeout does not fail an investigation (the research agent continues without the page, as in
+  phase 1); a SQL timeout does fail a data question (there is no answer without the query).
+
+**Live check (real models):** Ollama restarted with `scripts\win\restart-ollama.ps1` 25 s into an Apollo run (down
+and reloading for about 55 s). The generated `finance-agent@T-8428987a2e` failed with `cannot reach Ollama ...
+(ReadError)`, was retried after 5 s (attempt 2/3) and finished; the run scored 8/8 in 158.2 s, story PASS.
+
+Tests: 417 passed, 0 skipped; ruff clean.
+
+Gates (`b/hardening` at `5839d03`):
+
+| Run | Score | Time | Story |
+|---|---|---|---|
+| Apollo | 8/8 | 107.0 s | PASS |
+| Zeus | 8/8 | 103.9 s | PASS |
+| Vendors | 8/8 | 21.2 s | PASS |
+| Zeus, classifier on, `--expect-llm-flag` | 9/9 | 135.6 s | PASS |
+
 ## Next
-B4 (Playwright MCP browser + multi-tool scenario) on `b/mcp-browser` from `b/sql-tool`, disk check first.
+B4 (Playwright MCP browser + multi-tool scenario) on `b/mcp-browser` from `b/hardening`, disk check first; then the
+handoff.
