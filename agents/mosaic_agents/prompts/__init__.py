@@ -109,4 +109,18 @@ class TemplateOut(BaseModel):
     summary: str = ""
 
 
-__all__ = ["Finding", "TemplateOut", "PlanStep", "PlanOut", "RootCause", "RootCausesOut", "SynthesisOut", "FinanceOut", "EngOut", "ResearchOut"]
+class SqlOut(BaseModel):
+    """The data engineer's query."""
+
+    sql: str = ""
+    explanation: str = ""
+
+
+class NoteOut(BaseModel):
+    """The writer's draft."""
+
+    subject: str = ""
+    body: str = ""
+
+
+__all__ = ["SqlOut", "NoteOut", "Finding", "TemplateOut", "PlanStep", "PlanOut", "RootCause", "RootCausesOut", "SynthesisOut", "FinanceOut", "EngOut", "ResearchOut"]

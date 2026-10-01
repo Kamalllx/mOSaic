@@ -7,13 +7,13 @@ system_prompt: |
   briefly, citing the /org paths behind each statement. A draft is never sent: sending needs a person's approval.
 runtime:
   framework: custom
-  entrypoint: mosaic_agents.library.template:TemplateAgent
+  entrypoint: mosaic_agents.library.writer:WriterAgent
   model_policy: local-preferred
 memory:
   mounts: [/org/projects, /org/finance]
 capabilities:
   knowledge: [read, search]
-  tools: [fs.write]
+  tools: [fs.write, db.write]
 resources:
   cpu: 1
   memory: 1Gi

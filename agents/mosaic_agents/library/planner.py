@@ -95,10 +95,10 @@ SPECIALIST_ROLES: dict[str, tuple[str, list[str], list[str]]] = {
                    ["/org/projects"], ["knowledge.read", "knowledge.search", "jira.read", "jira.write", "fs.write"]),
     "analyst": ("Answers the question from cited evidence across /org", ["/org"],
                 ["knowledge.read", "knowledge.search", "agent.spawn"]),
-    "data-engineer": ("Finds the exact figures the question needs in finance and project records",
-                      ["/org/finance", "/org/projects"], ["knowledge.read", "knowledge.search"]),
-    "writer": ("Drafts the note the goal asks for from the findings; sending it needs a person",
-               ["/org/projects", "/org/finance"], ["knowledge.read", "knowledge.search", "fs.write"]),
+    "data-engineer": ("Answers the data question with one checked SQL query on the company database",
+                      ["/org/finance", "/org/projects"], ["knowledge.read", "knowledge.search", "db.query"]),
+    "writer": ("Drafts the note the goal asks for from the data; filing it needs a person",
+               ["/org/projects", "/org/finance"], ["knowledge.read", "knowledge.search", "fs.write", "db.write"]),
 }
 
 # The library specialists are always offered to the model; the other role templates only when the goal asks for what
@@ -149,6 +149,29 @@ def execution_order(steps: list[PlanStep]) -> list[PlanStep]:
 def planned(step: PlanStep) -> AgentPlanned:
     why, scope, caps = SPECIALIST_ROLES.get(step.agent, (f"Assigned by the plan as step {step.step_id}", [], []))
     return AgentPlanned(role=step.agent, why=why, scope=scope, capabilities=caps)
+
+
+# A data question that also asks for a vendor's web page: the data path adds the research agent (browser + knowledge).
+WEB_WORDS = re.compile(r"\b(web\s?page|page|website|site|docs|documentation|pricing)\b", re.I)
+
+
+def is_data_question(goal: str, allowed: list[str]) -> bool:
+    """A question the company database answers (the data-engineer role was offered for it). Never Apollo or Zeus."""
+    return "data-engineer" in offered_roles(goal, allowed)
+
+
+def data_understood(goal: str, steps: list[PlanStep]) -> TaskUnderstood:
+    first = re.split(r"(?<=[.!?])\s", goal.strip(), maxsplit=1)[0]
+    entities = list(dict.fromkeys([*re.findall(r"\bQ[1-4](?:\s+20\d\d)?\b", goal),
+                                   *(w for w in ("vendors", "contracts", "invoices", "finance") if w in goal.lower())]))
+    caps = dict.fromkeys(c for s in steps for c in SPECIALIST_ROLES.get(s.agent, ("", [], []))[2])
+    summary = "data-engineer answers it with one checked SQL query on the company database"
+    if any(s.agent == "writer" for s in steps):
+        summary += "; writer drafts the note and files it for finance, which needs a person's approval"
+    return TaskUnderstood(intent=first[:240], entities=entities[:20], capabilities_needed=list(caps)[:20],
+                          plan_summary=f"{summary}."[:240])
+
+
 # What each library specialist's findings are in: research counts when it opened a page even if it listed no findings.
 _FINDINGS_KEYS = ("drivers", "blockers", "findings", "urls_opened")
 
@@ -193,6 +216,8 @@ class PlannerAgent(MosaicAgent):
 
     async def run(self, goal: str, ctx: Any) -> AgentResult:
         await ctx.log("planner: starting", data={"goal": goal[:200]})
+        if is_data_question(goal, list(ctx.manifest.capabilities.agents)):
+            return await self._run_data(goal, ctx)
         project = project_of(goal, getattr(ctx, "inputs", None))
         await think(ctx, "search", f"Searching /org for evidence on Project {project}.")
 
@@ -423,6 +448,73 @@ class PlannerAgent(MosaicAgent):
             evidence=sorted(set(all_evidence)),
             artifacts=[artifact_ref],
         )
+
+    async def _run_data(self, goal: str, ctx: Any) -> AgentResult:
+        """A question the company database answers: data-engineer queries it, writer drafts and files the note. The
+        same rules as an investigation: nothing is filed from incomplete findings, and the task then fails."""
+        allowed = offered_roles(goal, list(ctx.manifest.capabilities.agents))
+        steps = [PlanStep(step_id="s1", agent="data-engineer", goal=goal)]
+        if "research-agent" in allowed and WEB_WORDS.search(goal):  # a multi-tool task: the vendor's page too
+            steps.append(PlanStep(step_id="r1", agent="research-agent", goal=goal))
+        if "writer" in allowed:
+            steps.append(PlanStep(step_id="w1", agent="writer", goal=f"Draft the note the goal asks for: {goal}",
+                                  depends_on=[s.step_id for s in steps]))
+        await think(ctx, "plan", f"A data question: {_and([s.agent for s in steps])} will answer it from the company database"
+                                 + (" and the vendor's page." if any(s.agent == "research-agent" for s in steps) else "."))
+        await narrate(ctx, data_understood(goal, steps))
+        for s in steps:
+            await narrate(ctx, planned(s))
+
+        upstream: dict[str, Any] = {}
+        results: dict[str, AgentResult] = {}
+        for step in steps:
+            if ctx.cancelled():
+                return self.result(ctx, "cancelled", status=AgentResultStatus.CANCELLED)
+            if step.depends_on and not (upstream.get("s1") or {}).get("rows"):  # nothing is written without the answer
+                await think(ctx, "act", f"Skipping the {step.agent}: the query found nothing to write about.")
+                break
+            bounds = planned(step)
+            try:
+                pid = await ctx.spawn(step.agent, step.goal, {"upstream": {d: upstream[d] for d in step.depends_on}},
+                                      capabilities=bounds.capabilities or None,
+                                      scope=[f"{s.rstrip('/')}/**" for s in bounds.scope] or None, why=bounds.why)
+                results[step.step_id] = await ctx.wait(pid)
+            except Exception as e:
+                await ctx.log(f"planner: {step.agent} could not run: {e}", level="warning")
+                break
+            upstream[step.step_id] = results[step.step_id].output
+            await ctx.log(f"planner: step {step.step_id} ({step.agent}) {results[step.step_id].status.value}")
+
+        data = upstream.get("s1") or {}
+        rows, columns = data.get("rows") or [], data.get("columns") or []
+        note = (upstream.get("w1") or {}).get("note") or {}
+        filed = bool((upstream.get("w1") or {}).get("filed"))
+        await think(ctx, "synthesize", f"The answer has {plural(len(rows), 'row')}; the note was "
+                                       f"{'filed' if filed else 'drafted' if note else 'not written'}.")
+        md = [f"# {note.get('subject') or 'Answer'}\n", f"**Goal:** {goal}\n"]
+        if note:
+            md.append(note.get("body", ""))
+        elif rows:
+            md.append("| " + " | ".join(columns) + " |\n" + "\n".join("| " + " | ".join(map(str, r)) + " |" for r in rows))
+        if data.get("sql"):
+            md.append(f"\n## Query\n\n```sql\n{data['sql']}\n```")
+        artifact = await ctx.put_artifact("answer.md", "\n".join(md).encode(), "text/markdown")
+
+        failed = [s.agent for s in steps if s.step_id in results and results[s.step_id].status != AgentResultStatus.COMPLETED]
+        not_run = [s.agent for s in steps if s.step_id not in results]
+        output = {"columns": columns, "rows": rows, "sql": data.get("sql"), "note": note, "filed": filed, "artifact": artifact}
+        if failed or not_run or not rows:
+            first = next((results[s.step_id].error for s in steps if s.step_id in results and results[s.step_id].error), None)
+            cause = first.message if first else next((results[s.step_id].summary for s in steps if s.step_id in results
+                                                      and results[s.step_id].status != AgentResultStatus.COMPLETED), "")
+            why = (f"incomplete: {', '.join(failed) or 'data-engineer'} did not finish" + (f" ({cause[:300]})" if cause else "")
+                   + (f"; {', '.join(not_run)} not run" if not_run and failed else "") + "; nothing was filed")
+            return AgentResult(pid=ctx.pid, agent=ctx.manifest.name, status=AgentResultStatus.FAILED, summary=why,
+                               error=ErrorInfo(code=first.code if first else "INTERNAL", message=why, retriable=False),
+                               output={**output, "partial": True}, artifacts=[artifact])
+        summary = f"{plural(len(rows), 'row')} answer the question" + ("; the note is filed for finance." if filed else ".")
+        return AgentResult(pid=ctx.pid, agent=ctx.manifest.name, status=AgentResultStatus.COMPLETED, summary=summary,
+                           output=output, artifacts=[artifact])
 
     async def _validate_steps(self, ctx: Any, planned: list[PlanStep], allowed: list[str]) -> list[PlanStep]:
         """Make the LLM's plan executable: allowed agents only, unique step ids, exactly one action-agent step (one

@@ -28,8 +28,14 @@ def _jira_search(req: SyscallRequest, output: dict[str, Any]) -> QueryView:
     return f"project={req.arguments.get('project', '')}", ["key", "status", "summary"], rows
 
 
+def _db_query(req: SyscallRequest, output: dict[str, Any]) -> QueryView:
+    rows = [[_cell(v) for v in r] for r in output.get("rows", []) if isinstance(r, list | tuple)]
+    return str(req.arguments.get("sql", "")), [str(c) for c in output.get("columns", [])], rows
+
+
 QUERY_VIEWS: dict[tuple[str, str], Callable[[SyscallRequest, dict[str, Any]], QueryView]] = {
     ("jira", "search_issues"): _jira_search,
+    ("db", "query"): _db_query,
 }
 
 

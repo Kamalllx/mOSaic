@@ -145,7 +145,7 @@ Decisions made while building:
 - Alternative not taken: letting the model write `{role, scope, capabilities, why}` itself (changes the Apollo
   prompt). The planner builds them from its role table; the kernel narrows whatever is asked.
 
-Tests: 377 passed, 0 skipped; ruff clean; web build passed on the contract branch. New:
+Tests: 381 passed, 0 skipped (the first version of this entry said 377: a miscount); ruff clean; web build passed on the contract branch. New:
 `shared/python/tests/test_dynamic_agents_contract.py` (5), `kernel/tests/test_dynamic_agents.py` (8: bounded by the
 user, over-broad request narrowed with an audit entry, org policy through the template and the write overlay,
 sub-agents never wider, cleanup on success/failure/cancel, boot sweep, the role stub, alice can still run the demo),
@@ -180,5 +180,166 @@ Notes for Kamal (contract 0.11.0):
 Open issues: none blocking. The TemplateAgent is generic (no tools of its own yet); B3 gives `data-engineer`
 `db.query`.
 
-## Next
-B3 (SQL tool + vendors scenario) on `b/sql-tool` from `b/dynamic-agents`.
+## B3: SQL tool + vendors scenario (done)
+
+Branches and commits:
+- `contract/db-tool` (pushed; cut from `b/dynamic-agents`, same chain rule as B2): `f6343d3` contract 0.12.0.
+- `b/sql-tool` (from the contract branch): `eced521` kernel SQL guard + `db.query` as tool.query/task.data;
+  `f532613` the db backend; `75d7fb1` seed script and the mosaicd URL; `2ba4ba1` data engineer, writer, the planner's
+  data path, `demo_run.py --scenario vendors`, the story checker's approval rule.
+
+What it does:
+- `db.query` (low, auto) and `db.write` (high, approval required) on `mosaic_demo_data`
+  (`MOSAIC_DEMO_DATA_URL`; `scripts/win/start-mosaicd.ps1` sets it on the stack's Postgres port).
+- The kernel checks every statement before policy (`kernel/mosaic_kernel/syscalls/sql_guard.py`): one statement; a
+  query is SELECT/WITH only, no write keyword anywhere, no DDL, no SELECT INTO / FOR UPDATE, no server functions, a
+  LIMIT of at most 200 (added, lowered, or the statement wrapped); a write is one INSERT/UPDATE/DELETE, UPDATE/DELETE
+  need WHERE. Refused: a DENY from policy `kernel.sql` with the reason. The statement that runs is the checked one.
+- The backend runs queries in a READ ONLY transaction with a 5 s statement timeout, 200 rows max; writes in their own
+  transaction. Timeout: `TIMEOUT`; unreachable: `TOOL_FAILED`; bad SQL: `BAD_REQUEST`.
+- `scripts/seed_demo_data.py` (idempotent; only ever touches a database named `mosaic_demo_data`): vendors,
+  contracts, invoices, cloud_costs, headcount, tickets, finance_notes, from `mosaic_contracts.testing.demo_data`
+  (consistent with the bundle: PayCo's licence + emergency contract, CloudCo's committed compute and the dual-run
+  bills, Cumulus's Q4 price rise). Messy on purpose: void and pending invoices, dates just outside Q3.
+  Expected Q3 overpaid: PayCo 42,350.00, CloudCo 143,550.75, TalentX 11,280.00.
+- The data engineer writes one SELECT from the schema (one retry with the kernel's or the database's reason); the
+  writer drafts the note (prose from the model, figures as a table from the rows) and files it through `db.write`.
+- The planner answers a data question (the goal's words offer the data-engineer role) on a path of its own:
+  understood, data-engineer then writer, nothing filed when the query returned nothing (the task then fails with a
+  partial answer), `answer.md`.
+
+Decisions:
+- **No SQL parser dependency** (none in `uv.lock`): conservative checks that refuse what they cannot read
+  (comments, `$` quoting, backslashes, a second statement). Session commands (SET, COPY, DO, ...) are refused by the
+  first-word rule, not by a keyword list, so `UPDATE ... SET` and a table alias `copy` are fine.
+- **One dataset for Postgres and the fake:** `mosaic_contracts.testing.demo_data` (the fake db runs it in SQLite),
+  so fake-mode tests, the seed and the scoring agree by construction.
+- **Read-only connection, not a separate DB role:** the backend's transaction is READ ONLY (a role would need a
+  password in the repo or in `.env`; noted as a follow-up).
+- **Sync psycopg in a thread:** psycopg's async mode needs a selector event loop; mosaicd on Windows runs the proactor
+  loop (`InterfaceError` otherwise).
+- **The note goes into `finance_notes` via `db.write`** (the governed write that needs a person); there is no email
+  tool. The figures in the note are rendered by code from the rows, not written by the model.
+- **The data path is separate from the investigation path** in the planner, and only data questions reach it: the
+  Apollo and Zeus plans, prompts and floors are untouched.
+- `mosaic-execution` now declares `psycopg[binary]` (`uv lock`, 2 lines).
+
+Tests: 412 passed, 0 skipped; ruff clean; web build passed on the contract branch. New: `test_db_tool_contract.py`
+(3), `kernel/tests/test_sql_guard.py` (19), `kernel/tests/test_db_syscalls.py` (guard → policy → approval → tool.query
++ task.data with the real policy files), `execution/tests/test_db_live.py` (4, against the seeded Postgres: the answer,
+read-only past the kernel, a clear TIMEOUT, placeholders), `agents/tests/test_data_agents.py` (4: only data questions
+take the data path, the scenario end to end in fake mode, one rewrite of a refused query, nothing filed from an
+unanswered question).
+
+Gates (`b/sql-tool` at `2ba4ba1`, after seeding):
+
+| Run | Score | Time | Story |
+|---|---|---|---|
+| Apollo | 8/8 | 105.5 s | PASS |
+| Zeus | 8/8 | 131.1 s | PASS |
+| Vendors | 8/8 | 19.6 s | PASS |
+| Zeus, classifier on, `--expect-llm-flag` | 9/9 | 104.0 s | PASS |
+
+A first vendors run before the gates: 8/8 in 18.1 s, correct SQL on the first attempt. `contract/db-tool` alone:
+Apollo 8/8 120.6 s, Zeus 8/8 102.5 s, Zeus classifier on 9/9 102.5 s, story PASS.
+
+Notes for Kamal (contract 0.12.0): no new event types. The vendors run streams `tool.query` with
+`"tool": "db.query"` and the SQL text, then `task.data` with `"source": "db.query"`:
+`{"columns": ["name", "contract_value", "total_paid", "overpayment"], "rows": [["CloudCo", 225000.0, 368550.75,
+143550.75], ...], "source": "db.query"}`. The approval is `db.write` by `writer@T-…` (risk high). New capabilities in
+the catalog: `db.query`, `db.write`. Command: `uv run python scripts/seed_demo_data.py`, then
+`uv run python scripts/demo_run.py run --auto-approve --check-story --scenario vendors`.
+
+Open issues:
+- Once, a full `pytest` run hung for over 40 minutes (its `timeout 1500` did not kill the grandchildren on Windows);
+  every folder passes on its own, and the next four full runs were green in about 3 minutes. Not reproduced.
+- A read-only database role (instead of a read-only transaction) needs a secret; left for Mishka to decide.
+
+## B5: hardening (done; done before B4, per the priority order)
+
+Branch `b/hardening` (from `b/sql-tool`): `8ba97c2` kill fix, `5839d03` tests + the data path's failure reason.
+
+- **Fixed a kernel race (phase-1 code):** `kill()` killed a process's children first, so a parent waiting on one
+  returned normally: an operator's kill of a task's root could end the task as *completed*, and the kill then failed
+  on `COMPLETED -> TERMINATED` (a 409 from the API). The target is now cancelled first, then its children.
+- Tests on a real kernel (`tests/integration/test_hardening_phase2.py`, 5): a generated agent rides out a model outage
+  (retried as the same generated agent); a generated agent's sub-agent that hangs is stopped at the wall-time quota
+  (`QUOTA_EXCEEDED`); a SQL timeout fails the task with `TIMEOUT` and the reason, nothing filed; a killed task leaves
+  no generated manifests/policies; a browser timeout is reported and the research goes on without the page.
+- The data path's failure now says why: `incomplete: data-engineer did not finish (the database did not answer: the
+  statement ran longer than 5000 ms); writer not run; nothing was filed`.
+- Already covered in B2: cleanup on success, failure, cancel, and the boot sweep after a restart.
+- Decision: a browser timeout does not fail an investigation (the research agent continues without the page, as in
+  phase 1); a SQL timeout does fail a data question (there is no answer without the query).
+
+**Live check (real models):** Ollama restarted with `scripts\win\restart-ollama.ps1` 25 s into an Apollo run (down
+and reloading for about 55 s). The generated `finance-agent@T-8428987a2e` failed with `cannot reach Ollama ...
+(ReadError)`, was retried after 5 s (attempt 2/3) and finished; the run scored 8/8 in 158.2 s, story PASS.
+
+Tests: 417 passed, 0 skipped; ruff clean.
+
+Gates (`b/hardening` at `5839d03`):
+
+| Run | Score | Time | Story |
+|---|---|---|---|
+| Apollo | 8/8 | 107.0 s | PASS |
+| Zeus | 8/8 | 103.9 s | PASS |
+| Vendors | 8/8 | 21.2 s | PASS |
+| Zeus, classifier on, `--expect-llm-flag` | 9/9 | 135.6 s | PASS |
+
+## B4: Playwright MCP browser + multi-tool scenario (done; the MCP browser is off by default)
+
+Branch `b/mcp-browser` (from `b/hardening`): `bdd51c6` the MCP browser, `a80d108` the multi-tool scenario.
+
+- Disk before: 14.9 GB free. The new image shares the browser image's layers (its own layer is the npm install).
+- `execution/images/sandbox-browser-mcp`: `@playwright/mcp` 0.0.83 on `mosaic/sandbox-browser`, reusing its Chromium
+  (`--executable-path`; nothing downloaded at run time). Build once:
+  `docker build -t mosaic/sandbox-browser-mcp:latest execution/images/sandbox-browser-mcp`.
+- `McpBrowserBackend` serves the `browser` tool when `MOSAIC_MCP_CONFIG` names a server with `browser: true`
+  (`execution/mcp.browser.example.yaml`): `docker run -i` on the internal `mosaic_sandbox` network, read-only, uid
+  10001, no capabilities, 1 GB memory, `--allowed-origins http://vendor-docs`. Agents keep calling `browser.open`
+  (click/type need approval): same capabilities and policies. `open` = the kernel's allowlist, MCP navigate, snapshot
+  (the page text), screenshot (an artifact + `sandbox.screenshot`). Without the config the Playwright driver path (and
+  the Docker Desktop relay) is untouched.
+- The multi-tool scenario: a data question that also asks for a vendor's page adds the research agent to the data
+  path: SQL (`db.query`), the browser (`browser.open`), the knowledge base, and the approved `db.write` note, in one
+  task. `demo_run.py --scenario multitool` (8 checks).
+
+Decisions:
+- **MCP browser off by default** (the brief allows a setting): the Apollo gates run on the proven driver path. The
+  switch is the existing `MOSAIC_MCP_CONFIG` file, so no contract change was needed.
+- **Agents unchanged:** the MCP backend *is* the `browser` tool, rather than a new `playwright.*` tool, so research
+  and policies need no change and switching back is one env var.
+- **Newest `@playwright/mcp` pinned to the image's Chromium** instead of finding a release built on Playwright 1.63
+  (npm's version listing was unhelpful); it works, and the live test catches a mismatch.
+- The data engineer is now asked to include identifying columns (a real run returned only the numbers);
+  `multitool`'s check accepts PayCo's row by name or by its seed figures.
+
+Verified on real models:
+- Smoke: 25 MCP tools discovered in 3.5 s; vendor docs loaded in 2.0 s; `http://example.com` refused by the browser
+  (`ERR_BLOCKED_BY_CLIENT`); screenshots come back as image content (54 KB PNG).
+- Apollo with the MCP browser on: 8/8 in 110.5 s, story PASS; the audit shows `browser.open -> success`,
+  `transport: mcp`, title "PayCo SDK v5: release status".
+- Multitool with the MCP browser on: 8/8 in 43.1 s, story PASS.
+
+Tests: 424 passed, 0 skipped; ruff clean. New: `execution/tests/test_mcp_browser.py` (5: page + screenshot event,
+the allowlist before any call, clear errors and timeouts, the config switch and the default, a live run in the image),
+2 multi-tool tests in `agents/tests/test_data_agents.py`.
+
+Gates (`b/mcp-browser` at `a80d108`, default config):
+
+| Run | Score | Time | Story |
+|---|---|---|---|
+| Apollo | 8/8 | 98.0 s | PASS |
+| Zeus | 8/8 | 110.0 s | PASS |
+| Vendors | 8/8 | 21.1 s | PASS |
+| Multitool | 8/8 | 43.7 s | PASS |
+| Zeus, classifier on, `--expect-llm-flag` | 9/9 | 104.0 s | PASS |
+
+Notes for Kamal: no new events. With the MCP browser on, `sandbox.screenshot` has `"sandbox_id": "mcp-playwright"`;
+the browser tool's output has `"transport": "mcp"`.
+
+## Status at the end of the night
+All tasks done and pushed: B1, B2, B3, B5, B4 (MCP browser behind its config). Handoff:
+`docs/team/B-PHASE2-HANDOFF.md` on `b/mcp-browser`. mosaicd left running on 8099 with the classifier off and the MCP
+browser off.

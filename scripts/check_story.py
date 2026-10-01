@@ -7,7 +7,7 @@ Reads the task's events through /ws/events (the gateway replays a task's history
   - one task.understood, before every agent.planned, and all of them before the first agent the planner creates;
   - every created agent: process.spawned, then its agent.created, and the created templates follow the planned roles;
   - every tool.query is followed by its task.data (same correlation id);
-  - the action agent is created before the approval; the planner's synthesis thought comes after the approval is
+  - the agent that requests the approval is created before it; the planner's synthesis thought comes after it is
     resolved and before the task ends;
   - every agent.thought carries its own process's pid.
 Real runs interleave the specialists and say more than the mock, so the rules are about order, not an exact sequence.
@@ -63,8 +63,9 @@ def check(events: list[Event]) -> list[str]:
                  f"tool.query {e['correlation_id']} followed by its task.data")
     if "approval.requested" in types:
         approval = types.index("approval.requested")
-        action = [i for i, e in enumerate(evs) if e["type"] == "agent.created" and e["payload"]["template"] == "action-agent"]
-        need(bool(action) and action[0] < approval, "the action agent created before the approval")
+        asker = evs[approval]["pid"]  # the agent that requests the approval (action-agent, writer, ...)
+        created = [i for i, e in enumerate(evs) if e["type"] == "agent.created" and e["payload"].get("pid") == asker]
+        need(bool(created) and created[0] < approval, f"pid {asker} created before it requests the approval")
         synth = [i for i, e in enumerate(evs) if e["type"] == "agent.thought" and e["payload"].get("step") == "synthesize"]
         resolved = types.index("approval.resolved") if "approval.resolved" in types else len(types)
         end = next((i for i, t in enumerate(types) if t in ("task.completed", "task.failed")), len(types))

@@ -1,19 +1,19 @@
 name: data-engineer
 version: 0.1.0
-description: Data engineer role template. Finds the numbers a question needs in finance and project records (SQL arrives with the db tool).
+description: Data engineer role template. Answers a data question with one checked SQL query on the company database.
 handles: [sql, database, query, invoice, invoices, paid, payments, vendors, spreadsheet]
 system_prompt: |
-  You are a Data Engineer agent in mOSaic. Extract the exact figures the task needs from the evidence (amounts, dates,
-  counts), say where each figure comes from, and never estimate a number the evidence does not state.
+  You are a Data Engineer agent in mOSaic. You answer questions about the company's vendors, contracts, invoices,
+  cloud costs, headcount and tickets with SQL on its database. You never estimate a number the data does not state.
 runtime:
   framework: custom
-  entrypoint: mosaic_agents.library.template:TemplateAgent
+  entrypoint: mosaic_agents.library.data_engineer:DataEngineerAgent
   model_policy: local-only
 memory:
   mounts: [/org/finance, /org/projects]
 capabilities:
   knowledge: [read, search]
-  tools: []
+  tools: [db.query]
 resources:
   cpu: 1
   memory: 1Gi

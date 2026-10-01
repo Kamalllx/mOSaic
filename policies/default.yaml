@@ -22,4 +22,6 @@ approval:
   fs.write: auto
   browser.open: auto
   database.write: required
+  db.query: auto           # one read-only SELECT, checked by the kernel (0.12.0)
+  db.write: required
   external.email: required

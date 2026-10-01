@@ -384,10 +384,9 @@ class Lifecycle:
             raise MosaicError("TIMEOUT", f"pid {pid} did not finish within {timeout}s") from e
 
     async def kill(self, pid: int, reason: str = "killed") -> None:
-        proc = self.k.procs.get(pid)
-        for child in self.k.procs.children(pid):
-            if child.state not in TERMINAL_STATES:
-                await self.kill(child.pid, reason)
+        # The target first: killed children first would let a parent waiting on them return normally, so an operator's
+        # kill could end the task as completed (and the kill itself then failed on COMPLETED -> TERMINATED).
+        self.k.procs.get(pid)  # PROCESS_NOT_FOUND for an unknown pid
         ctx = self.contexts.get(pid)
         if ctx is not None:
             ctx.request_cancel()
@@ -397,8 +396,15 @@ class Lifecycle:
                 raise MosaicError("BAD_REQUEST", "a process cannot kill itself; return from run() instead")
             task.cancel()
             await asyncio.wait({task}, timeout=10)
-        elif proc.state not in TERMINAL_STATES:
-            await self._to(pid, AgentState.TERMINATED, reason=reason)
+        for child in self.k.procs.children(pid):
+            if child.state not in TERMINAL_STATES:
+                await self.kill(child.pid, reason)
+        if (task is None or task.done()) and self.k.procs.get(pid).state not in TERMINAL_STATES:
+            try:
+                await self._to(pid, AgentState.TERMINATED, reason=reason)
+            except MosaicError as e:  # it reached a terminal state on its own meanwhile
+                if e.code != "INVALID_STATE_TRANSITION" or self.k.procs.get(pid).state not in TERMINAL_STATES:
+                    raise
 
     async def pause(self, pid: int) -> None:
         ctx = self.contexts.get(pid)

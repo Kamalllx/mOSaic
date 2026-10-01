@@ -1005,6 +1005,7 @@ dependencies = [
     { name = "mcp" },
     { name = "mosaic-contracts" },
     { name = "playwright" },
+    { name = "psycopg", extra = ["binary"] },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -1016,6 +1017,7 @@ requires-dist = [
     { name = "mcp", specifier = ">=1.0" },
     { name = "mosaic-contracts", editable = "shared/python" },
     { name = "playwright", specifier = ">=1.45" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },
 ]
 

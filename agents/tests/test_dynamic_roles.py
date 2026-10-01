@@ -31,9 +31,11 @@ def test_a_goal_that_asks_for_them_is_offered_the_new_templates():
     allowed = list(manifest("planner-agent").capabilities.agents)
     assert offered_roles(VENDORS, allowed) == [*LIBRARY_ROLES, "data-engineer", "writer"]
     assert offered_roles(APOLLO, allowed) == offered_roles(ZEUS, allowed) == list(LIBRARY_ROLES)
+    memo = "Investigate why Project Apollo is over budget and draft a memo for the CFO."
+    assert offered_roles(memo, allowed) == [*LIBRARY_ROLES, "writer"]
     ctx, _ = _planner_ctx(GENERIC_PLAN, SYNTHESIS, children=WITH_FINDINGS)
-    asyncio.run(PlannerAgent().run(VENDORS, ctx))
-    assert "- data-engineer: Finds the exact figures" in _planning_prompt(ctx)
+    asyncio.run(PlannerAgent().run(memo, ctx))
+    assert "- writer: Drafts the note" in _planning_prompt(ctx)
 
 
 def test_every_role_is_spawned_with_the_bounds_it_was_announced_with():
@@ -50,7 +52,7 @@ def test_every_role_is_spawned_with_the_bounds_it_was_announced_with():
 def test_the_role_tables_match_the_templates():
     for role, handles in EXTRA_HANDLES.items():
         assert set(handles) == set(manifest(role).handles), role
-        assert manifest(role).system_prompt and manifest(role).runtime.entrypoint.endswith(":TemplateAgent")
+        assert manifest(role).system_prompt and manifest(role).runtime.entrypoint.startswith("mosaic_agents.library.")
     assert set(SPECIALIST_ROLES) == set(manifest("planner-agent").capabilities.agents)
 
 
