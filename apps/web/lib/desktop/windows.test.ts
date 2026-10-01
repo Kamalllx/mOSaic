@@ -12,6 +12,7 @@ describe("desktop routes", () => {
     expect(parseRoute("/audit/T-1")).toMatchObject({ app: "journal", key: "journal:T-1" });
     expect(parseRoute("/knowledge?path=/org/inbox")).toEqual({ app: "files", key: "files", url: "/knowledge?path=/org/inbox" });
     expect(parseRoute("/memory/")).toMatchObject({ app: "memory", url: "/memory" });
+    expect(parseRoute("/settings?section=models")).toEqual({ app: "settings", key: "settings", url: "/settings?section=models" });
   });
 
   it("opens no window for the desktop, boot or unknown paths", () => {
