@@ -59,6 +59,12 @@ cd android
 # -> android/app/build/outputs/apk/release/app-release.apk; copy it to mosaic-<version>.apk
 ```
 - Build with JDK 17 or 21 and the Android SDK from Android Studio.
+- **Windows pitfalls** (all hit on a team laptop):
+  - **Don't build inside OneDrive.** The native step fails with `ninja: error: manifest 'build.ninja' still dirty after 100 tries`, because OneDrive rewrites file timestamps. Copy `apps/mobile` and `shared/ts` to a short local path (for example `C:\mb\apps\mobile` and `C:\mb\shared\ts`), run `npm ci` there, and build there.
+  - **NDK error** `[CXX1101] NDK at ...\ndk\27.1.12297006 did not have a source.properties file`: that NDK install is incomplete. Reinstall it in Android Studio's SDK Manager, or add `ext { ndkVersion = "<installed version>" }` at the top of `buildscript` in `android/build.gradle`.
+  - **Gradle download times out in Java while `curl` works:** set `JAVA_TOOL_OPTIONS=-Djava.net.preferIPv4Stack=true`.
+  - **Low RAM:** add `--max-workers=2 "-Dorg.gradle.jvmargs=-Xmx2048m"` to the Gradle command. A first build takes about 18 minutes.
+- **Install on a phone over USB:** `adb install -r mosaic-1.0.0.apk`. To reach a gateway on the laptop without Wi-Fi, run `adb reverse tcp:8081 tcp:8081` and use `http://localhost:8081` in the app. Tested on a moto g54 5G running Android 15: sign-in, live task timeline over the WebSocket, the approval notification, and approve from the phone.
 - **Architectures:** `arm64-v8a` covers modern phones and `x86_64` covers the emulator. Leaving out 32-bit halves the build time.
 - **Signing:** as generated, the release APK is signed with the debug keystore. That is fine for side-loading at a hackathon, but not for the Play Store. For a real release key:
   1. Create a keystore **outside the repo**, for example `%USERPROFILE%\.mosaic\mosaic-release.jks`, with `keytool -genkeypair -v -keystore mosaic-release.jks -alias mosaic -keyalg RSA -keysize 2048 -validity 10000`.
