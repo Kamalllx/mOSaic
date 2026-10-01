@@ -26,6 +26,17 @@ recently backgrounded; there is no push server). Tapping it opens the approval o
   the demo org; Priya and Sam are invited ahead, so they sign in with their roles.
 - **With a code** (both modes): in the console, open your name in the menu bar, then **Sign in on your phone**. Type the
   eight characters within five minutes. The phone gets a session of its own for the same person.
+- **With Google** (`MOSAIC_AUTH=google`; `src/google.ts`, from Manjunath's `d/settings`): the app gets a Google ID
+  token natively and exchanges it at `POST /auth/google`. The button appears only in the APK or a development build
+  (native code, so not in Expo Go), and only when this is set at build time:
+  ```
+  EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=<the WEB OAuth client ID, the same as the gateway's MOSAIC_GOOGLE_CLIENT_ID>
+  ```
+  The **Android** client ID must also exist in the same Google Cloud project, registered with the package
+  `ai.mosaic.phone` and the SHA-1 of the signing key (`cd android && .\gradlew signingReport`). For iOS, give the
+  `@react-native-google-signin/google-signin` plugin an `iosUrlScheme` in `app.json`.
+- **Roles:** the buttons follow `/auth/me`'s permissions. `src/rbac.ts` mirrors `policies/rbac/roles.yaml` for a server
+  that sends a role without permissions; the gateway stays the authority either way.
 
 ## Server address
 
@@ -56,7 +67,7 @@ powershell -File apps\mobile\scripts\build-apk.ps1 -Abis arm64-v8a  # phones onl
 ```
 
 The script uses Android Studio's JDK and SDK (`%LOCALAPPDATA%\Android\Sdk`), runs `expo prebuild` and
-`gradlew assembleRelease`, and copies the result to `apps/mobile/dist/mosaic-<version>.apk`. The first build compiles
+`gradlew assembleRelease` with three workers, and copies the result to `apps/mobile/dist/mosaic-<version>.apk`. The first build compiles
 native code and takes a while; later ones are quick. The APK is signed with the debug key, which is fine for
 sideloading and the demo but not for the Play Store. For the Play Store, make your own keystore and keep it out of the
 repo (`*.jks` and `*.keystore` are ignored).
@@ -66,6 +77,32 @@ Install it on the running emulator or a phone with USB debugging:
 ```powershell
 adb install -r apps\mobile\dist\mosaic-1.1.0.apk
 ```
+
+Verified: on the Pixel_6a emulator an Apollo run was started and approved from the app (8/8); Manjunath's build of
+his branch was tested on a moto g54 5G (Android 15) over USB. To reach the laptop's gateway from a phone without
+Wi-Fi, run `adb reverse tcp:8089 tcp:8089` and use `http://localhost:8089` in the app.
+
+**Windows pitfalls** (all hit on team laptops):
+- **Run the build detached when an agent starts it.** A Gradle build cancels when the shell that started it goes away.
+  In Windows PowerShell, `$ErrorActionPreference = "Stop"` plus `*>` turns Gradle's stderr warnings into fatal errors
+  (the script uses "Continue" and exit codes).
+- **Memory:** the native compile, the emulator, Ollama and Docker together can exhaust the paging file ("insufficient
+  memory for the Java Runtime"). Close the emulator, or pass `-Workers 2`.
+- **Don't build inside OneDrive:** `ninja: error: manifest 'build.ninja' still dirty after 100 tries`, because OneDrive
+  rewrites timestamps. Copy `apps/mobile` and `shared/ts` to a short local path and build there.
+- **NDK error** `[CXX1101] NDK at ... did not have a source.properties file`: that NDK install is incomplete; reinstall
+  it in Android Studio's SDK Manager.
+- **Gradle downloads time out in Java while `curl` works:** set `JAVA_TOOL_OPTIONS=-Djava.net.preferIPv4Stack=true`.
+
+**Signing for a store:** create a keystore outside the repo (`keytool -genkeypair -v -keystore mosaic-release.jks
+-alias mosaic -keyalg RSA -keysize 2048 -validity 10000`), put the store path, alias and passwords in
+`%USERPROFILE%\.gradle\gradle.properties`, and point `signingConfigs.release` in `android/app/build.gradle` at them.
+Never commit the keystore or passwords.
+
+## Checks before a commit
+
+`npm run typecheck`, `npm run contrast` (every text colour meets WCAG AA on its surface; Manjunath's check, adapted to
+this palette), then `npx expo export --platform android` to confirm Metro bundles.
 
 `android/` is generated and ignored; `app.json` is the source of truth. The icons are drawn by
 `scripts/make-icons.py` from the mOSaic mark.
