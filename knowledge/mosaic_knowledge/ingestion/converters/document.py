@@ -17,7 +17,29 @@ def markitdown_available() -> bool:
     return importlib.util.find_spec("markitdown") is not None
 
 
+def _pdf_text(path: Path) -> str:
+    """PDF text in reading order. markitdown's PDF path guesses tables from column gaps, which turns a resume or a
+    report into one-word table cells and runs words together; plain text extraction keeps sentences whole."""
+    import pdfplumber
+
+    pages: list[str] = []
+    with pdfplumber.open(str(path)) as pdf:
+        for page in pdf.pages:
+            text = page.extract_text(x_tolerance=1.5, y_tolerance=3) or ""
+            # Bullet glyphs come out as private-use or replacement characters: make them Markdown list items.
+            pages.append("\n".join(("- " + line[1:].strip()) if line[:1] in ("•", "", "�", "●", "▪")
+                                   else line for line in text.splitlines()))
+    return "\n\n".join(p for p in pages if p.strip())
+
+
 def _convert(path: Path) -> tuple[str, str | None]:
+    if path.suffix.lower() == ".pdf" and importlib.util.find_spec("pdfplumber") is not None:
+        try:
+            text = _pdf_text(path)
+            if text.strip():
+                return text, None
+        except Exception:  # noqa: BLE001 — fall back to markitdown for PDFs pdfplumber cannot read
+            pass
     from markitdown import MarkItDown
 
     result = MarkItDown(enable_plugins=False).convert(str(path))
