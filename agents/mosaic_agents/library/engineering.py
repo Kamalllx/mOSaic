@@ -14,7 +14,18 @@ from mosaic_contracts.schema.common import new_id
 from mosaic_contracts.schema.ipc import A2AMessage
 
 from mosaic_agents.prompts import EngOut
-from mosaic_agents.sdk import MosaicAgent, ask_json, cite, gather_evidence, keep_retrieved, project_of, remember_finding
+from mosaic_agents.sdk import (
+    MosaicAgent,
+    ask_json,
+    cite,
+    gather_evidence,
+    keep_retrieved,
+    plural,
+    project_of,
+    remember_finding,
+    think,
+    think_flagged,
+)
 
 log = logging.getLogger("mosaic.agents.engineering")
 
@@ -59,6 +70,7 @@ class EngineeringAgent(MosaicAgent):
         await ctx.log("engineering-agent: starting", data={"goal": goal[:200]})
         project = project_of(goal, ctx.inputs)
         issue_prefix = project.upper()
+        await think(ctx, "search", f"Reading engineering status reports on Project {project} for blockers.")
 
         # Gather engineering evidence
         evidence = await gather_evidence(
@@ -69,6 +81,7 @@ class EngineeringAgent(MosaicAgent):
         )
         evidence_text = cite(evidence)
         await ctx.log(f"engineering-agent: gathered {len(evidence.hits)} evidence hits")
+        await think_flagged(ctx, evidence)
 
         if ctx.cancelled():
             return self.result(ctx, "cancelled", status=AgentResultStatus.CANCELLED)
@@ -97,6 +110,7 @@ class EngineeringAgent(MosaicAgent):
                              for i in issues[:20] if isinstance(i, dict)]
                     jira_context = "\nJira issues:\n" + "\n".join(lines)
                     await ctx.log(f"engineering-agent: retrieved {len(issues)} Jira issues")
+                    await think(ctx, "query", f"Checked {plural(len(issues), issue_prefix + ' issue')} in Jira.")
             except Exception as e:
                 await ctx.log(f"engineering-agent: Jira search failed (non-fatal): {e}", level="warning")
 
@@ -129,6 +143,7 @@ class EngineeringAgent(MosaicAgent):
                           level="warning")
             eng_out.slip_weeks = weeks
         await ctx.log(f"engineering-agent: analysis complete — {eng_out.slip_weeks} weeks slip, {len(eng_out.blockers)} blockers")
+        await think(ctx, "analyze", f"Found {plural(len(eng_out.blockers), 'blocker')} behind a {eng_out.slip_weeks}-week slip.")
 
         retrieved = {h.path for h in evidence.hits}
         for d in eng_out.blockers:

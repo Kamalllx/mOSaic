@@ -42,6 +42,7 @@ if TYPE_CHECKING:
         KnowledgeService,
         MemoryService,
         ModelRouter,
+        PermissionsProvider,
         PolicyEngine,
         ResourceProbe,
         SandboxManager,
@@ -87,6 +88,11 @@ class Settings(BaseModel):
     google_client_id: str | None = Field(None, description="P1: OAuth web client id for Google sign-in (public, not a secret)")
     vault_key: str | None = Field(None, description="P1: 32-byte key (base64) encrypting connector tokens at rest; unset = dev vault")
     session_hours: int = Field(12, description="P1: how long a sign-in lasts")
+    demo_data_url: str = Field(
+        "postgresql+psycopg://mosaic:mosaic@localhost:5432/mosaic_demo_data",
+        description="P1: the demo company's operational database behind the db tool (db.query read-only, db.write "
+        "with approval); scripts/seed_demo_data.py creates and fills it (0.12.0)",
+    )
     modes: dict[str, Mode] = Field(default_factory=lambda: {c: "fake" for c in COMPONENTS})
 
     @classmethod
@@ -132,6 +138,7 @@ class ServiceBundle:
     probe: ResourceProbe | None = None
     policy: PolicyEngine | None = None
     audit: AuditLog | None = None
+    permissions: PermissionsProvider | None = None  # 0.11.0: None means the kernel's built-in role stub
     modes: dict[str, str] = field(default_factory=dict)
 
     def require(self, name: str):

@@ -15,7 +15,18 @@ from mosaic_contracts.schema.common import new_id
 from mosaic_contracts.schema.ipc import A2AMessage
 
 from mosaic_agents.prompts import FinanceOut
-from mosaic_agents.sdk import MosaicAgent, ask_json, cite, gather_evidence, keep_retrieved, project_of, remember_finding
+from mosaic_agents.sdk import (
+    MosaicAgent,
+    ask_json,
+    cite,
+    gather_evidence,
+    keep_retrieved,
+    plural,
+    project_of,
+    remember_finding,
+    think,
+    think_flagged,
+)
 
 log = logging.getLogger("mosaic.agents.finance")
 
@@ -40,6 +51,7 @@ class FinanceAgent(MosaicAgent):
 
     async def run(self, goal: str, ctx: Any) -> AgentResult:
         await ctx.log("finance-agent: starting", data={"goal": goal[:200]})
+        await think(ctx, "search", f"Searching finance records for Project {project_of(goal, ctx.inputs)}'s budget variance.")
 
         # Gather financial evidence
         evidence = await gather_evidence(
@@ -52,6 +64,7 @@ class FinanceAgent(MosaicAgent):
         evidence_text = cite(evidence)
         policy_text = cite(policies)
         await ctx.log(f"finance-agent: gathered {len(evidence.hits)} evidence hits and {len(policies.hits)} policies")
+        await think_flagged(ctx, evidence, policies)
 
         if ctx.cancelled():
             return self.result(ctx, "cancelled", status=AgentResultStatus.CANCELLED)
@@ -87,6 +100,10 @@ class FinanceAgent(MosaicAgent):
         for d in finance_out.drivers:
             if isinstance(d, dict):
                 d["evidence"] = await keep_retrieved(ctx, d.get("evidence", []), retrieved, "drivers")
+        # Counts only: the 7B's own overrun figures can be off (the planner's synthesis states the checked ones), and a
+        # wrong number on the live story is worse than none.
+        cited = sum(1 for d in finance_out.drivers if isinstance(d, dict) and d.get("evidence"))
+        await think(ctx, "analyze", f"Found {plural(len(finance_out.drivers), 'cost driver')}, {cited} with cited evidence.")
 
         # Send evidence to parent if we have one
         if ctx.ppid:

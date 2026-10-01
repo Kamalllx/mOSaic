@@ -265,32 +265,66 @@ def resource_snapshot() -> ResourceSnapshot:
                             running_processes=2, queued_tasks=0, active_sandboxes=1, tokens_last_minute=4200)
 
 
+_APOLLO_PLAN = [  # (role, why, scope, capabilities): the four specialists the Apollo planner assigns
+    ("finance-agent", "The goal is a budget overrun: explain the variance with evidence",
+     ["/org/finance", "/org/projects", "/org/policies"], ["knowledge.read", "knowledge.search", "jira.read"]),
+    ("engineering-agent", "The project is six weeks late: find the engineering causes",
+     ["/org/engineering", "/org/projects", "/org/systems", "/org/decisions"], ["knowledge.read", "knowledge.search", "jira.read"]),
+    ("research-agent", "Vendor context may explain both the cost and the delay",
+     ["/org"], ["knowledge.read", "knowledge.search", "browser.open"]),
+    ("action-agent", "The goal asks to update the tracker once the causes are known",
+     ["/org/projects"], ["knowledge.read", "knowledge.search", "jira.read", "jira.write", "fs.write"]),
+]
+
+
 def events() -> list[Event]:
     """The demo run as an event stream (what /ws/events emits). Replayed by the mock gateway."""
-    def ev(t, type_, pid=None, corr=None, **payload):
-        return Event(event_id=f"EV-{int(t * 10):04d}", type=type_, ts=at(t), source="kernel" if pid is None else f"pid:{pid}",
+    def ev(t, type_, pid=None, corr=None, /, **payload):  # positional-only: payloads may carry their own "pid"
+        return Event(event_id=f"EV-{round(t * 100):05d}", type=type_, ts=at(t), source="kernel" if pid is None else f"pid:{pid}",
                      org_id="acme", task_id=TASK_ID, pid=pid, correlation_id=corr, payload=payload)
     return [
         ev(0, EventType.TASK_CREATED, goal=GOAL, user_id="alice"),
         ev(0.2, EventType.PROCESS_SPAWNED, 101, agent="planner-agent", ppid=None),
         ev(0.3, EventType.PROCESS_STATE_CHANGED, 101, old="CREATED", new="RUNNING"),
+        ev(0.5, EventType.AGENT_THOUGHT, 101, pid=101, step="search", text="Searching /org for evidence on Project Apollo."),
         ev(2, EventType.AGENT_LOG, 101, level="info", message="Decomposing goal into 4 subtasks"),
         ev(3, EventType.MODEL_INVOKED, 101, model="qwen2.5:7b-instruct", provider="ollama", local=True, tokens=812),
-        *[ev(4 + i * 0.2, EventType.PROCESS_SPAWNED, pid, agent=a, ppid=101)
-          for i, (pid, a) in enumerate([(102, "finance-agent"), (103, "engineering-agent"), (104, "research-agent")])],
+        ev(3.1, EventType.TASK_UNDERSTOOD, 101, intent="Find why Project Apollo is over budget and late, then fix the plan",
+           entities=["Project Apollo", "APOLLO-12"],
+           capabilities_needed=["knowledge.search", "jira.read", "browser.open", "jira.write"],
+           plan_summary="Finance, engineering and research investigate in parallel; "
+                        "the action agent records the root causes on APOLLO-12."),
+        *[ev(3.2 + i * 0.1, EventType.AGENT_PLANNED, 101, role=role, why=why, scope=scope, capabilities=caps)
+          for i, (role, why, scope, caps) in enumerate(_APOLLO_PLAN)],
+        *[e for i, (pid, a) in enumerate([(102, "finance-agent"), (103, "engineering-agent"), (104, "research-agent")])
+          for e in (ev(4 + i * 0.2, EventType.PROCESS_SPAWNED, pid, agent=a, ppid=101),
+                    ev(4.05 + i * 0.2, EventType.AGENT_CREATED, pid, pid=pid, manifest_name=a, template=a, generated=False))],
+        ev(5, EventType.AGENT_THOUGHT, 102, pid=102, step="search", text="Searching finance records for the budget variance."),
+        ev(5.1, EventType.AGENT_THOUGHT, 103, pid=103, step="search", text="Reading engineering status reports for blockers."),
+        ev(5.2, EventType.AGENT_THOUGHT, 104, pid=104, step="search", text="Looking for vendor context on the SDK upgrade."),
         ev(6, EventType.KNOWLEDGE_RETRIEVED, 102, query="Apollo budget overrun cloud cost", hits=3, filtered_by_policy=1,
            paths=["/org/finance/apollo-budget", "/org/decisions/ADR-042", "/org/inbox/vendor-email-2026-09-12"],
            flagged=["/org/inbox/vendor-email-2026-09-12"]),
         ev(6.1, EventType.AGENT_LOG, 102, level="warning",
            message="Context firewall flagged /org/inbox/vendor-email-2026-09-12 (instruction_like) — treated as data"),
+        ev(6.2, EventType.AGENT_THOUGHT, 102, pid=102, step="firewall", text="Treating 1 flagged document as data, not instructions."),
+        ev(8, EventType.TOOL_QUERY, 103, "SC-3b21", pid=103, tool="jira.search_issues", query="project=APOLLO", rows=3, ms=41),
+        ev(8.1, EventType.TASK_DATA, 103, "SC-3b21", columns=["key", "status", "summary"],
+           rows=[["APOLLO-12", "In Progress", "Payments DB migration"], ["APOLLO-31", "Blocked", "Vendor SDK upgrade"],
+                 ["APOLLO-7", "Done", "Reconciliation service"]], source="jira.search_issues"),
+        ev(11.5, EventType.AGENT_THOUGHT, 104, pid=104, step="browse", text="Opening the vendor SDK docs in a sandboxed browser."),
         ev(12, EventType.SANDBOX_STARTED, 104, sandbox_id="SB-4c2", image="mosaic/sandbox-base:latest"),
         ev(15, EventType.TOOL_COMPLETED, 104, tool="browser", operation="open", status="success"),
+        ev(20, EventType.AGENT_THOUGHT, 102, pid=102, step="analyze", text="Found 3 cost drivers, each citing a finance document."),
         ev(22, EventType.PROCESS_STATE_CHANGED, 102, old="RUNNING", new="COMPLETED"),
+        ev(27, EventType.AGENT_THOUGHT, 103, pid=103, step="analyze", text="Found 2 blockers behind a 6-week slip."),
         ev(28, EventType.IPC_MESSAGE, 103, message_id="MSG-3a", sender="engineering-agent", receiver="planner-agent", type="evidence"),
         ev(29, EventType.PROCESS_STATE_CHANGED, 103, old="RUNNING", new="COMPLETED"),
         ev(31, EventType.PROCESS_STATE_CHANGED, 104, old="RUNNING", new="COMPLETED"),
         ev(32, EventType.SANDBOX_DESTROYED, 104, sandbox_id="SB-4c2"),
         ev(35, EventType.PROCESS_SPAWNED, 105, agent="action-agent", ppid=101),
+        ev(35.05, EventType.AGENT_CREATED, 105, pid=105, manifest_name="action-agent", template="action-agent", generated=False),
+        ev(36, EventType.AGENT_THOUGHT, 105, pid=105, step="act", text="Asking for approval to record the root causes on APOLLO-12."),
         ev(39, EventType.SYSCALL_REQUESTED, 105, "SC-77f1", capability="jira.write", tool="jira", operation="update_issue", risk="medium"),
         ev(39.1, EventType.SYSCALL_DECIDED, 105, "SC-77f1", decision="REQUIRES_APPROVAL", policy="project-updates-v1"),
         ev(40, EventType.APPROVAL_REQUESTED, 105, "APR-882", approval_id="APR-882", capability="jira.write"),
@@ -302,6 +336,8 @@ def events() -> list[Event]:
         ev(54, EventType.TOOL_COMPLETED, 105, "SC-77f1", tool="jira", operation="update_issue", status="success"),
         ev(54.5, EventType.TRANSACTION_COMMITTED, 105, "SC-77f1", verified=True),
         ev(55, EventType.PROCESS_STATE_CHANGED, 105, old="WAITING", new="COMPLETED"),
+        ev(56, EventType.AGENT_THOUGHT, 101, pid=101, step="synthesize",
+           text="Combined the findings into 3 cited root causes and a recovery plan."),
         ev(58, EventType.MEMORY_CONSOLIDATED, created=2),
         ev(60, EventType.PROCESS_STATE_CHANGED, 101, old="RUNNING", new="COMPLETED"),
         ev(60.1, EventType.TASK_COMPLETED, summary="Root causes identified; APOLLO-12 updated; recovery plan attached."),

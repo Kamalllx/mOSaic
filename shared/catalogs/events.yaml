@@ -46,3 +46,13 @@ tool.completed:          {producer: P1, consumers: [P2-ui], correlation_id: sysc
 system.ready:            {producer: P1, consumers: [P2-ui], payload: {components: "list[ComponentHealth]"}}
 system.health:           {producer: P1, consumers: [P2-ui], payload: ResourceSnapshot}
 cron.triggered:          {producer: P1, consumers: [P1-scheduler], payload: {job: str}}
+
+# Thought process (0.10.0): the run as a story for the UI (understood -> planned -> created -> thoughts -> query -> data).
+# Models: TaskUnderstood, AgentPlanned, AgentCreated, AgentThought, ToolQuery, TaskData in mosaic_contracts.schema.events.
+# Text fields are short summaries written by agent/kernel code (<= 240 chars): never raw chain-of-thought or retrieved text.
+task.understood:         {producer: "P3 planner via ctx.narrate", consumers: [A-ui], payload: {intent: str, entities: "list[str]", capabilities_needed: "list[str]", plan_summary: str}}
+agent.planned:           {producer: "P3 planner via ctx.narrate", consumers: [A-ui], payload: {role: "str (template id; agent.created.template matches it)", why: str, scope: "list[str] (/org paths)", capabilities: "list[str]"}}
+agent.created:           {producer: "P1 (kernel, on spawn)", consumers: [A-ui], payload: {pid: int, manifest_name: str, template: str, generated: bool}}
+agent.thought:           {producer: "P3 agents via ctx.narrate (kernel stamps pid)", consumers: [A-ui], payload: {pid: int, step: "str (<= 40 chars)", text: "str (one sentence)"}}
+tool.query:              {producer: "P1 (context, after a query tool such as db.query)", consumers: [A-ui], correlation_id: syscall_id, payload: {pid: int, tool: str, query: str, rows: int, ms: int}}
+task.data:               {producer: "P1 (context, after a query tool)", consumers: [A-ui], correlation_id: syscall_id, payload: {columns: "list[str]", rows: "list[list[str|int|float|bool|null]] (<= 200)", source: str}}

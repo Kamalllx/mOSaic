@@ -252,16 +252,19 @@ export type TrustLevel4 = "verified" | "trusted" | "unverified" | "untrusted";
 export type VerificationStatus2 = "unverified" | "verified" | "disputed" | "stale";
 
 /**
- * mOSaic contracts v0.11.0
+ * mOSaic contracts v0.13.0
  */
 export interface MOSaic {
   A2AMessage?: A2AMessage;
+  AgentCreated?: AgentCreated;
   AgentFramework?: AgentFramework;
   AgentManifest?: AgentManifest;
+  AgentPlanned?: AgentPlanned;
   AgentProcess?: AgentProcess;
   AgentResult?: AgentResult;
   AgentResultStatus?: AgentResultStatus;
   AgentState?: AgentState1;
+  AgentThought?: AgentThought;
   AllowDeny?: AllowDeny;
   Approval?: Approval;
   ApprovalMode?: ApprovalMode;
@@ -376,18 +379,22 @@ export interface MOSaic {
   Task?: Task;
   TaskClass?: TaskClass1;
   TaskCreate?: TaskCreate;
+  TaskData?: TaskData;
   TaskResult?: TaskResult;
   TaskStatus?: TaskStatus1;
+  TaskUnderstood?: TaskUnderstood;
   TimelineStats?: TimelineStats;
   TokenUsage?: TokenUsage;
   ToolInvocation?: ToolInvocation;
   ToolOperation?: ToolOperation;
+  ToolQuery?: ToolQuery;
   ToolResult?: ToolResult;
   ToolResultStatus?: ToolResultStatus;
   ToolSpec?: ToolSpec;
   ToolTransport?: ToolTransport;
   TrustLevel?: TrustLevel4;
   UserInfo?: UserInfo;
+  UserPermissions?: UserPermissions;
   ValidationIssue?: ValidationIssue;
   ValidationReport?: ValidationReport;
   VerificationCheck?: VerificationCheck;
@@ -431,6 +438,21 @@ export interface A2AMessage {
   sent_at?: string;
 }
 /**
+ * agent.created: the kernel spawned an agent. `generated` is true for a manifest built for this task.
+ *
+ * This interface was referenced by `MOSaic`'s JSON-Schema
+ * via the `definition` "AgentCreated".
+ */
+export interface AgentCreated {
+  pid: number;
+  manifest_name: string;
+  /**
+   * Role template id (equals agent.planned.role); the manifest name for fixed agents
+   */
+  template: string;
+  generated?: boolean;
+}
+/**
  * agents/manifests/<name>.yaml — blueprint §34.
  *
  * This interface was referenced by `MOSaic`'s JSON-Schema
@@ -450,6 +472,22 @@ export interface AgentManifest {
   resources?: ManifestResources;
   network?: ManifestNetwork;
   approval?: ManifestApproval;
+  /**
+   * The role's instructions, for template agents that run it generically
+   */
+  system_prompt?: string | null;
+  /**
+   * The role template this manifest was generated from (None: a template)
+   */
+  template?: string | null;
+  /**
+   * True for an ephemeral manifest the kernel generated for one task
+   */
+  generated?: boolean;
+  /**
+   * The task a generated manifest belongs to; removed when the task ends
+   */
+  task_id?: string | null;
 }
 /**
  * This interface was referenced by `MOSaic`'s JSON-Schema
@@ -507,6 +545,24 @@ export interface ManifestNetwork {
  */
 export interface ManifestApproval {
   required?: string[];
+}
+/**
+ * agent.planned: one agent the planner decided to create, before it exists (no pid yet).
+ *
+ * This interface was referenced by `MOSaic`'s JSON-Schema
+ * via the `definition` "AgentPlanned".
+ */
+export interface AgentPlanned {
+  /**
+   * Role template id; the matching agent.created carries it as `template`
+   */
+  role: string;
+  why: string;
+  /**
+   * /org paths or globs it may read
+   */
+  scope?: string[];
+  capabilities?: string[];
 }
 /**
  * This interface was referenced by `MOSaic`'s JSON-Schema
@@ -655,6 +711,23 @@ export interface SyscallRequest {
    */
   evidence?: string[];
   idempotency_key?: string | null;
+}
+/**
+ * agent.thought: one short visible step of an agent. `pid` is set by the kernel, not the agent.
+ *
+ * This interface was referenced by `MOSaic`'s JSON-Schema
+ * via the `definition` "AgentThought".
+ */
+export interface AgentThought {
+  pid?: number | null;
+  /**
+   * Short step label, e.g. "search", "plan", "synthesize"
+   */
+  step: string;
+  /**
+   * One sentence
+   */
+  text: string;
 }
 /**
  * This interface was referenced by `MOSaic`'s JSON-Schema
@@ -1802,6 +1875,14 @@ export interface SpawnRequest {
    * Optional narrowing; can never exceed the child's manifest. The parent controls WHICH agents it may spawn (its manifest.capabilities.agents), not their capabilities
    */
   capabilities?: string[] | null;
+  /**
+   * Optional narrowing of the child's /org scope (its template's memory mounts); never widens (0.11.0)
+   */
+  scope?: string[] | null;
+  /**
+   * Why the parent creates this agent, for the audit and the UI
+   */
+  why?: string | null;
 }
 /**
  * This interface was referenced by `MOSaic`'s JSON-Schema
@@ -1999,6 +2080,312 @@ export interface TaskCreate {
   };
 }
 /**
+ * task.data: a table of results to show. At most MAX_DATA_ROWS rows; use TaskData.capped() to truncate.
+ *
+ * This interface was referenced by `MOSaic`'s JSON-Schema
+ * via the `definition` "TaskData".
+ */
+export interface TaskData {
+  columns: string[];
+  /**
+   * @maxItems 200
+   */
+  rows?: (string | number | boolean | null)[][];
+  /**
+   * Where the rows came from, e.g. "db.query" or "/org/finance/apollo-budget"
+   */
+  source: string;
+}
+/**
+ * task.understood: what the planner took the goal to mean, before it assigns agents.
+ *
+ * This interface was referenced by `MOSaic`'s JSON-Schema
+ * via the `definition` "TaskUnderstood".
+ */
+export interface TaskUnderstood {
+  /**
+   * e.g. "investigate budget overrun and schedule slip"
+   */
+  intent: string;
+  /**
+   * e.g. ["Project Apollo", "APOLLO-12"]
+   *
+   * @maxItems 20
+   */
+  entities?:
+    | []
+    | [string]
+    | [string, string]
+    | [string, string, string]
+    | [string, string, string, string]
+    | [string, string, string, string, string]
+    | [string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string, string, string, string, string, string]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string
+      ];
+  /**
+   * e.g. knowledge.search, jira.write
+   *
+   * @maxItems 20
+   */
+  capabilities_needed?:
+    | []
+    | [string]
+    | [string, string]
+    | [string, string, string]
+    | [string, string, string, string]
+    | [string, string, string, string, string]
+    | [string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string, string, string, string, string, string]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string
+      ]
+    | [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string
+      ];
+  plan_summary: string;
+}
+/**
  * Built by the kernel from an ALLOWED/approved SyscallRequest. Agents never create these.
  *
  * This interface was referenced by `MOSaic`'s JSON-Schema
@@ -2023,6 +2410,35 @@ export interface ToolInvocation {
   };
   timeout_s?: number;
   dry_run?: boolean;
+}
+/**
+ * tool.query: a query a tool ran for an agent (e.g. the SQL of db.query), with its row count and duration.
+ *
+ * This interface was referenced by `MOSaic`'s JSON-Schema
+ * via the `definition` "ToolQuery".
+ */
+export interface ToolQuery {
+  pid: number;
+  tool: string;
+  query: string;
+  rows: number;
+  ms: number;
+}
+/**
+ * What a user may do (0.11.0), resolved from {user, org, roles} by a PermissionsProvider. `permissions` are app
+ * permissions (task.create, approval.resolve, ...); `capabilities` and `data_scopes` bound every agent a task started by
+ * this user creates: an agent never gets a capability or an /org scope its user lacks.
+ *
+ * This interface was referenced by `MOSaic`'s JSON-Schema
+ * via the `definition` "UserPermissions".
+ */
+export interface UserPermissions {
+  user_id: string;
+  org_id: string;
+  roles?: string[];
+  permissions?: string[];
+  capabilities?: string[];
+  data_scopes?: string[];
 }
 /**
  * This interface was referenced by `MOSaic`'s JSON-Schema

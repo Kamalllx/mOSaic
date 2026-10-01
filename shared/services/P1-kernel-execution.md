@@ -14,7 +14,7 @@ Full brief: [docs/team/P1-kernel-execution.md](../../docs/team/P1-kernel-executi
 | `ai-*` CLI | commands | humans / demo | — | — |
 | mock Jira `:8090` | service | executor | `FakeToolExecutor.issues` | via `ToolExecutorContract` |
 
-**Events published:** `task.*`, `process.*`, `agent.log`, `syscall.*`, `approval.*`, `transaction.*`, `policy.updated`, `audit.appended`, `ipc.message`, `knowledge.retrieved`, `model.invoked`, `sandbox.*`, `tool.*`, `system.*` (payloads: `shared/catalogs/events.yaml`).
+**Events published:** `task.*`, `process.*`, `agent.log`, `syscall.*`, `approval.*`, `transaction.*`, `policy.updated`, `audit.appended`, `ipc.message`, `knowledge.retrieved`, `model.invoked`, `sandbox.*`, `tool.*`, `system.*`, and the thought-process events (0.10.0): `agent.created` on spawn, `tool.query` + `task.data` after a query tool, and `task.understood` / `agent.planned` / `agent.thought` on behalf of agents via `ctx.narrate()` (pid stamped by the kernel) (payloads: `shared/catalogs/events.yaml`).
 
 **Behaviour notes for consumers**
 - `WS /ws/events?task_id=…` first **replays the task's history** (durable across restarts when Redis is up), then streams live events. Filter with `types=task.*,process.*`.
@@ -50,6 +50,8 @@ Full brief: [docs/team/P1-kernel-execution.md](../../docs/team/P1-kernel-executi
 | EventBus (+ Redis Stream mirror) · AuditLog (SQLite, hash chain; `RunTimeline.chain_verified` recomputes it, contract 0.6.0) · PolicyEngine (YAML, hot reload) | ✅ |
 | Process table · lifecycle (retry, escalation, kill tree, pause/resume) · tasks · scheduler (priorities, GPU admission, preemption) | ✅ |
 | KernelAgentContext + IPC mailboxes | ✅ |
+| `ctx.narrate()` (0.10.0): validates and publishes the three agent-told events | ✅ (agent.created, tool.query, task.data emission: `b/thought-events`) |
+| Dynamic agents (0.11.0): `ctx.spawn(..., capabilities, scope, why)` narrows only; `ServiceBundle.permissions` (`PermissionsProvider` → `UserPermissions`) bounds every agent a task creates | contract + scope narrowing ✅; generation, generated policies, cleanup: `b/dynamic-agents` |
 | Syscalls · approvals · transactions (verify → commit / rollback) · idempotency | ✅ |
 | Gateway (route conformance, WS history replay) · CLI (`ai-*`, `ai run`) | ✅ |
 | Artifacts · fs (jailed, reversible) · mock Jira + jira tool · executor · MCP adapter | ✅ |

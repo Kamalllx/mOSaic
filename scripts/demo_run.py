@@ -2,6 +2,7 @@
 
     uv run python scripts/demo_run.py run   [--gateway URL] [--scenario apollo|zeus] [--goal TEXT] [--auto-approve]
     uv run python scripts/demo_run.py check  T-xxxx [--gateway URL] [--scenario apollo|zeus]
+    add --check-story to either: also check the thought-process event order (scripts/check_story.py)
 
 `run` submits the goal, approves the jira.write if --auto-approve (a throwaway rehearsal run), waits, then scores it;
 without --auto-approve it waits for you to approve in the console. `check` scores any finished task. The exit code is
@@ -10,6 +11,9 @@ the number of failed checks.
 Scenarios: `apollo` (the default, 8 checks) and `zeus` (the Q4 budget-risk briefing, 8 checks). With mosaicd started
 under MOSAIC_FIREWALL_LLM=true, add --expect-llm-flag to the zeus scenario: a ninth check that the reworded injection
 in the renewal email was caught by the LLM classifier (flag instruction_like_llm), which means the regex missed it.
+
+--check-story is reported on its own line after the score and is not one of the scenario's checks; a FAIL there adds
+one to the exit code.
 """
 
 from __future__ import annotations
@@ -173,6 +177,8 @@ def main() -> int:
         p.add_argument("--scenario", choices=sorted(SCENARIOS), default="apollo")
         p.add_argument("--expect-llm-flag", action="store_true",
                        help="also require the scenario's email to carry instruction_like_llm (mosaicd under MOSAIC_FIREWALL_LLM=true)")
+        p.add_argument("--check-story", action="store_true",
+                       help="also check the order of the thought-process events (its own pass/fail line, not a scored check)")
     a = ap.parse_args()
     sc = SCENARIOS[a.scenario]
     if a.expect_llm_flag and not sc.email_query:
@@ -181,7 +187,14 @@ def main() -> int:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     c = httpx.Client(base_url=a.gateway.rstrip("/"), headers=H, timeout=30)
     tid = run(c, a.goal or sc.goal, a.auto_approve, a.timeout) if a.cmd == "run" else a.task_id
-    return check(c, tid, sc, a.expect_llm_flag)
+    failed = check(c, tid, sc, a.expect_llm_flag)
+    if a.check_story:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import check_story
+
+        print()
+        failed += 0 if check_story.report(check_story.fetch(a.gateway, tid)) else 1
+    return failed
 
 
 if __name__ == "__main__":

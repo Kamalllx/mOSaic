@@ -35,8 +35,11 @@ from mosaic_contracts.wiring import ServiceBundle, Settings
 from .approvals.queue import ApprovalQueue
 from .config import KernelConfig
 from .context.mailboxes import Mailboxes
+from .dynamic import EphemeralAgents
 from .lifecycle.manager import Lifecycle
+from .permissions import RolePermissions
 from .persistence.store import StateStore
+from .policy.engine import template_of
 from .process.table import ProcessTable
 from .quota.manager import QuotaManager
 from .scheduler.cron import CronRunner, load_schedules
@@ -66,6 +69,9 @@ class Kernel:
         self.transactions = TransactionManager(self)
         self.syscalls = SyscallGateway(self, approval_timeout=self.config.approval_timeout_s)
         self.lifecycle = Lifecycle(self)
+        # Dynamic agents: the task user's permissions bound every agent a task creates (C's RBAC, or the role stub).
+        self.permissions = services.permissions or RolePermissions.from_dir(settings.policies_dir)
+        self.ephemeral = EphemeralAgents(settings.data_dir / "ephemeral")
         self.scheduler = Scheduler(self, max_concurrent_tasks=self.config.max_concurrent_tasks)
         self.history: dict[str, deque[Event]] = {}
         self.ready = False
@@ -76,6 +82,8 @@ class Kernel:
 
     # ------------------------------------------------------------------ boot / shutdown
     async def boot(self) -> None:
+        if swept := self.ephemeral.sweep():  # generated agents never survive a restart; a resumed root regenerates them
+            log.info("swept the generated manifests and policies of %d interrupted tasks", swept)
         self.tasks.load(self.store.tasks())
         self.procs.load(self.store.processes())
         self.approvals.load(self.store.approvals())
@@ -209,7 +217,7 @@ class Kernel:
         if not report.affected_agents:
             return
         for p in self.procs.list():
-            if p.agent in report.affected_agents and p.state not in TERMINAL_STATES:
+            if template_of(p.agent) in report.affected_agents and p.state not in TERMINAL_STATES:
                 await self.emit(EventType.AGENT_LOG, {"level": "warning", "data": report.model_dump(mode="json"),
                                                      "message": f"{path} changed: {len(report.invalidated)} memories are stale"},
                                 task_id=p.task_id, pid=p.pid, source="kernel.events")

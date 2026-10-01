@@ -67,6 +67,12 @@ class AgentManifest(Contract):
     resources: ManifestResources = Field(default_factory=ManifestResources)
     network: ManifestNetwork = Field(default_factory=ManifestNetwork)
     approval: ManifestApproval = Field(default_factory=ManifestApproval)
+    # Dynamic agents (0.11.0). A registry manifest is a role template; the kernel generates an ephemeral manifest from it
+    # for each agent a task creates (name "<template>@<task_id>", narrowed capabilities and mounts).
+    system_prompt: str | None = Field(None, description="The role's instructions, for template agents that run it generically")
+    template: str | None = Field(None, description="The role template this manifest was generated from (None: a template)")
+    generated: bool = Field(False, description="True for an ephemeral manifest the kernel generated for one task")
+    task_id: str | None = Field(None, description="The task a generated manifest belongs to; removed when the task ends")
 
     def all_capabilities(self) -> list[str]:
         """Flattened capability strings the kernel grants at spawn time (before policy narrowing)."""

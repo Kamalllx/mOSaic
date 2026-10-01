@@ -50,6 +50,51 @@
         },
         "approval": {
           "$ref": "#/$defs/ManifestApproval"
+        },
+        "system_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The role's instructions, for template agents that run it generically",
+          "title": "System Prompt"
+        },
+        "template": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The role template this manifest was generated from (None: a template)",
+          "title": "Template"
+        },
+        "generated": {
+          "default": false,
+          "description": "True for an ephemeral manifest the kernel generated for one task",
+          "title": "Generated",
+          "type": "boolean"
+        },
+        "task_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The task a generated manifest belongs to; removed when the task ends",
+          "title": "Task Id"
         }
       },
       "required": [

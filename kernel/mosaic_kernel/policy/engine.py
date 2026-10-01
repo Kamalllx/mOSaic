@@ -32,6 +32,11 @@ def load_policy_documents(directory: Path) -> list[PolicyDocument]:
     return sorted(docs, key=lambda d: (d.priority, d.policy))
 
 
+def template_of(agent: str) -> str:
+    """The role template of a generated agent name ("finance-agent@T-1#2" -> "finance-agent"); other names unchanged."""
+    return agent.split("@", 1)[0]
+
+
 def max_risk(a: Risk, b: Risk) -> Risk:
     return a if RISK_ORDER.index(a) >= RISK_ORDER.index(b) else b
 
@@ -41,16 +46,26 @@ class YamlPolicyEngine:
         self.policies_dir = Path(policies_dir)
         self.bus = event_bus
         self.docs: list[PolicyDocument] = load_policy_documents(self.policies_dir)
+        # Generated per-agent policies (dynamic agents): an overlay that can only narrow, keyed by the generated name.
+        self.generated: dict[str, PolicyDocument] = {}
 
     def documents(self) -> list[PolicyDocument]:
-        return list(self.docs)
+        return list(self.docs) + list(self.generated.values())
+
+    def register_generated(self, agent: str, doc: PolicyDocument) -> None:
+        self.generated[agent] = doc
+
+    def drop_generated(self, agents: list[str]) -> None:
+        for a in agents:
+            self.generated.pop(a, None)
 
     def matching(self, principal: Principal) -> list[PolicyDocument]:
-        name = principal.agent or ""
+        """Org documents for this agent; a generated agent is matched through its role template's name."""
+        names = {principal.agent or "", template_of(principal.agent or "")}
         roles = principal.roles or []
         out = []
         for d in self.docs:
-            if not any(fnmatch(name, a) for a in d.applies_to.agents):
+            if not any(fnmatch(n, a) for n in names for a in d.applies_to.agents):
                 continue
             if "*" not in d.applies_to.roles and not set(roles) & set(d.applies_to.roles):
                 continue
@@ -71,6 +86,28 @@ class YamlPolicyEngine:
         if not any(capability_matches(cap, g) for g in principal.capabilities):
             return PolicyDecision(decision=Decision.DENY, policy="kernel", matched_rules=["capability-check"],
                                   reason=f"capability {cap} not granted to {principal.agent or principal.user_id}")
+        overlay = self.generated.get(principal.agent or "")
+        if overlay is not None and not any(capability_matches(cap, g) for g in overlay.tools.allow):
+            return PolicyDecision(decision=Decision.DENY, policy=overlay.policy, matched_rules=["generated:outside-bounds"],
+                                  reason=f"{cap} is outside the bounds generated for {principal.agent}")
+        decision = self._org_decision(request, principal)
+        if (overlay is not None and decision.decision == Decision.ALLOW
+                and overlay.approval.get(cap) == ApprovalMode.REQUIRED):  # the overlay only tightens: writes need a person
+            decision = PolicyDecision(decision=Decision.REQUIRES_APPROVAL, policy=overlay.policy, approval_id=new_id("APR"),
+                                      reason=f"{cap} requires human approval (generated agent)",
+                                      matched_rules=[f"generated:approval.{cap}=required"], constraints=decision.constraints)
+        return decision
+
+    def permits(self, capability: str, principal: Principal) -> str | None:
+        """Why org policy would refuse `capability` to this agent (None: some org document allows it). Used when
+        generating an agent: capabilities no org document allows are dropped rather than granted and then denied."""
+        probe = SyscallRequest(syscall_id="SC-probe", task_id="T-probe", pid=1, capability=capability, tool="probe",
+                               operation="probe", risk=Risk.LOW, justification="bounds check")
+        d = self._org_decision(probe, principal)
+        return d.reason if d.decision == Decision.DENY else None
+
+    def _org_decision(self, request: SyscallRequest, principal: Principal) -> PolicyDecision:
+        cap = request.capability
         for doc in self.matching(principal):
             if any(capability_matches(cap, g) for g in doc.tools.deny):
                 return PolicyDecision(decision=Decision.DENY, policy=doc.policy, reason=f"{cap} denied by {doc.policy}",

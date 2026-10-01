@@ -90,6 +90,8 @@ class TaskManager:
         t = self._save(t.model_copy(update={"status": status, "updated_at": utcnow(), **extra}))
         if old != status:
             await self.k.emit(EventType.TASK_STATUS_CHANGED, {"old": old.value, "new": status.value}, task_id=t.task_id)
+        if status in TERMINAL_TASK_STATUSES:
+            self.k.lifecycle.drop_generated(t.task_id)
         return t
 
     def _derive(self, t: Task) -> TaskStatus:

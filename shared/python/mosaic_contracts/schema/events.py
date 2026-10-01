@@ -55,6 +55,13 @@ class EventType(StrEnum):
     SYSTEM_READY = "system.ready"
     SYSTEM_HEALTH = "system.health"
     CRON_TRIGGERED = "cron.triggered"
+    # thought process (P3 agents via ctx.narrate; P1 for agent.created, tool.query, task.data)
+    TASK_UNDERSTOOD = "task.understood"
+    AGENT_PLANNED = "agent.planned"
+    AGENT_CREATED = "agent.created"
+    AGENT_THOUGHT = "agent.thought"
+    TOOL_QUERY = "tool.query"
+    TASK_DATA = "task.data"
 
 
 class Event(Contract):
@@ -67,3 +74,84 @@ class Event(Contract):
     pid: Pid | None = None
     correlation_id: str | None = Field(None, description="e.g. syscall_id or approval_id")
     payload: dict[str, Any] = Field(default_factory=dict, description="See events.yaml for the payload model per type")
+
+
+# --------------------------------------------------------------------------- thought-process payloads
+# The run told as a story for the UI. Small and flat on purpose. Every text field is a short summary written by agent
+# or kernel code: never raw model chain-of-thought and never retrieved document text (retrieved text is data).
+
+MAX_THOUGHT_CHARS = 240
+MAX_DATA_ROWS = 200
+
+Cell = str | int | float | bool | None
+
+
+class TaskUnderstood(Contract):
+    """task.understood: what the planner took the goal to mean, before it assigns agents."""
+    intent: str = Field(max_length=MAX_THOUGHT_CHARS, description='e.g. "investigate budget overrun and schedule slip"')
+    entities: list[str] = Field(default_factory=list, max_length=20, description='e.g. ["Project Apollo", "APOLLO-12"]')
+    capabilities_needed: list[str] = Field(default_factory=list, max_length=20, description="e.g. knowledge.search, jira.write")
+    plan_summary: str = Field(max_length=MAX_THOUGHT_CHARS)
+
+
+class AgentPlanned(Contract):
+    """agent.planned: one agent the planner decided to create, before it exists (no pid yet)."""
+    role: str = Field(description="Role template id; the matching agent.created carries it as `template`")
+    why: str = Field(max_length=MAX_THOUGHT_CHARS)
+    scope: list[str] = Field(default_factory=list, description="/org paths or globs it may read")
+    capabilities: list[str] = Field(default_factory=list)
+
+
+class AgentCreated(Contract):
+    """agent.created: the kernel spawned an agent. `generated` is true for a manifest built for this task."""
+    pid: int
+    manifest_name: str
+    template: str = Field(description="Role template id (equals agent.planned.role); the manifest name for fixed agents")
+    generated: bool = False
+
+
+class AgentThought(Contract):
+    """agent.thought: one short visible step of an agent. `pid` is set by the kernel, not the agent."""
+    pid: int | None = None
+    step: str = Field(max_length=40, description='Short step label, e.g. "search", "plan", "synthesize"')
+    text: str = Field(max_length=MAX_THOUGHT_CHARS, description="One sentence")
+
+
+class ToolQuery(Contract):
+    """tool.query: a query a tool ran for an agent (e.g. the SQL of db.query), with its row count and duration."""
+    pid: int
+    tool: str
+    query: str = Field(max_length=4000)
+    rows: int = Field(ge=0)
+    ms: int = Field(ge=0)
+
+
+class TaskData(Contract):
+    """task.data: a table of results to show. At most MAX_DATA_ROWS rows; use TaskData.capped() to truncate."""
+    columns: list[str]
+    rows: list[list[Cell]] = Field(default_factory=list, max_length=MAX_DATA_ROWS)
+    source: str = Field(description='Where the rows came from, e.g. "db.query" or "/org/finance/apollo-budget"')
+
+    @classmethod
+    def capped(cls, columns: list[str], rows: list[list[Cell]], source: str) -> TaskData:
+        return cls(columns=columns, rows=[list(r) for r in rows[:MAX_DATA_ROWS]], source=source)
+
+
+NarrationPayload = TaskUnderstood | AgentPlanned | AgentThought
+"""What an agent may emit through ctx.narrate(); the kernel emits the other thought-process events itself."""
+
+NARRATION_EVENTS: dict[type[Contract], EventType] = {
+    TaskUnderstood: EventType.TASK_UNDERSTOOD,
+    AgentPlanned: EventType.AGENT_PLANNED,
+    AgentThought: EventType.AGENT_THOUGHT,
+}
+
+THOUGHT_EVENT_MODELS: dict[EventType, type[Contract]] = {
+    EventType.TASK_UNDERSTOOD: TaskUnderstood,
+    EventType.AGENT_PLANNED: AgentPlanned,
+    EventType.AGENT_CREATED: AgentCreated,
+    EventType.AGENT_THOUGHT: AgentThought,
+    EventType.TOOL_QUERY: ToolQuery,
+    EventType.TASK_DATA: TaskData,
+}
+"""Payload model per thought-process event type: validate with THOUGHT_EVENT_MODELS[type].model_validate(payload)."""

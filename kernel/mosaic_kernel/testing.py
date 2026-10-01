@@ -44,12 +44,13 @@ class ScriptedRuntime:
         self.restored: dict[str, int] = {}
 
     async def run(self, m: AgentManifest, goal: str, ctx: Any) -> AgentResult:
-        self.calls[m.name] = self.calls.get(m.name, 0) + 1
-        return await self.scripts[m.name](goal, ctx)
+        name = m.name if m.name in self.scripts else (m.template or m.name)  # generated agents run their template's script
+        self.calls[name] = self.calls.get(name, 0) + 1
+        return await self.scripts[name](goal, ctx)
 
     async def restore(self, m: AgentManifest, goal: str, ctx: Any, state: dict) -> AgentResult:
         ctx.inputs["_restored"] = dict(state)  # scripts can tell a resumed run from a fresh one
-        self.restored[m.name] = self.restored.get(m.name, 0) + 1
+        self.restored[m.template or m.name] = self.restored.get(m.template or m.name, 0) + 1
         return await self.run(m, goal, ctx)
 
 

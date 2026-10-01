@@ -13,6 +13,7 @@ from .common import (
     Contract,
     ErrorInfo,
     KnowledgePath,
+    PathGlob,
     Pid,
     ResourceQuota,
     ResourceUsage,
@@ -100,6 +101,10 @@ class SpawnRequest(Contract):
     capabilities: list[Capability] | None = Field(
         None, description="Optional narrowing; can never exceed the child's manifest. The parent controls WHICH agents it may spawn (its manifest.capabilities.agents), not their capabilities"
     )
+    scope: list[PathGlob] | None = Field(
+        None, description="Optional narrowing of the child's /org scope (its template's memory mounts); never widens (0.11.0)"
+    )
+    why: str | None = Field(None, max_length=240, description="Why the parent creates this agent, for the audit and the UI")
 
 
 class Checkpoint(Contract):

@@ -16,6 +16,7 @@ from mosaic_contracts.schema import (
     AgentManifest,
     AgentResult,
     AgentState,
+    AgentThought,
     AuditKind,
     Checkpoint,
     EventType,
@@ -27,6 +28,7 @@ from mosaic_contracts.schema import (
     ModelPolicy,
     ModelRequest,
     ModelResponse,
+    NarrationPayload,
     Principal,
     PrivacyLevel,
     SearchQuery,
@@ -35,6 +37,7 @@ from mosaic_contracts.schema import (
     SyscallResult,
 )
 from mosaic_contracts.schema.common import new_id
+from mosaic_contracts.schema.events import NARRATION_EVENTS
 from mosaic_contracts.util import has_capability
 
 if TYPE_CHECKING:
@@ -152,10 +155,12 @@ class KernelAgentContext:
         return memory_id
 
     # ------------------------------------------------------------------ processes
-    async def spawn(self, agent: str, goal: str, inputs: dict[str, Any] | None = None) -> int:
+    async def spawn(self, agent: str, goal: str, inputs: dict[str, Any] | None = None, *,
+                    capabilities: list[str] | None = None, scope: list[str] | None = None, why: str | None = None) -> int:
         await self._enter("agent.spawn")
         return await self.k.lifecycle.spawn(SpawnRequest(agent=agent, goal=goal, task_id=self.task_id, ppid=self.pid,
-                                                         inputs=inputs or {}))
+                                                         inputs=inputs or {}, capabilities=capabilities, scope=scope,
+                                                         why=why))
 
     async def wait(self, pid: int, timeout: float | None = None) -> AgentResult:
         await self._enter()
@@ -210,6 +215,17 @@ class KernelAgentContext:
         await self._enter()  # a paused process must not keep producing output
         await self.k.emit(EventType.AGENT_LOG, {"level": level, "message": message, "data": data},
                           task_id=self.task_id, pid=self.pid, source=f"pid:{self.pid}")
+
+    async def narrate(self, payload: NarrationPayload) -> None:
+        """task.understood / agent.planned / agent.thought for the UI's story. The pid is the kernel's, never the agent's."""
+        event_type = NARRATION_EVENTS.get(type(payload))
+        if event_type is None:
+            raise MosaicError("BAD_REQUEST", f"agents may narrate only {', '.join(t.value for t in NARRATION_EVENTS.values())}")
+        await self._enter()
+        if isinstance(payload, AgentThought):
+            payload = payload.model_copy(update={"pid": self.pid})
+        await self.k.emit(event_type, payload.model_dump(mode="json"), task_id=self.task_id, pid=self.pid,
+                          source=f"pid:{self.pid}")
 
     async def checkpoint(self, state: dict[str, Any]) -> str:
         await self._enter()

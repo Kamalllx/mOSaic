@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import TYPE_CHECKING
 
 from mosaic_contracts.schema import (
@@ -17,6 +18,8 @@ from mosaic_contracts.schema import (
     ToolResultStatus,
 )
 from mosaic_contracts.schema.common import new_id
+
+from .queries import query_events
 
 if TYPE_CHECKING:
     from ..kernel import Kernel
@@ -36,6 +39,7 @@ class TransactionManager:
                              constraints=decision.constraints)
         await k.emit(EventType.TOOL_STARTED, {"tool": req.tool, "operation": req.operation}, task_id=task_id, pid=pid,
                      correlation_id=sid)
+        started = time.monotonic()
         try:
             result = await tools.execute(inv)
         except Exception as e:  # executors shouldn't raise, but the kernel must survive if one does
@@ -44,6 +48,9 @@ class TransactionManager:
                                 error=ErrorInfo(code="TOOL_FAILED", message=f"{type(e).__name__}: {e}", retriable=True))
         await k.emit(EventType.TOOL_COMPLETED, {"tool": req.tool, "operation": req.operation,
                                                "status": result.status.value}, task_id=task_id, pid=pid, correlation_id=sid)
+        if result.status == ToolResultStatus.SUCCESS and (story := query_events(req, result, (time.monotonic() - started) * 1000)):
+            for type_, payload in zip((EventType.TOOL_QUERY, EventType.TASK_DATA), story, strict=True):
+                await k.emit(type_, payload.model_dump(mode="json"), task_id=task_id, pid=pid, correlation_id=sid)
         summary, data = f"{req.tool}.{req.operation} → {result.status.value}", {"arguments": req.arguments,
                                                                                 "output": result.output}
         if result.error is not None:

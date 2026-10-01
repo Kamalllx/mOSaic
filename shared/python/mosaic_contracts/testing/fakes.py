@@ -16,6 +16,7 @@ import logging
 import math
 import posixpath
 import re
+import sqlite3
 from collections import defaultdict
 from collections.abc import AsyncIterator, Awaitable, Callable
 from fnmatch import fnmatch
@@ -26,10 +27,12 @@ import yaml
 
 from ..errors import MosaicError
 from ..schema import (
+    NARRATION_EVENTS,
     A2AMessage,
     AgentManifest,
     AgentResult,
     AgentResultStatus,
+    AgentThought,
     Approval,
     ApprovalStatus,
     AuditEntry,
@@ -64,6 +67,7 @@ from ..schema import (
     ModelInfo,
     ModelRequest,
     ModelResponse,
+    NarrationPayload,
     OKFDraft,
     OKFFrontmatter,
     PolicyDecision,
@@ -82,6 +86,7 @@ from ..schema import (
     SearchHit,
     SearchMode,
     SearchQuery,
+    SpawnRequest,
     StreamChunk,
     SyscallRequest,
     SyscallResult,
@@ -95,6 +100,7 @@ from ..schema import (
     ToolSpec,
     ToolTransport,
     TrustLevel,
+    UserPermissions,
     ValidationIssue,
     ValidationReport,
     VerificationCheck,
@@ -105,6 +111,7 @@ from ..schema import (
 from ..schema.common import new_id
 from ..util import estimate_tokens, has_capability, okf_file_to_org_path, path_allowed, privacy_allows
 from ..wiring import REPO_ROOT
+from . import demo_data
 
 log = logging.getLogger("mosaic.fakes")
 
@@ -314,6 +321,16 @@ FAKE_TOOL_SPECS = [
                       input_schema={"type": "object", "required": ["path", "content"], "properties": {
                           "path": {"type": "string"}, "content": {"type": "string"}}}, risk=Risk.LOW, reversible=True),
     ]),
+    ToolSpec(name="db", description="Demo company database (read-only queries; writes need approval)",
+             transport=ToolTransport.NATIVE, operations=[
+        ToolOperation(name="schema", capability="db.query", description="Tables, columns and notes of the database",
+                      input_schema={"type": "object", "properties": {}}),
+        ToolOperation(name="query", capability="db.query", description="Run one read-only SELECT (LIMIT <= 200)",
+                      input_schema={"type": "object", "required": ["sql"], "properties": {"sql": {"type": "string"}}}),
+        ToolOperation(name="write", capability="db.write", description="Run one INSERT/UPDATE/DELETE with parameters",
+                      input_schema={"type": "object", "required": ["sql"], "properties": {
+                          "sql": {"type": "string"}, "params": {"type": "array"}}}, risk=Risk.HIGH),
+    ]),
     ToolSpec(name="browser", description="Isolated browser (Playwright)", transport=ToolTransport.BROWSER, operations=[
         ToolOperation(name="open", capability="browser.open", description="Open a URL and return title + text",
                       input_schema={"type": "object", "required": ["url"], "properties": {"url": {"type": "string"}}},
@@ -323,7 +340,7 @@ FAKE_TOOL_SPECS = [
 
 
 class FakeToolExecutor:
-    """Mock Jira + in-memory fs + fake browser. Reversible where the real one will be."""
+    """Mock Jira + in-memory fs + fake browser + the demo database in SQLite. Reversible where the real one will be."""
 
     def __init__(self) -> None:
         self.issues: dict[str, dict[str, Any]] = {
@@ -333,6 +350,7 @@ class FakeToolExecutor:
                           "labels": ["vendor"], "comments": []},
         }
         self.files: dict[str, str] = {}
+        self.db = demo_data.sqlite_db()
         self.invocations: list[ToolInvocation] = []
         self._undo: dict[str, tuple[str, Any]] = {}
 
@@ -368,6 +386,15 @@ class FakeToolExecutor:
                 self.files[a["path"]] = a["content"]
                 return ToolResult(invocation_id=invocation.invocation_id, status=ToolResultStatus.SUCCESS,
                                   output={"path": a["path"], "bytes": len(a["content"])}, rollback_token=token)
+            elif op == "db.schema":
+                out = demo_data.schema_doc()
+            elif op == "db.query":
+                cur = self.db.execute(a["sql"])
+                out = {"columns": [d[0] for d in cur.description or []], "rows": [list(r) for r in cur.fetchall()]}
+            elif op == "db.write":
+                cur = self.db.execute(a["sql"], list(a.get("params") or []))
+                self.db.commit()
+                out = {"rowcount": cur.rowcount}
             elif op == "browser.open":
                 out = {"url": a["url"], "title": f"Fake page for {a['url']}", "text": "lorem ipsum"}
             else:
@@ -375,6 +402,9 @@ class FakeToolExecutor:
             return ToolResult(invocation_id=invocation.invocation_id, status=ToolResultStatus.SUCCESS, output=out)
         except MosaicError as e:
             return ToolResult(invocation_id=invocation.invocation_id, status=ToolResultStatus.ERROR, error=e.to_info())
+        except sqlite3.Error as e:  # a bad statement is the caller's error, reported like the real backend's
+            return ToolResult(invocation_id=invocation.invocation_id, status=ToolResultStatus.ERROR,
+                              error=MosaicError("BAD_REQUEST", f"SQL error: {e}").to_info())
 
     async def verify(self, invocation: ToolInvocation, result: ToolResult) -> VerificationResult:
         checks: list[VerificationCheck] = [VerificationCheck(name="status_success", passed=result.status == ToolResultStatus.SUCCESS)]
@@ -860,7 +890,7 @@ def default_test_manifest(name: str = "test-agent") -> AgentManifest:
 class FakeAgentContext:
     """Stand-in for the kernel's AgentContext. P3 unit-tests agents with it; nothing else needed.
 
-    Inspect afterwards: .logs, .syscalls, .spawned, .sent, .checkpoints, .models.calls
+    Inspect afterwards: .logs, .narrations, .syscalls, .spawned, .spawn_requests, .sent, .checkpoints, .models.calls
     Inject: responses= (canned LLM replies), child_runner= (what spawned children return),
             auto_approve= (approve REQUIRES_APPROVAL syscalls), inbox messages via .inbox.put_nowait(msg)
     """
@@ -883,8 +913,10 @@ class FakeAgentContext:
         self.child_runner = child_runner
         self.inbox: asyncio.Queue[A2AMessage] = asyncio.Queue()
         self.logs: list[tuple[str, str, dict[str, Any] | None]] = []
+        self.narrations: list[NarrationPayload] = []
         self.syscalls: list[tuple[SyscallRequest, SyscallResult]] = []
         self.spawned: dict[int, tuple[str, str, asyncio.Task]] = {}
+        self.spawn_requests: dict[int, SpawnRequest] = {}  # what each spawn asked for (capabilities, scope, why)
         self.sent: list[A2AMessage] = []
         self.checkpoints: dict[str, dict[str, Any]] = {}
         self.approvals: list[Approval] = []
@@ -916,10 +948,13 @@ class FakeAgentContext:
     async def remember(self, record: MemoryRecord) -> str:
         return await self.memory.store(record)
 
-    async def spawn(self, agent: str, goal: str, inputs: dict[str, Any] | None = None) -> int:
+    async def spawn(self, agent: str, goal: str, inputs: dict[str, Any] | None = None, *,
+                    capabilities: list[str] | None = None, scope: list[str] | None = None, why: str | None = None) -> int:
         if agent not in self.manifest.capabilities.agents:
             raise MosaicError("CAPABILITY_DENIED", f"{self.manifest.name} may not spawn {agent}")
         pid, self._next_pid = self._next_pid, self._next_pid + 1
+        self.spawn_requests[pid] = SpawnRequest(agent=agent, goal=goal, task_id=self.task_id, ppid=self.pid, inputs=inputs or {},
+                                                capabilities=capabilities, scope=scope, why=why)
 
         async def default_child(a: str, g: str, i: dict[str, Any]) -> AgentResult:
             return AgentResult(pid=pid, agent=a, status=AgentResultStatus.COMPLETED, summary=f"[fake {a}] {g}")
@@ -976,6 +1011,13 @@ class FakeAgentContext:
 
     async def log(self, message: str, level: str = "info", data: dict[str, Any] | None = None) -> None:
         self.logs.append((level, message, data))
+
+    async def narrate(self, payload: NarrationPayload) -> None:
+        if type(payload) not in NARRATION_EVENTS:
+            raise MosaicError("BAD_REQUEST", f"cannot narrate {type(payload).__name__}")
+        if isinstance(payload, AgentThought):
+            payload = payload.model_copy(update={"pid": self.pid})
+        self.narrations.append(payload)
 
     async def checkpoint(self, state: dict[str, Any]) -> str:
         cid = new_id("CKPT")
@@ -1057,6 +1099,23 @@ class FakeResourceProbe:
                                 gpu=GpuStatus(name="Fake RTX", utilization=0.1, memory_used_mb=1024, memory_total_mb=8192))
 
 
+class FakePermissionsProvider:
+    """PermissionsProvider for tests: every user gets `capabilities` / `data_scopes` (default: all of /org and every
+    capability in the catalog), or what `users` sets for them by user id."""
+
+    ALL = ["knowledge.*", "memory.*", "agent.*", "jira.*", "fs.*", "browser.*", "sandbox.*", "postgres.*", "database.*",
+           "db.*", "external.*", "mcp.*"]
+
+    def __init__(self, users: dict[str, UserPermissions] | None = None) -> None:
+        self.users = users or {}
+
+    async def resolve(self, user_id: str, org_id: str, roles: list[str] | None = None) -> UserPermissions:
+        if user_id in self.users:
+            return self.users[user_id]
+        return UserPermissions(user_id=user_id, org_id=org_id, roles=list(roles or ["owner"]), permissions=["task.create"],
+                               capabilities=list(self.ALL), data_scopes=["/org/**"])
+
+
 def fake_bundle(settings: Any = None) -> Any:
     """A ServiceBundle where every service is a fake — P1 builds the kernel on top of this before anything is real."""
     from ..wiring import ServiceBundle, Settings
@@ -1067,7 +1126,7 @@ def fake_bundle(settings: Any = None) -> Any:
                       browser=FakeBrowserDriver(), converters=[FakeMarkdownConverter()],
                       agent_registry=FakeAgentRegistry(), agent_runtime=FakeAgentRuntime(), probe=FakeResourceProbe(),
                       policy=FakePolicyEngine(),
-                      audit=InMemoryAuditLog())
+                      audit=InMemoryAuditLog(), permissions=FakePermissionsProvider())
     b.knowledge = FakeKnowledgeService(s.okf_dir, b.models, b.firewall, b.event_bus)
     b.memory = FakeMemoryService(b.event_bus)
     b.modes = {k: "fake" for k in ("event_bus", "artifacts", "models", "firewall", "knowledge", "memory", "sandbox",
@@ -1078,7 +1137,7 @@ def fake_bundle(settings: Any = None) -> Any:
 __all__ = [
     "fake_bundle", "FakeMarkdownConverter", "FakeBrowserDriver", "FakeResourceProbe",
     "FAKE_TOOL_SPECS", "FIXTURE_MANIFESTS_DIR", "FIXTURE_OKF_DIR", "FakeAgentContext", "FakeAgentRegistry",
-    "FakeAgentRuntime", "FakeContextFirewall", "FakeKnowledgeService", "FakeMemoryService", "FakeModelRouter",
+    "FakeAgentRuntime", "FakeContextFirewall", "FakePermissionsProvider", "FakeKnowledgeService", "FakeMemoryService", "FakeModelRouter",
     "FakePolicyEngine", "FakeSandboxManager", "FakeToolExecutor", "InMemoryArtifactStore", "InMemoryAuditLog",
     "InMemoryEventBus", "default_test_manifest", "load_manifests", "parse_okf", "system_principal", "user_principal",
 ]

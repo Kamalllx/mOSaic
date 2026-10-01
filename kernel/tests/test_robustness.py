@@ -6,6 +6,7 @@ from mosaic_contracts.errors import MosaicError
 from mosaic_contracts.schema import AgentResultStatus, ResourceQuota, TaskCreate, TaskStatus
 from mosaic_contracts.testing.fakes import user_principal
 from mosaic_kernel.config import KernelConfig
+from mosaic_kernel.policy.engine import template_of
 from mosaic_kernel.testing import done, manifest, run
 
 OUTAGE = "ollama qwen2.5:7b-instruct: ConnectError: connection refused"
@@ -197,7 +198,7 @@ def test_a_planner_waiting_on_a_stuck_child_ends_the_task_and_leaves_nothing_run
     t = run(go, timeout=10)
     # every process gets the task's wall time and the planner's clock starts first, so the planner is stopped first
     assert t.status == TaskStatus.FAILED and t.error.code == "QUOTA_EXCEEDED"
-    states = {p.agent: p.state.value for p in k.procs.list(t.task_id)}
+    states = {template_of(p.agent): p.state.value for p in k.procs.list(t.task_id)}
     assert states == {"planner-agent": "FAILED", "finance-agent": "TERMINATED"}, states
 
 

@@ -196,4 +196,5 @@ def test_websocket_filters_and_live_stream(client):
             seen.append((ev["type"], ev["payload"].get("agent")))
             if ev["type"] == "task.completed":
                 break
-    assert seen == [("process.spawned", "planner-agent"), ("process.spawned", "worker"), ("task.completed", None)]
+    worker = f"worker@{t['task_id']}"  # children are generated from their template, per task
+    assert seen == [("process.spawned", "planner-agent"), ("process.spawned", worker), ("task.completed", None)]

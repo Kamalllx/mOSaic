@@ -30,7 +30,8 @@ def test_planner_delegates_and_task_completes(make_kernel):
     k, t = run(go)
     assert t.status == TaskStatus.COMPLETED and t.result.summary == "all parts done"
     procs = k.procs.list(t.task_id)
-    assert [p.agent for p in procs] == ["planner-agent", "worker", "worker"]
+    tid = t.task_id  # children are generated from their template, per task; repeats are numbered
+    assert [p.agent for p in procs] == ["planner-agent", f"worker@{tid}", f"worker@{tid}#2"]
     assert all(p.state == AgentState.COMPLETED for p in procs)
     assert procs[0].pid >= 101 and procs[1].ppid == procs[0].pid
     assert "/org/finance/apollo-budget" in t.result.evidence or t.result.evidence == [] or True
@@ -228,7 +229,7 @@ def test_ipc_between_siblings_rewrites_sender(make_kernel):
 
     t = run(go)
     worker_pid = k.procs.list(t.task_id)[1].pid
-    assert t.result.summary == f"worker#{worker_pid}->planner-agent"
+    assert t.result.summary == f"worker@{t.task_id}#{worker_pid}->planner-agent"
 
 
 def test_knowledge_retrieved_lists_flagged_paths(make_kernel):

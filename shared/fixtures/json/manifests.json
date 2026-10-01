@@ -48,7 +48,11 @@
       "required": [
         "jira.write"
       ]
-    }
+    },
+    "system_prompt": null,
+    "template": null,
+    "generated": false,
+    "task_id": null
   },
   {
     "name": "engineering-agent",
@@ -98,7 +102,11 @@
     },
     "approval": {
       "required": []
-    }
+    },
+    "system_prompt": null,
+    "template": null,
+    "generated": false,
+    "task_id": null
   },
   {
     "name": "finance-agent",
@@ -146,7 +154,11 @@
     },
     "approval": {
       "required": []
-    }
+    },
+    "system_prompt": null,
+    "template": null,
+    "generated": false,
+    "task_id": null
   },
   {
     "name": "planner-agent",
@@ -194,7 +206,11 @@
     },
     "approval": {
       "required": []
-    }
+    },
+    "system_prompt": null,
+    "template": null,
+    "generated": false,
+    "task_id": null
   },
   {
     "name": "research-agent",
@@ -242,6 +258,10 @@
     },
     "approval": {
       "required": []
-    }
+    },
+    "system_prompt": null,
+    "template": null,
+    "generated": false,
+    "task_id": null
   }
 ]

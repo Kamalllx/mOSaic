@@ -1,0 +1,31 @@
+# What the agents of a task may do, by the role of the user who started it (contract 0.11.0, UserPermissions).
+# (In a subfolder because the policy engine loads every policies/*.yaml as a PolicyDocument.)
+# Stub until Person C's RBAC lands: the kernel's RolePermissions reads this file; C's PermissionsProvider replaces it
+# behind the same interface. App permissions (task.create, approval.resolve, ...) live in C's policies/roles.yaml.
+#
+# Every agent a task creates gets at most these capabilities and /org scopes (intersected with its role template,
+# the planner's request and org policy). Writes still need approval: that comes from policy, not from this file.
+
+default_role: member          # users with no roles and no entry below
+
+users:                        # stub user directory: user id -> roles (today's gateway user is alice)
+  alice: [owner]
+
+roles:
+  owner:
+    capabilities: ["knowledge.*", "memory.*", "agent.*", "jira.*", "fs.*", "browser.*", "db.*", "postgres.*",
+                   "database.*", "external.*", "mcp.*", "sandbox.*"]
+    data_scopes: ["/org/**"]
+  admin:
+    capabilities: ["knowledge.*", "memory.*", "agent.*", "jira.*", "fs.*", "browser.*", "db.*", "postgres.*",
+                   "database.*", "external.*", "mcp.*"]
+    data_scopes: ["/org/**"]
+  approver:
+    capabilities: ["knowledge.*", "memory.*", "agent.*", "jira.*", "fs.*", "browser.open", "db.query", "postgres.read"]
+    data_scopes: ["/org/**"]
+  member:
+    capabilities: ["knowledge.*", "memory.*", "agent.*", "jira.*", "fs.*", "browser.open", "db.query", "postgres.read"]
+    data_scopes: ["/org/**"]
+  viewer:
+    capabilities: ["knowledge.read", "knowledge.search", "memory.write", "agent.spawn", "agent.message"]
+    data_scopes: ["/org/projects/**", "/org/engineering/**"]

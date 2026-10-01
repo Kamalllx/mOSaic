@@ -24,12 +24,14 @@ from ..schema import (
     MemoryRecord,
     ModelRequest,
     ModelResponse,
+    NarrationPayload,
     PolicyDecision,
     Principal,
     RunTimeline,
     SearchQuery,
     SyscallRequest,
     SyscallResult,
+    UserPermissions,
 )
 
 EventHandler = Callable[[Event], Awaitable[None]]
@@ -70,6 +72,14 @@ class AuditLog(Protocol):
 
 
 @runtime_checkable
+class PermissionsProvider(Protocol):
+    """Resolves what a user may do (0.11.0). Person C's RBAC implements it; until then a stub maps roles to permissions.
+    The kernel bounds every agent a task creates by the permissions of the task's user."""
+
+    async def resolve(self, user_id: str, org_id: str, roles: list[str] | None = None) -> UserPermissions: ...
+
+
+@runtime_checkable
 class AgentContext(Protocol):
     """Everything an agent may do. Agents MUST NOT import kernel/knowledge/execution modules directly.
 
@@ -98,8 +108,12 @@ class AgentContext(Protocol):
     async def remember(self, record: MemoryRecord) -> str: ...
 
     # --- process management (capability agent.spawn)
-    async def spawn(self, agent: str, goal: str, inputs: dict[str, Any] | None = None) -> int:
-        """Returns child pid immediately; the child runs concurrently."""
+    async def spawn(self, agent: str, goal: str, inputs: dict[str, Any] | None = None, *,
+                    capabilities: list[str] | None = None, scope: list[str] | None = None, why: str | None = None) -> int:
+        """Returns child pid immediately; the child runs concurrently. `agent` is a role template the caller may spawn
+        (its manifest.capabilities.agents); the kernel generates the child's manifest from it. `capabilities` and `scope`
+        can only narrow the template (the kernel also bounds them by the user's permissions and org policy); `why` goes
+        to the audit log (0.11.0)."""
 
     async def wait(self, pid: int, timeout: float | None = None) -> AgentResult: ...
 
@@ -119,6 +133,11 @@ class AgentContext(Protocol):
     # --- observability / lifecycle
     async def log(self, message: str, level: str = "info", data: dict[str, Any] | None = None) -> None:
         """Emits agent.log — shown live in the UI timeline."""
+
+    async def narrate(self, payload: NarrationPayload) -> None:
+        """Emits task.understood, agent.planned or agent.thought (by payload type) for the UI's story of the run.
+        The kernel stamps pid (AgentThought.pid is overwritten). Text must be a short summary written by agent code:
+        never raw model chain-of-thought or retrieved document text."""
 
     async def checkpoint(self, state: dict[str, Any]) -> str:
         """Persist agent-defined state; returns checkpoint_id. Called by agents at safe points."""
