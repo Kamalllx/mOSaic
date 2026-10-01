@@ -6,7 +6,8 @@
     ai-mount [/org/path]           browse the knowledge FS  ai run "<goal>"        submit + stream a task
     ai approve|reject <APR-…>      resolve an approval       ai tasks               recent tasks
 
-MOSAIC_URL (default http://localhost:8080), MOSAIC_USER / MOSAIC_ORG select the gateway and identity.
+MOSAIC_URL (default http://localhost:8080) selects the gateway; MOSAIC_TOKEN (a session) or, in dev mode,
+MOSAIC_USER / MOSAIC_ORG the identity.
 """
 from __future__ import annotations
 
@@ -35,7 +36,9 @@ app = typer.Typer(help="mOSaic process & knowledge CLI", no_args_is_help=True, a
 console = Console()
 
 URL = os.getenv("MOSAIC_URL", "http://localhost:8080").rstrip("/")
-HEADERS = {"X-Mosaic-User": os.getenv("MOSAIC_USER", "alice"), "X-Mosaic-Org": os.getenv("MOSAIC_ORG", "acme")}
+# A session token (MOSAIC_TOKEN, e.g. from a sign-in code) wins; otherwise the dev headers, which only dev mode accepts.
+HEADERS = ({"Authorization": f"Bearer {os.environ['MOSAIC_TOKEN']}"} if os.getenv("MOSAIC_TOKEN")
+           else {"X-Mosaic-User": os.getenv("MOSAIC_USER", "alice"), "X-Mosaic-Org": os.getenv("MOSAIC_ORG", "acme")})
 STATE_STYLE = {"RUNNING": "green", "WAITING": "yellow", "PAUSED": "blue", "FAILED": "red", "RETRYING": "magenta",
                "COMPLETED": "dim", "TERMINATED": "dim red", "CHECKPOINTING": "cyan"}
 
@@ -244,7 +247,8 @@ def run_cmd(goal: str, auto_approve: bool = typer.Option(False, "--yes", "-y", h
 async def _stream(task_id: str, auto_approve: bool) -> None:
     import websockets
 
-    ws_url = URL.replace("http", "ws", 1) + f"/ws/events?task_id={task_id}"
+    token = f"&token={os.environ['MOSAIC_TOKEN']}" if os.getenv("MOSAIC_TOKEN") else ""
+    ws_url = URL.replace("http", "ws", 1) + f"/ws/events?task_id={task_id}{token}"
     async with websockets.connect(ws_url) as ws:
         async for raw in ws:
             ev = json.loads(raw)
