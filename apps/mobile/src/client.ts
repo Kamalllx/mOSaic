@@ -23,9 +23,11 @@ export class GatewayError extends Error {
 /** A readable reason for a failed call, for the screen. */
 export function reason(e: unknown): string {
   if (e instanceof GatewayError) return e.message;
-  if (e instanceof Error && e.name === "AbortError") return "The server did not answer in time.";
-  if (e instanceof TypeError) return "Cannot reach the server. Check the address and that this phone is on the same network.";
-  return e instanceof Error ? e.message : String(e);
+  const msg = e instanceof Error ? e.message : String(e);
+  // Timeouts and refused connections arrive as AbortError, TypeError or Expo's "fetch failed: ... canceled".
+  if (e instanceof TypeError || (e instanceof Error && e.name === "AbortError") || /fetch failed|cancel|abort|network request failed/i.test(msg))
+    return "Cannot reach the server. Check the address, and that this phone is on the same network (or connected by USB with adb reverse).";
+  return msg;
 }
 
 export const normaliseUrl = (url: string) => {

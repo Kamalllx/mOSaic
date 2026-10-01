@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { createClient, normaliseUrl, reason } from "../client";
 import { googleAvailable, googleIdToken } from "../google";
-import { useSession } from "../session";
+import { DEFAULT_SERVER, useSession } from "../session";
 import { C, mono } from "../theme";
 import { Button, Card, Label, Mark, Notice, Person, s } from "../ui";
 
@@ -40,9 +40,23 @@ export function SignIn() {
       setChecking(false);
     }
   };
-  // Try the saved server once on open.
+  // Try the saved server once on open. On first run the emulator's address is the default; a real phone reaches the
+  // laptop as localhost when it is plugged in over USB with `adb reverse tcp:8089 tcp:8089`, so try that next.
   useEffect(() => {
-    check(server);
+    (async () => {
+      if (server === DEFAULT_SERVER) {
+        for (const candidate of [DEFAULT_SERVER, "http://localhost:8089"]) {
+          try {
+            await createClient(candidate, null).health();
+            setUrl(candidate);
+            return check(candidate);
+          } catch {
+            /* try the next */
+          }
+        }
+      }
+      check(server);
+    })();
     // once
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -79,7 +93,7 @@ export function SignIn() {
               {config ? (
                 <Text style={{ color: C.done, fontWeight: "600" }}>Connected · {config.mode === "google" ? "Google accounts" : "dev sign-in"}</Text>
               ) : (
-                <Text style={{ color: C.text2, fontSize: 13 }}>{checking ? "Checking…" : "The computer running mOSaic, port 8089. The emulator uses 10.0.2.2."}</Text>
+                <Text style={{ color: C.text2, fontSize: 13 }}>{checking ? "Checking…" : "The computer running mOSaic, port 8089: 10.0.2.2 from the emulator, localhost over USB (adb reverse)."}</Text>
               )}
             </View>
             <Button label="Check" kind="quiet" onPress={() => check()} busy={checking} style={{ minHeight: 40 }} />
