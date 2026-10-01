@@ -10,6 +10,7 @@ import { AgentAvatar } from "@/components/desktop/agent-avatar";
 import { Loading } from "@/components/desktop/orb";
 import { useWindowNav, useWindowParams } from "@/components/desktop/window-context";
 import { useSession } from "@/components/session";
+import { architecture, isHealthy, searchConfig } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 import { AppHeader, Card, errText, NotAllowed, Pill } from "./kit";
 
@@ -24,7 +25,11 @@ const SECTIONS = [
 ] as const;
 type SectionId = (typeof SECTIONS)[number]["id"];
 
-const has = (q: string, ...xs: (string | null | undefined)[]) => !q || xs.some((x) => x?.toLowerCase().includes(q));
+/** Every word of the query appears somewhere in these fields (as lib/settings.ts searchConfig matches). */
+const has = (q: string, ...xs: (string | null | undefined)[]) => {
+  const hay = xs.filter(Boolean).join(" ").toLowerCase();
+  return q.split(/\s+/).filter(Boolean).every((t) => hay.includes(t));
+};
 
 function Source({ path }: { path?: string }) {
   if (!path) return null;
@@ -327,22 +332,35 @@ function Security({ c }: { c: SystemConfig }) {
 }
 
 function Stack({ c, q }: { c: SystemConfig; q: string }) {
-  const stack = (c.stack ?? []).filter((s) => has(q, s.component, s.implementation, s.mode));
+  const client = useClient();
+  // Health refreshes more often than the config: the map shows the live state over the configured stack.
+  const status = useQuery({ queryKey: ["system-status"], queryFn: () => client.status(), refetchInterval: 15_000 });
+  const layers = architecture(c.stack ?? [], status.data?.components)
+    .map((l) => ({ ...l, nodes: l.nodes.filter((s) => has(q, s.component, s.implementation, s.mode)) }))
+    .filter((l) => l.nodes.length);
   return (
     <div className="space-y-3">
-      <Card title="Running components">
-        <ul className="grid gap-2 @2xl:grid-cols-2 @5xl:grid-cols-3">
-          {stack.map((s) => (
-            <li key={s.component} className="rounded-xl border border-hairline bg-surface-2 p-2.5" title={s.detail || undefined}>
-              <p className="flex items-center gap-2 text-sm font-semibold">
-                {s.ok ? <CircleCheck className="size-4 text-st-completed" /> : <CircleX className="size-4 text-st-failed" />}
-                {s.component}
-                <Pill tone={s.mode === "real" ? "ok" : "warn"} mono>{s.mode}</Pill>
-              </p>
-              <p className="mt-1 truncate font-mono text-[11px] text-text-2" title={s.implementation}>{s.implementation}</p>
-            </li>
+      <Card title="The running system, layer by layer" aside={<span className="text-[11px] text-text-2">health live from /system/status</span>}>
+        {!layers.length && <p className="text-sm text-text-2">No component matches the search.</p>}
+        <div className="space-y-2.5">
+          {layers.map((l) => (
+            <div key={l.title} className="flex flex-col gap-1.5 @2xl:flex-row @2xl:items-stretch">
+              <p className="w-40 shrink-0 pt-2 text-xs font-semibold uppercase tracking-wider text-text-2">{l.title}</p>
+              <ul className="grid flex-1 gap-2 @2xl:grid-cols-2 @5xl:grid-cols-3">
+                {l.nodes.map((s) => (
+                  <li key={s.component} className="rounded-xl border border-hairline bg-surface-2 p-2.5" title={s.detail || undefined}>
+                    <p className="flex items-center gap-2 text-sm font-semibold">
+                      {isHealthy(s) ? <CircleCheck className="size-4 text-st-completed" /> : <CircleX className="size-4 text-st-failed" />}
+                      {s.component}
+                      <Pill tone={s.mode === "real" ? "ok" : "warn"} mono>{s.mode}</Pill>
+                    </p>
+                    <p className="mt-1 truncate font-mono text-[11px] text-text-2" title={s.implementation}>{s.implementation}</p>
+                  </li>
+                ))}
+              </ul>
+            </div>
           ))}
-        </ul>
+        </div>
       </Card>
       <div className="grid gap-3 @3xl:grid-cols-2">
         <Card title="Endpoints" aside={<span className="text-[11px] text-text-2">credentials redacted</span>}>
@@ -375,7 +393,7 @@ function Stack({ c, q }: { c: SystemConfig; q: string }) {
 }
 
 /** The settings centre: one read-only picture of the running system, from GET /system/config. Each section names the
- *  file that changes it. */
+ *  file that changes it. The architecture map, search and summaries come from lib/settings.ts (Person D). */
 export function SettingsApp() {
   const client = useClient();
   const { me, can } = useSession();
@@ -385,17 +403,13 @@ export function SettingsApp() {
   const section = (SECTIONS.find((s) => s.id === params.get("section"))?.id ?? "overview") as SectionId;
   const config = useQuery({ queryKey: ["system-config"], queryFn: () => client.systemConfig(), enabled: can("config.read"), staleTime: 30_000 });
   const query = q.trim().toLowerCase();
+  const hits = useMemo(() => (config.data && query ? searchConfig(config.data, query) : []), [config.data, query]);
   const counts = useMemo(() => {
-    const c = config.data;
-    if (!c || !query) return {} as Partial<Record<SectionId, number>>;
-    return {
-      models: (c.models.routes ?? []).filter((r) => has(query, r.task_class, r.model)).length + (c.models.models ?? []).filter((m) => has(query, m.name)).length,
-      agents: (c.agents ?? []).filter((a) => has(query, a.name, a.description, ...(a.capabilities?.tools ?? []))).length,
-      tools: (c.tools ?? []).flatMap((t) => (t.operations ?? []).filter((o) => has(query, t.name, o.name, o.capability, o.description))).length,
-      policies: (c.policies ?? []).filter((p) => has(query, p.policy, ...(p.agents ?? []), ...(p.requires_approval ?? []))).length,
-      stack: (c.stack ?? []).filter((s) => has(query, s.component, s.implementation)).length,
-    } as Partial<Record<SectionId, number>>;
-  }, [config.data, query]);
+    if (!query) return {} as Partial<Record<SectionId, number>>;
+    const out: Partial<Record<SectionId, number>> = { models: 0, agents: 0, tools: 0, policies: 0, stack: 0 };
+    for (const h of hits) out[h.section as SectionId] = (out[h.section as SectionId] ?? 0) + 1;
+    return out;
+  }, [hits, query]);
   const go = (id: SectionId) => nav.navigate(id === "overview" ? "/settings" : `/settings?section=${id}`);
 
   if (!can("config.read")) return <NotAllowed role={me?.role} permission="config.read" what="see the system settings" />;
@@ -429,6 +443,21 @@ export function SettingsApp() {
       </aside>
       <div className="min-h-0 min-w-0 flex-1 overflow-y-auto pr-1">
         <AppHeader app="settings" title={SECTIONS.find((s) => s.id === section)!.label} sub={config.data ? `mOSaic ${config.data.versions.mosaic} · contract ${config.data.versions.contract}` : undefined} />
+        {config.data && query && (
+          <Card className="mt-4" title={`Everywhere: ${hits.length} ${hits.length === 1 ? "match" : "matches"}`}>
+            <ul className="max-h-48 space-y-1 overflow-y-auto">
+              {hits.map((h, i) => (
+                <li key={`${h.section}-${h.label}-${i}`}>
+                  <button type="button" onClick={() => go(h.section as SectionId)} className="flex w-full items-baseline gap-2 rounded-lg px-2 py-1 text-left text-sm hover:bg-surface-3">
+                    <span className="w-24 shrink-0 font-mono text-[11px] text-text-2">{SECTIONS.find((s) => s.id === h.section)?.label}</span>
+                    <span className="font-medium">{h.label}</span>
+                    <span className="truncate text-xs text-text-2">{h.detail}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
         <div className="mt-4">
           {config.isPending ? (
             <Loading label="Reading the system" state="searching" />
