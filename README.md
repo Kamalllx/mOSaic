@@ -267,6 +267,36 @@ If the kernel dies mid-run, unfinished tasks resume from their last checkpoint o
 
 ## What's new
 
+### Phase 2: a product a team can sign into
+
+<table>
+<tr>
+<td width="50%"><img src="docs/readme/screens/phase2-desktop.jpg" alt="The desktop"><br><b>The desktop</b>: a mosaic floor where every coloured tile is a document in /org, grouped by folder, lighting up as agents read them; the Ask bar and the rail in the centre.</td>
+<td width="50%"><img src="docs/readme/screens/phase2-settings.jpg" alt="Settings"><br><b>Settings</b>: which model does which kind of thinking, every agent and tool, what needs a human, security and the running stack, from <code>GET /system/config</code>.</td>
+</tr>
+<tr>
+<td><img src="docs/readme/screens/phase2-organization.jpg" alt="Organization"><br><b>Organization</b>: people, invitations and what each role may do (owner, admin, approver, member, viewer). Every gateway route checks the caller's permission.</td>
+<td><img src="docs/readme/screens/phase2-add-knowledge.jpg" alt="Add knowledge"><br><b>Add knowledge</b>: drag in files (live progress), or mount a folder of this computer into <code>/org/mnt</code>: watched, re-ingested as you save.</td>
+</tr>
+</table>
+
+| | |
+|---|---|
+| **Sign-in and roles** | `MOSAIC_AUTH=google` signs people in with Google; `dev` keeps email sign-in for demos. A new user creates an org or joins by email domain. Controls a role may not use say so, and the gateway refuses them (403). |
+| **Connected apps** | GitHub and Google Calendar are governed tools (`github.*`, `calendar.*`); writes wait for an approver. Tokens are encrypted in a vault and never reach an agent. Syncing brings issues, READMEs and meetings into `/org`. |
+| **The phone** | Rebuilt in [`apps/mobile`](apps/mobile): sign in with a one-time code from the console (works with Google accounts), watch runs live with agents as faces, approve from a notification, start work. An Android APK builds with `apps/mobile/scripts/build-apk.ps1`. |
+| **mOSaic OS** | A WSL distro, `mosaic-os`, where `/org` is a real filesystem served by the gateway: `cat` documents, `ls "/org/.search/apollo overrun"`, `cp` files in to add knowledge, `mosaic ask "..."` to watch a run from the shell. See [`docs/MOSAIC_OS.md`](docs/MOSAIC_OS.md). |
+
+<table>
+<tr>
+<td width="33%"><img src="docs/readme/screens/phase2-phone-home.jpg" alt="Phone: home"></td>
+<td width="33%"><img src="docs/readme/screens/phase2-phone-run.jpg" alt="Phone: a run"></td>
+<td width="33%"><img src="docs/readme/screens/phase2-phone-approval.jpg" alt="Phone: an approval"></td>
+</tr>
+</table>
+
+### Earlier
+
 These features landed after the initial build and are demonstrated in the current demo run.
 
 ### Memory re-derivation
@@ -290,7 +320,7 @@ Object-style agents can run as governed processes without a custom framework. An
 
 ### Phone and mobile approvals
 
-An Expo (SDK 57) app in [`apps/mobile/`](apps/mobile) gives approvers a phone-native UI. Three tabs: Approvals (polls every 2 s), Compose, and Settings (gateway URL, user, org). The approval card shows capability, arguments, evidence paths and policy, with Approve and Reject buttons. Works against the real gateway over Tailscale HTTPS or a local hotspot.
+The first phone app: approvals, compose and the gateway address. Phase 2 rebuilt it (above).
 
 ### Kiosk boot
 
@@ -312,7 +342,7 @@ The console has a `/boot` page: a full-screen startup checklist that ticks off e
 
 ## A tour of the console
 
-A dark operator console (with a light theme), built for a projector: every state has one colour everywhere, every icon has a label, and motion switches off under `prefers-reduced-motion`.
+The phase-1 console, before the desktop (above). A dark operator console (with a light theme), built for a projector: every state has one colour everywhere, every icon has a label, and motion switches off under `prefers-reduced-motion`.
 
 <table>
 <tr>
