@@ -1,6 +1,7 @@
 import { Platform } from "react-native";
 
-/** The console's "Signal" look on the phone: cool paper, white cards, one vivid colour per thing. */
+/** The console's "Signal" look on the phone: cool paper, white cards, one vivid colour per thing. Every text colour
+ *  meets WCAG AA on the surface it sits on: `node scripts/contrast.mjs` checks it. */
 export const C = {
   ground: "#eef1f6",
   card: "#ffffff",
@@ -8,17 +9,17 @@ export const C = {
   line: "rgba(15,23,42,0.10)",
   text: "#0f172a",
   text2: "#475569",
-  text3: "#94a3b8",
+  text3: "#5f6b7c",
   brand: "#0b6b60",
   brandSoft: "#ddf3ef",
-  running: "#0d9488",
-  waiting: "#d97706",
+  running: "#0f766e",
+  waiting: "#b45309",
   waitingSoft: "#fef3c7",
-  failed: "#dc2626",
+  failed: "#b91c1c",
   failedSoft: "#fee2e2",
-  done: "#16a34a",
+  done: "#15803d",
   doneSoft: "#dcfce7",
-  blue: "#2563eb",
+  blue: "#1d4ed8",
   violet: "#7c3aed",
 };
 
