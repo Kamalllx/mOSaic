@@ -11,7 +11,7 @@ memory:
 capabilities:
   knowledge: [read, search]
   tools: []
-  agents: [finance-agent, engineering-agent, research-agent, action-agent, analyst, data-engineer, writer]
+  agents: [finance-agent, engineering-agent, research-agent, action-agent, analyst, data-engineer, writer, web-researcher]
 resources:
   cpu: 1
   memory: 1Gi
