@@ -1,11 +1,16 @@
 # mOSaic: complete project context
 
-Last updated 2026-09-30 (evening), for phase 2 of the hackathon. Read this first, then your own brief in `docs/team/PHASE2-*.md`.
+Last updated 2026-10-01, after the phase-2 integration. Read this first, then your own brief in `docs/team/PHASE2-*.md`.
 
 State of the code:
-- **`main` (`e356d0b`)**: the demo-safe snapshot. It has the old console layout, contract **0.8.0**, 313 Python tests and 65 web tests.
-- **`ui/desktop`**: the console rebuilt as a desktop OS (windows, dock, launcher). This is **the base branch for phase 2**: branch from it, and merge back into it.
-- **Demo**: the scored Apollo run passes **8/8** on real models on both branches.
+- **`main`** is the integrated product: the console as a desktop OS (the "Signal" look, a mosaic-floor wallpaper),
+  B's agent work, C's identity, connectors and ingestion (finished and wired to the real gateway), D's
+  `GET /system/config` with a Settings centre, the rebuilt phone app with an APK, and **mOSaic OS**, a WSL distro
+  whose `/org` is the organization's knowledge. Contract **0.11.0**.
+- **Branches** from here: `a/…`, `b/…`, `c/…`, `d/…` off `main`; Kamal merges back into `main`.
+- **Demo**: the scored Apollo and Zeus runs pass **8/8** on real models (`scripts/demo_run.py`); the Apollo run was
+  started and approved from the phone app on the Android emulator.
+- **Tests**: 358 Python tests and 88 web tests pass; ruff, eslint and both TypeScript projects are clean.
 
 ---
 
@@ -104,27 +109,42 @@ A run takes about 48–51 s on the demo laptop (RTX 5070 Laptop, 8 GB, qwen2.5:7
 | Hybrid retrieval: 10/10 on the QA set, MRR 0.90 | `knowledge/mosaic_knowledge/retrieval`, `indexing/store.py` |
 | Firewall: regex always on; LLM classifier opt-in via `MOSAIC_FIREWALL_LLM=true` (3–4 of 5 reworded injections, 0 false positives) | `knowledge/mosaic_knowledge/firewall/` |
 | Memory with `derived_from`, invalidation (~0.1 s) and re-derivation (~3.5 s). A finance finding derives from every finance document it read | `knowledge/.../memory`, `coherence`; `agents/.../library/finance.py` |
-| Ingestion: `POST /knowledge/ingest` takes a **URI**; converters for Markdown, PDF/DOCX (markitdown), CSV, Slack export and Jira JSON. **No upload endpoint and no ingestion UI yet** | `knowledge/mosaic_knowledge/ingestion/` |
+| Ingestion: `POST /knowledge/ingest` (a URI), `POST /knowledge/upload` (multipart, progress as `ingest.progress` events); converters for Markdown, text and code, PDF/DOCX/PPTX/XLSX (markitdown), CSV, Slack export and Jira JSON | `knowledge/mosaic_knowledge/ingestion/`, `kernel/.../gateway/files.py` |
+| Folders of this computer mounted into `/org/mnt/<name>`: converted, indexed, watched (edits re-ingested, deletions leave), read-only mirrors | `kernel/.../gateway/files.py` (`/knowledge/mounts`) |
+| Identity: orgs, members, invitations, roles (owner > admin > approver > member > viewer) and permissions from `policies/rbac/roles.yaml`; every route checks the caller's permission. `MOSAIC_AUTH=dev` (email sign-in, header callers) or `google` (Google ID token, sessions). One-time codes sign the same person in on the phone | `kernel/mosaic_kernel/identity/`, `gateway/auth.py` |
+| Connectors: GitHub and Google Calendar as governed tools (`github.*`, `calendar.*`; writes need approval), with stateful demo data until a token is given; tokens encrypted in the vault (`MOSAIC_VAULT_KEY`); sync brings issues, READMEs and meetings into `/org/github` and `/org/calendar` | `execution/mosaic_execution/connectors/{github,calendar}.py`, `gateway/connectors.py` |
+| `GET /system/config`: versions, the running stack, models and routing, agents, tools, policies, firewall, switches, endpoints (credentials redacted) | `kernel/.../gateway/config.py` |
 | Browser tool in a sandbox with no internet; an MCP backend; Jira connector plus an in-process mock | `execution/mosaic_execution/{browser,mcp,connectors}` |
 
 ### Console
-There are two branches:
-- **`main`**: the older page-based console (sidebar and pages), used in the recorded demo video and in the deck.
-- **`ui/desktop`**: the console as a desktop OS. Kamal is re-skinning it in phase 2 (Mac-like, light, colourful), but the **structure is stable**, so build on it.
-
-`ui/desktop` contains:
-- **Desktop:** a wallpaper, a menu bar, a dock and a composer on the empty desktop.
-- **Windows:** you can drag, resize, maximise, minimise and close them. Each app lays out by its **window's** width, using container queries (`@3xl:` and so on, not `md:`).
+`main` is the console as a desktop OS:
+- **Desktop:** a mosaic floor (pale tiles; one coloured tessera per /org document, folders as a border of patches that
+  light up when agents read them), a centred greeting and Ask bar, widgets, a menu bar with the signed-in person, and a
+  centred command rail of same-size icons.
+- **Windows:** drag, resize, maximise, minimise, close; each app lays out by its window's width (container queries).
 - **The URL picks the window in front:** every existing link, deep link and demo script still works.
-- **Wallpaper mosaic:** one tile per /org document. Tiles flare on `knowledge.retrieved`, red when flagged and amber when stale.
-- **Launcher (Ctrl+K)** and **approval notifications** with Approve and Reject on the card.
-- **Terminal app:** `ai-ps`, `ai-top`, `ai-run`, `ai-approve`, `ai-kill`, `ai-audit`, and `ls`/`cd`/`cat`/`search` over /org.
-- **Thinking orbs** (`thinking-orbs`) for every loading state and on each process node, showing what that agent is doing.
-- **Boot screen:** a large live orb with the service checklist.
-- **Apps:** Tasks, Task (live run: timeline, process tree, inspector, result), Approvals, Knowledge, Memory, Audit, Agents, System, Terminal.
+- **Keyboard:** Alt+Space (the floating Ask), Alt+1…9 (rail apps), Alt+, (Settings), Alt+` (switch windows), Alt+/ (all shortcuts).
+- **Runs you can watch:** a task docks left and the run stage fills the desktop: agents as bot faces, documents and
+  tools as they are used, the thought process as a story, big orbs.
+- **Sign-in:** a sign-in screen (Google, or the demo org's people and any email in dev mode), onboarding to create an
+  org, "Sign in on your phone" codes, and controls a role may not use say so instead.
+- **Apps:** Tasks, Task (live run), Approvals, Knowledge, Memory, Audit, Agents, System, Terminal, Add knowledge
+  (uploads with live progress, folders of this computer), Connections (GitHub, Calendar), Organization (people,
+  invitations, the role matrix) and Settings (models routing, agents, tools, what needs a human, security, stack).
 
 ### Mobile (`apps/mobile`, Expo SDK 57)
-There are three tabs: Approvals, Compose and Settings (the gateway URL). It has safe areas, background-aware polling and a risk badge. It has **no login**. The web build was tested end to end against the real stack; it has **not been run on a real device or emulator**, and no APK has been built.
+Rebuilt for remote use, in the console's light look: sign in (the demo org's people or any email in dev mode, or a
+one-time code from the console, which also works with Google accounts), Home (running tasks with orbs, what needs you),
+Task (agents as faces, the story of the run, the answer and its evidence), Approvals (gated by `approval.resolve`),
+Ask (gated by `task.create`), Knowledge search, Me (role and permissions, notifications). Live over the event stream;
+local notifications for new approvals and finished tasks. `apps/mobile/scripts/build-apk.ps1` builds the APK
+(`apps/mobile/dist/`); it runs on the Pixel_6a emulator against `http://10.0.2.2:8089`. See `apps/mobile/README.md`.
+
+### mOSaic OS (`scripts/wsl`)
+`scripts\wsl\install-mosaic-os.ps1` creates the `mosaic-os` WSL distro (no other distro is touched). `/org` in it is a
+FUSE filesystem served by the gateway: read documents, search as directories (`/org/.search/<words>`), `cp` files in to
+add knowledge; `mosaic` asks, approves, searches, mounts folders and signs in with a console code. See
+`docs/MOSAIC_OS.md`.
 
 ### Ops and scripts
 | Script | Purpose |
@@ -140,6 +160,8 @@ There are three tabs: Approvals, Compose and Settings (the gateway URL). It has 
 | `scripts/demo_run.py run --auto-approve` / `check <task>` | Runs and scores a task out of 8. `--scenario zeus` runs the second scenario (Project Zeus Q4 budget risk, its own 8 checks); with `MOSAIC_FIREWALL_LLM=true` add `--expect-llm-flag` for a ninth |
 | `scripts/check_okf.py`, `ingest_raw.py`, `browser_smoke.py`, `context_pack.py` | Bundle validation, raw → OKF ingest, browser sandbox smoke, agent context pack |
 | `scripts/record_demo.py` | Records the captioned backup video through the console |
+| `apps/mobile/scripts/build-apk.ps1` | Builds the phone app's APK into `apps/mobile/dist/` (Android Studio's JDK and SDK) |
+| `scripts/wsl/install-mosaic-os.ps1` | Creates or re-provisions the `mosaic-os` WSL distro (`docs/MOSAIC_OS.md`) |
 
 The pitch kit is in `docs/pitch/`: `deck.html` and `RUNBOOK.md` (talk track, fallbacks, judge Q&A).
 
@@ -165,25 +187,32 @@ The pitch kit is in `docs/pitch/`: `deck.html` and `RUNBOOK.md` (talk track, fal
 2. Add an icon and tint in `app-icons.tsx`.
 3. Create the component in `components/apps/<name>.tsx`. Use `useWindowNav().navigate(url)` for in-window navigation, and use container-query breakpoints.
 4. Add a route marker at `app/<route>/page.tsx` (copy an existing one).
-5. Add a case to the `AppBody` switch in `desktop.tsx`, and the app to `DOCK` in `dock.tsx`.
+5. Add a case to the `AppBody` switch in `desktop.tsx`, and the app to `DOCK_APPS` in `shortcuts.tsx`.
+6. Read who is signed in with `useSession()` (`components/session.tsx`): `me`, and `can("permission")` to hide what a
+   role may not do. Shared pieces for app pages are in `components/apps/kit.tsx`.
 
 ---
 
 ## 5. API (gateway) and events
 
-Every request carries `X-Mosaic-User` and `X-Mosaic-Org` today; phase 2 adds real sessions. The OpenAPI spec is `shared/api/openapi.json`.
+Signed in, requests carry `Authorization: Bearer <session>` (`?token=` on the WebSocket). In dev mode
+(`MOSAIC_AUTH=dev`) requests without one may carry `X-Mosaic-User` / `X-Mosaic-Org` (default alice / acme), and the
+caller is the org's owner unless a membership says otherwise. In Google mode a session is required. A route the
+caller's role does not allow answers 403 `PERMISSION_DENIED`. The OpenAPI spec is `shared/api/openapi.json`.
 
 | Group | Endpoints |
 |---|---|
-| System | `GET /health`, `/system/status`, `/system/resources`, `/models` |
+| System | `GET /health`, `/system/status`, `/system/resources`, `/system/config`, `/models` |
+| Identity | `GET /auth/config`, `POST /auth/dev`, `/auth/google`, `GET /auth/me`, `POST /auth/logout`, `POST /auth/pair`, `/auth/pair/redeem`, `POST /orgs`, `GET /orgs/me`, `GET/POST /orgs/{org}/members`, `PATCH/DELETE /orgs/{org}/members/{member}`, `GET /orgs/{org}/roles` |
+| Connectors | `GET /connectors`, `POST /connectors/{id}/connect {token?, account?}`, `DELETE /connectors/{id}`, `POST /connectors/{id}/sync` |
 | Tasks | `POST /tasks {goal, priority}`, `GET /tasks`, `GET /tasks/{id}`, `POST /tasks/{id}/cancel`, `/resume`, `/checkpoint`, `GET /tasks/{id}/artifacts[/{name}]` |
 | Agents | `GET /agents[?task_id]`, `/agents/tree`, `POST /agents/spawn`, `GET /agents/{pid}`, `POST /agents/{pid}/pause`, `/resume`, `/kill`, `/checkpoint` |
 | Registry | `GET /registry/agents`, `/registry/tools` |
-| Knowledge | `GET /knowledge/search`, `/knowledge/tree?path` (one level), `/knowledge/object?path`, `/knowledge/graph`, `POST /knowledge/ingest {source_type, uri, target_path}`, `/knowledge/reindex`, `/knowledge/validate` |
+| Knowledge | `GET /knowledge/search`, `/knowledge/tree?path` (one level), `/knowledge/object?path`, `/knowledge/graph`, `POST /knowledge/ingest {source_type, uri, target_path}`, `/knowledge/reindex`, `/knowledge/validate`, `POST /knowledge/upload` (multipart), `GET/POST /knowledge/mounts`, `POST /knowledge/mounts/{name}/sync`, `DELETE /knowledge/mounts/{name}` |
 | Memory | `GET /memory[?owner&task_id]` |
 | Governance | `GET /approvals[?status]`, `POST /approvals/{id}/approve`, `/reject`, `GET /audit/{task_id}`, `GET /policies` |
 | Execution | `GET /sandboxes` |
-| Events | `WS /ws/events?types=...`, listed in `shared/catalogs/events.yaml`: task.*, process.*, agent.log, syscall.*, approval.*, transaction.*, audit.appended, ipc.message, knowledge.changed/reindexed/retrieved (`paths`, `flagged`), memory.invalidated/consolidated, model.invoked, sandbox.*, tool.*, system.* |
+| Events | `WS /ws/events?types=...`, listed in `shared/catalogs/events.yaml`: task.*, process.*, agent.log, syscall.*, approval.*, transaction.*, audit.appended, ipc.message, knowledge.changed/reindexed/retrieved (`paths`, `flagged`), memory.invalidated/consolidated, model.invoked, sandbox.*, tool.*, system.*, ingest.progress, mount.synced, connector.changed |
 
 `uv run mosaic-mock-gateway --speed 4 --port 8080` replays a full Apollo run without a GPU, Docker or models. Use it for UI work.
 
@@ -206,7 +235,7 @@ Every request carries `X-Mosaic-User` and `X-Mosaic-Org` today; phase 2 adds rea
 
 ## 7. Rules
 
-1. **Branches.** Branch from **`ui/desktop`** as `a/…`, `b/…`, `c/…`, `d/…`, and rebase on it often. Push your branch and tell Kamal, who merges into `ui/desktop` after a check on the demo laptop. `main` only moves when Kamal promotes `ui/desktop`.
+1. **Branches.** Branch from **`main`** as `a/…`, `b/…`, `c/…`, `d/…`, and rebase on it often. Push your branch and tell Kamal, who merges into `main` after a check on the demo laptop.
 2. **Commits.** Keep them small, one logical change each, with an area prefix: `p1:` kernel/execution, `p2:` knowledge/console, `p3:` agents/models, `p4:` platform/data/scripts, `ui:`, `mobile:`, `auth:`, `docs:`, `contract:`. Add `-fix` for fixes.
 3. **Before every push.** `uv run pytest -q` and `uvx ruff check .` must pass. Web changes also need `npm --prefix apps/web run lint`, `npm --prefix apps/web test` and `npm --prefix apps/web run build`; mobile changes need `npm --prefix apps/mobile run typecheck`. Never force-push. Never skip hooks.
 4. **Contract changes (`shared/`)**:
@@ -230,7 +259,7 @@ Every request carries `X-Mosaic-User` and `X-Mosaic-Org` today; phase 2 adds rea
    - comments explain *why*;
    - `logging.getLogger("mosaic.<pkg>.<mod>")`, no `print`.
    - Web: design tokens only (no hard-coded colours), container queries inside apps, orbs for loading, both themes, phone widths.
-7. **The demo is sacred.** `ui/desktop` must score 8/8 on real models after every merge. Anything that touches Apollo's retrieval, prompts, planner, policies or the bundle needs that check. If you have no GPU, ask Kamal to run it.
+7. **The demo is sacred.** `main` must score 8/8 on real models after every merge. Anything that touches Apollo's retrieval, prompts, planner, policies or the bundle needs that check. If you have no GPU, ask Kamal to run it.
 8. **README and docs:** no emojis.
 9. **When stuck:** after three failed attempts at the same error, stop and ask the team.
 10. **Claude Code users:** create a git-ignored `CLAUDE.local.md` with one line, `@docs/team/PHASE2-<you>.md`.
@@ -263,6 +292,17 @@ The goal: turn a scripted demo into a product people can sign into, point at the
 - incomplete findings skip the tracker update and fail the task with a partial plan.
 
 See `docs/team/B-HANDOFF.md`.
+
+### Phase 2 status (integrated on `main`, 2026-10-01)
+| Deliverable | State |
+|---|---|
+| Orgs, Google sign-in, members, roles, RBAC on every route | Done (C's branch finished on the real gateway): `identity/`, `gateway/auth.py`, sign-in and onboarding screens, Organization app |
+| GitHub and Google Calendar as governed tools, vault, sync | Done: demo data until a token is given; tokens encrypted at rest |
+| Uploads, folders of this computer, connector sync | Done: Add knowledge app, `/knowledge/upload`, `/knowledge/mounts`, `ingest.progress` |
+| `GET /system/config` and the Settings centre | Done (D's endpoint; Settings app) |
+| Phone app for remote use, RBAC, approvals, live tasks, notifications, APK | Done: `apps/mobile`, `build-apk.ps1`, sign-in codes (0.11.0) |
+| Desktop: Signal look, shortcuts, Alt+Space, the visible run, faces and orbs, a mosaic wallpaper, centred Ask bar and rail | Done |
+| An OS that handles the computer's files | Done: mOSaic OS (WSL) with `/org` as a filesystem, and mounted folders |
 
 ### A (Kamal): the desktop and the visible run
 - **Theme.** A Mac-like, light, colourful theme across the whole UI: the menu bar, windows with traffic-light controls, a dock with magnification, a new wallpaper and landing, and a "techy terminal" accent. Not dark by default.
@@ -310,7 +350,10 @@ See `docs/team/B-HANDOFF.md`.
    - Mayeraa: UI states, the Memory pairing, the mobile polish, the README.
    - Kamal: integration, plus fixes for a duplicate Memory display, a flaky invalidation dependency and iOS safe areas.
 9. **`ui/desktop`.** The console as a desktop OS: windows, dock, launcher, the wallpaper mosaic, the Terminal, orbs, the boot screen. It scores 8/8 through the new UI.
-10. **Public links.** github.com/Kamalllx/mOSaic, mosaic-os-black.vercel.app, and the demo and explainer videos linked in `README.md`.
+10. **Phase 2 integration (2026-10-01).** B's agent work, C's identity and connectors (finished on the real gateway:
+    sessions, RBAC on every route, the vault, uploads, mounts), D's system config and Settings, the rebuilt phone app
+    and APK, sign-in codes (0.11.0), the mosaic-floor desktop, and mOSaic OS on WSL. All on `main`.
+11. **Public links.** github.com/Kamalllx/mOSaic, mosaic-os-black.vercel.app, and the demo and explainer videos linked in `README.md`.
 
 ## 10. Where to read more
 | What | Where |

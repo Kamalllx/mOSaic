@@ -122,6 +122,23 @@ On the desktop: Alt Space, then the "Brief the steering committee on Zeus risk" 
 - **Order:** Apollo first, then Zeus, works back to back with no reset in between (different tracker issues, different memories). Run `reset-demo.ps1` before the next rehearsal as usual.
 - **Fallback:** if Zeus stalls, say "that is the live system on a second, unscripted task" and return to the Apollo result.
 
+### Phase 2: people, connected apps, your own files, the phone, the OS (about 3 minutes)
+Use after Apollo, or on its own when the question is "can my team actually use this?".
+
+| Do | Talking point |
+|---|---|
+| Menu bar, your name, **Switch user…**: pick **Sam (viewer)**. Alt Space, type a goal | "Roles are real. Sam can read every result but cannot start work or approve: the box says so, and the gateway refuses it too." |
+| Switch back to Alice. Open **Organization** (rail) | "People, invitations and the role matrix, read from `policies/rbac/roles.yaml`. Google sign-in in production, the same roles." |
+| **Connections**: Connect GitHub (no token: the demo data), then **Sync into /org** | "Outside apps are governed tools. Tokens live encrypted in the vault, never with an agent; writing to GitHub waits for an approver." |
+| **Add knowledge**: drop a file; then mount a folder of this laptop | "Your own documents: converted, indexed, searchable by agents in seconds. Edit the file on disk and mOSaic re-reads it." |
+| **Settings** (Alt ,): Models, then What needs a human | "One read-only picture of the running system: which model does which kind of thinking, and which actions pause for a person." |
+| User menu, **Sign in on your phone**; type the code in the app (emulator or phone) | "The phone gets its own session. Approvals arrive as notifications; approve from anywhere." |
+| Windows Terminal, **mosaic-os**: `ls /org`, `cat /org/finance/apollo-budget.md`, `ls "/org/.search/apollo overrun"`, `cp notes.md /org/uploads/` | "And mOSaic as an operating system: the organization's knowledge is a filesystem, governed like everything else." |
+
+Reset afterwards: in Connections disconnect GitHub; in Add knowledge remove the mount; delete `data/okf/github`,
+`data/okf/calendar`, `data/okf/uploads` and `data/okf/mnt` (all git-ignored), then `reset-demo.ps1`. Synced and
+uploaded documents mention PayCo and could change what the Apollo and Zeus runs retrieve.
+
 ### Known limits
 - **Browser sandbox internet on Docker Desktop:** fixed. The browser runs on the internal network in both modes; on Docker Desktop a relay container publishes its port, so page subresources can't reach the internet either (`execution/tests/test_browser_live.py::test_browser_sandbox_has_no_internet`).
 
