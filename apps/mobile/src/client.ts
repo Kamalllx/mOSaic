@@ -71,6 +71,7 @@ export function createClient(baseUrl: string, token: string | null) {
     authConfig: () => call<AuthConfig>("GET", "/auth/config", undefined, 5_000),
     devLogin: (email: string, name = "") => call<Session>("POST", "/auth/dev", { email, name }),
     redeem: (code: string) => call<Session>("POST", "/auth/pair/redeem", { code }),
+    googleLogin: (idToken: string) => call<Session>("POST", "/auth/google", { id_token: idToken }),
     me: () => call<Me>("GET", "/auth/me"),
     logout: () => call<void>("POST", "/auth/logout"),
     tasks: () => call<Task[]>("GET", "/tasks"),

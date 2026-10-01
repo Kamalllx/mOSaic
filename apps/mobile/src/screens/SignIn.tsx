@@ -2,6 +2,7 @@ import type { AuthConfig, Session } from "@mosaic/contracts";
 import { useEffect, useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { createClient, normaliseUrl, reason } from "../client";
+import { googleAvailable, googleIdToken } from "../google";
 import { useSession } from "../session";
 import { C, mono } from "../theme";
 import { Button, Card, Label, Mark, Notice, Person, s } from "../ui";
@@ -113,6 +114,30 @@ export function SignIn() {
               <TextInput value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" placeholder="or any email" placeholderTextColor={C.text3} style={[s.input, { flex: 1 }]} accessibilityLabel="Email" />
               <Button label="Go" onPress={() => run("email", () => client.devLogin(email.trim()))} disabled={!email.includes("@")} busy={busy === "email"} />
             </View>
+          </Card>
+        )}
+
+        {config?.mode === "google" && (
+          <Card style={{ gap: 10 }}>
+            <Label>Your organization uses Google</Label>
+            {googleAvailable() ? (
+              <Button
+                label="Continue with Google"
+                kind="quiet"
+                busy={busy === "google"}
+                onPress={() =>
+                  run("google", async () => {
+                    const token = await googleIdToken();
+                    if (!token) throw new Error("Google sign-in was cancelled.");
+                    return client.googleLogin(token);
+                  })
+                }
+              />
+            ) : (
+              <Text style={{ color: C.text2, fontSize: 14 }}>
+                This build has no Google client ID (EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID). Use a code from the console below.
+              </Text>
+            )}
           </Card>
         )}
 

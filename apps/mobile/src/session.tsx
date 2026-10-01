@@ -3,6 +3,8 @@ import type { Me, Session } from "@mosaic/contracts";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { Platform } from "react-native";
 import { type Client, createClient, GatewayError } from "./client";
+import { googleSignOut } from "./google";
+import { permissionsFor } from "./rbac";
 
 const KEY = "mosaic.phone";
 /** The Android emulator reaches the computer it runs on as 10.0.2.2; the demo gateway listens on 8089. */
@@ -85,7 +87,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       ready,
       client,
       me,
-      can: (p) => !!me?.permissions?.includes(p),
+      can: (p) => !!me && permissionsFor(me.role, me.permissions).has(p),
       setServer: (server) => save({ ...stored, server, session: null }),
       signIn: (session) => {
         setMe(session.me);
@@ -93,6 +95,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       },
       signOut: () => {
         client.logout().catch(() => undefined);
+        googleSignOut();
         setMe(null);
         save({ ...stored, session: null });
       },

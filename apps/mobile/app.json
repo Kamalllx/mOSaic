@@ -26,7 +26,10 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "permissions": ["POST_NOTIFICATIONS", "VIBRATE"],
+      "permissions": [
+        "POST_NOTIFICATIONS",
+        "VIBRATE"
+      ],
       "predictiveBackGestureEnabled": false
     },
     "web": {
@@ -36,7 +39,9 @@
       [
         "expo-build-properties",
         {
-          "android": { "usesCleartextTraffic": true }
+          "android": {
+            "usesCleartextTraffic": true
+          }
         }
       ],
       [
@@ -45,7 +50,8 @@
           "icon": "./assets/notification-icon.png",
           "color": "#0b6b60"
         }
-      ]
+      ],
+      "@react-native-google-signin/google-signin"
     ]
   }
 }
