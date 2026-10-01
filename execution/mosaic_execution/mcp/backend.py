@@ -49,6 +49,7 @@ class McpServerConfig(BaseModel):
     capability: str = "mcp.call"
     risk: Risk = Risk.MEDIUM
     timeout_s: float = 60.0
+    browser: bool = False  # a Playwright MCP server that serves the `browser` tool (McpBrowserBackend) instead
 
 
 def load_mcp_config(path: str | Path | None = None) -> list[McpServerConfig]:
@@ -124,14 +125,18 @@ class McpBackend:
                              risk=self.config.risk) for t in self._tools]
         return ToolSpec(name=self.name, description=f"MCP server {self.name}", transport=ToolTransport.MCP, operations=ops)
 
+    async def call(self, tool: str, arguments: dict[str, Any]) -> Any:
+        """One MCP tool call; the raw result (text and image content). Raises MosaicError, TimeoutError."""
+        await self.discover()
+        if tool not in {t.name for t in self._tools}:
+            raise MosaicError("NOT_FOUND", f"MCP server {self.name} has no tool {tool}")
+        fut = asyncio.get_running_loop().create_future()
+        await self._queue.put((fut, tool, dict(arguments)))
+        return await asyncio.wait_for(fut, self.config.timeout_s)
+
     async def execute(self, inv: ToolInvocation) -> ToolResult:
         try:
-            await self.discover()
-            if inv.operation not in {t.name for t in self._tools}:
-                return err(inv, "NOT_FOUND", f"MCP server {self.name} has no tool {inv.operation}")
-            fut = asyncio.get_running_loop().create_future()
-            await self._queue.put((fut, inv.operation, dict(inv.arguments)))
-            res = await asyncio.wait_for(fut, self.config.timeout_s)
+            res = await self.call(inv.operation, inv.arguments)
         except MosaicError as e:
             return err(inv, e.code, e.message)
         except TimeoutError:
