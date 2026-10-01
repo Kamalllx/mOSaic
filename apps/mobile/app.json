@@ -2,30 +2,50 @@
   "expo": {
     "name": "mOSaic",
     "slug": "mosaic-mobile",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "dark",
-    "androidStatusBar": {
-      "backgroundColor": "#0d1117",
-      "barStyle": "light-content",
-      "translucent": false
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#eef1f6",
+    "scheme": "mosaic",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#eef1f6"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "ai.mosaic.phone"
     },
     "android": {
+      "package": "ai.mosaic.phone",
+      "versionCode": 2,
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#eef1f6",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
+      "permissions": ["POST_NOTIFICATIONS", "VIBRATE"],
       "predictiveBackGestureEnabled": false
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "scheme": "mosaic"
+    "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "android": { "usesCleartextTraffic": true }
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#0b6b60"
+        }
+      ]
+    ]
   }
 }
