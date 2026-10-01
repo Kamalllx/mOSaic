@@ -287,6 +287,59 @@ Gates (`b/hardening` at `5839d03`):
 | Vendors | 8/8 | 21.2 s | PASS |
 | Zeus, classifier on, `--expect-llm-flag` | 9/9 | 135.6 s | PASS |
 
-## Next
-B4 (Playwright MCP browser + multi-tool scenario) on `b/mcp-browser` from `b/hardening`, disk check first; then the
-handoff.
+## B4: Playwright MCP browser + multi-tool scenario (done; the MCP browser is off by default)
+
+Branch `b/mcp-browser` (from `b/hardening`): `bdd51c6` the MCP browser, `a80d108` the multi-tool scenario.
+
+- Disk before: 14.9 GB free. The new image shares the browser image's layers (its own layer is the npm install).
+- `execution/images/sandbox-browser-mcp`: `@playwright/mcp` 0.0.83 on `mosaic/sandbox-browser`, reusing its Chromium
+  (`--executable-path`; nothing downloaded at run time). Build once:
+  `docker build -t mosaic/sandbox-browser-mcp:latest execution/images/sandbox-browser-mcp`.
+- `McpBrowserBackend` serves the `browser` tool when `MOSAIC_MCP_CONFIG` names a server with `browser: true`
+  (`execution/mcp.browser.example.yaml`): `docker run -i` on the internal `mosaic_sandbox` network, read-only, uid
+  10001, no capabilities, 1 GB memory, `--allowed-origins http://vendor-docs`. Agents keep calling `browser.open`
+  (click/type need approval): same capabilities and policies. `open` = the kernel's allowlist, MCP navigate, snapshot
+  (the page text), screenshot (an artifact + `sandbox.screenshot`). Without the config the Playwright driver path (and
+  the Docker Desktop relay) is untouched.
+- The multi-tool scenario: a data question that also asks for a vendor's page adds the research agent to the data
+  path: SQL (`db.query`), the browser (`browser.open`), the knowledge base, and the approved `db.write` note, in one
+  task. `demo_run.py --scenario multitool` (8 checks).
+
+Decisions:
+- **MCP browser off by default** (the brief allows a setting): the Apollo gates run on the proven driver path. The
+  switch is the existing `MOSAIC_MCP_CONFIG` file, so no contract change was needed.
+- **Agents unchanged:** the MCP backend *is* the `browser` tool, rather than a new `playwright.*` tool, so research
+  and policies need no change and switching back is one env var.
+- **Newest `@playwright/mcp` pinned to the image's Chromium** instead of finding a release built on Playwright 1.63
+  (npm's version listing was unhelpful); it works, and the live test catches a mismatch.
+- The data engineer is now asked to include identifying columns (a real run returned only the numbers);
+  `multitool`'s check accepts PayCo's row by name or by its seed figures.
+
+Verified on real models:
+- Smoke: 25 MCP tools discovered in 3.5 s; vendor docs loaded in 2.0 s; `http://example.com` refused by the browser
+  (`ERR_BLOCKED_BY_CLIENT`); screenshots come back as image content (54 KB PNG).
+- Apollo with the MCP browser on: 8/8 in 110.5 s, story PASS; the audit shows `browser.open -> success`,
+  `transport: mcp`, title "PayCo SDK v5: release status".
+- Multitool with the MCP browser on: 8/8 in 43.1 s, story PASS.
+
+Tests: 424 passed, 0 skipped; ruff clean. New: `execution/tests/test_mcp_browser.py` (5: page + screenshot event,
+the allowlist before any call, clear errors and timeouts, the config switch and the default, a live run in the image),
+2 multi-tool tests in `agents/tests/test_data_agents.py`.
+
+Gates (`b/mcp-browser` at `a80d108`, default config):
+
+| Run | Score | Time | Story |
+|---|---|---|---|
+| Apollo | 8/8 | 98.0 s | PASS |
+| Zeus | 8/8 | 110.0 s | PASS |
+| Vendors | 8/8 | 21.1 s | PASS |
+| Multitool | 8/8 | 43.7 s | PASS |
+| Zeus, classifier on, `--expect-llm-flag` | 9/9 | 104.0 s | PASS |
+
+Notes for Kamal: no new events. With the MCP browser on, `sandbox.screenshot` has `"sandbox_id": "mcp-playwright"`;
+the browser tool's output has `"transport": "mcp"`.
+
+## Status at the end of the night
+All tasks done and pushed: B1, B2, B3, B5, B4 (MCP browser behind its config). Handoff:
+`docs/team/B-PHASE2-HANDOFF.md` on `b/mcp-browser`. mosaicd left running on 8099 with the classifier off and the MCP
+browser off.

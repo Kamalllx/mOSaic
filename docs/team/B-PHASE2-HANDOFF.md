@@ -18,8 +18,8 @@ in between). Every branch passed the gates on its own before it was pushed.
 | 4 | `b/dynamic-agents` | `b58b76a` | B2: agents generated per task from role templates | yes |
 | 5 | `contract/db-tool` | `f6343d3` | contract 0.12.0: `db.query`/`db.write`, the demo dataset | yes |
 | 6 | `b/sql-tool` | `6016419` | B3: SQL guard, db backend, seed script, vendors scenario | yes |
-| 7 | `b/hardening` | `373b191` (+ this handoff) | B5: the kill fix, protections for phase-2 agents and tools | yes |
-| 8 | `b/mcp-browser` | see below | B4 | see B4 below |
+| 7 | `b/hardening` | `e38372f` | B5: the kill fix, protections for phase-2 agents and tools | yes |
+| 8 | `b/mcp-browser` | this branch | B4: the Playwright MCP browser (off by default), the multi-tool scenario | yes |
 
 `ui/desktop` must first have `main` (it is behind `main` by the `b/hackathon` merge; a fast-forward).
 
@@ -70,8 +70,16 @@ the engine loads every `policies/*.yaml` as a `PolicyDocument`. Move it into a s
   fail clearly; killed tasks leave nothing generated behind.
 - Live: Ollama restarted mid-Apollo; the generated finance agent was retried and the run scored 8/8.
 
-### B4: Playwright MCP browser
-See the B4 section of the progress log for its status (written last).
+### B4: Playwright MCP browser and the multi-tool scenario
+- `bdd51c6` `execution/images/sandbox-browser-mcp` (`@playwright/mcp` on the browser image, its Chromium reused) and
+  `McpBrowserBackend`, which serves the `browser` tool over MCP when `MOSAIC_MCP_CONFIG` points at
+  `execution/mcp.browser.example.yaml`: internal network, read-only, uid 10001, `--allowed-origins`; screenshots become
+  `sandbox.screenshot`. Off by default; agents and policies unchanged.
+- `a80d108` the multi-tool scenario (SQL + browser + knowledge + approved write in one task),
+  `demo_run.py --scenario multitool`.
+- To turn the MCP browser on: build the image once (`docker build -t mosaic/sandbox-browser-mcp:latest
+  execution/images/sandbox-browser-mcp`), set `$env:MOSAIC_MCP_CONFIG = "$PWD\execution\mcp.browser.example.yaml"`, then
+  `scripts\win\reset-demo.ps1`. Apollo scored 8/8 (110.5 s) and multitool 8/8 (43.1 s) that way.
 
 ## Contracts, events, settings
 
@@ -109,6 +117,7 @@ uv run python scripts/demo_run.py run --auto-approve --check-story              
 uv run python scripts/demo_run.py run --auto-approve --check-story --scenario zeus      # Zeus: 8/8 + story PASS
 uv run python scripts/seed_demo_data.py                                                 # once, and before each vendors rehearsal
 uv run python scripts/demo_run.py run --auto-approve --check-story --scenario vendors   # Vendors: 8/8 + story PASS (about 20 s)
+uv run python scripts/demo_run.py run --auto-approve --check-story --scenario multitool # Multitool: 8/8 + story PASS (about 45 s)
 # classifier on: $env:MOSAIC_FIREWALL_LLM = "true"; scripts\win\reset-demo.ps1
 uv run python scripts/demo_run.py run --auto-approve --check-story --scenario zeus --expect-llm-flag   # 9/9 + story PASS
 ```
@@ -122,11 +131,12 @@ to file it: an approval card for `db.write`. Approve; the note is filed and the 
 
 ## Latest gate results
 
-| Branch | Apollo | Zeus | Vendors | Zeus, classifier on |
-|---|---|---|---|---|
-| `b/hardening` (`5839d03`) | 8/8, 107.0 s | 8/8, 103.9 s | 8/8, 21.2 s | 9/9, 135.6 s |
+| Branch | Apollo | Zeus | Vendors | Multitool | Zeus, classifier on |
+|---|---|---|---|---|---|
+| `b/hardening` (`5839d03`) | 8/8, 107.0 s | 8/8, 103.9 s | 8/8, 21.2 s | (not yet) | 9/9, 135.6 s |
+| `b/mcp-browser` (`a80d108`) | 8/8, 98.0 s | 8/8, 110.0 s | 8/8, 21.1 s | 8/8, 43.7 s | 9/9, 104.0 s |
 
-Story order PASS on all of them. 417 tests, 0 skipped; ruff clean; web build passes on the contract branches.
+Story order PASS on all of them. 424 tests, 0 skipped; ruff clean; web build passes on the contract branches.
 
 ## Known issues and risks
 - Once, a full `pytest` run hung for more than 40 minutes; every folder passes alone and four later full runs were
@@ -135,6 +145,9 @@ Story order PASS on all of them. 417 tests, 0 skipped; ruff clean; web build pas
   queries passed first time in every real run.
 - `db.query` uses a read-only transaction on the `mosaic` user, not a read-only database role.
 - Real runs are on a 6 GB GPU (16-18 tok/s): timings on the demo laptop will be lower.
+- The MCP image uses the newest `@playwright/mcp` with the browser image's Chromium; a future `@playwright/mcp`
+  that needs a newer Chromium would fail its live test (`execution/tests/test_mcp_browser.py`) before the demo.
+- Vendors and multitool need `scripts/seed_demo_data.py` once on each machine (and it resets `finance_notes`).
 
 ## For Mishka to decide in the morning
 1. Push order and timing with Kamal: the chain above, after `ui/desktop` takes `main`.
@@ -142,4 +155,5 @@ Story order PASS on all of them. 417 tests, 0 skipped; ruff clean; web build pas
 3. Whether to add a read-only database role for `db.query` (needs a password in `.env`).
 4. Whether the planner should let the model write `{role, scope, capabilities, why}` itself (today it picks roles;
    the bounds come from the role table) now that the generation path is in place.
-5. B4's status (see the progress log): merge, keep behind its setting, or leave as `-wip`.
+5. Whether to make the MCP browser the default (it passed Apollo and multitool on real models) or keep the
+   Playwright driver as the demo path; and whether Kamal's demo laptop should build the `sandbox-browser-mcp` image.
