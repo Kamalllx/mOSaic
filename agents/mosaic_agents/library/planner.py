@@ -22,7 +22,7 @@ from typing import Any
 from mosaic_contracts.errors import MosaicError
 from mosaic_contracts.schema import AgentPlanned, AgentResult, AgentResultStatus, ErrorInfo, TaskUnderstood
 
-from mosaic_agents.prompts import PlanOut, PlanStep, RootCausesOut, SynthesisOut
+from mosaic_agents.prompts import AnswerOut, PlanOut, PlanStep, RootCausesOut, SynthesisOut
 from mosaic_agents.sdk import (
     DEFAULT_PROJECT,
     MosaicAgent,
@@ -160,6 +160,32 @@ def is_data_question(goal: str, allowed: list[str]) -> bool:
     return "data-engineer" in offered_roles(goal, allowed)
 
 
+# What makes a goal a project investigation (specialists, root causes, a tracker update): Apollo, Zeus and "why is X late"
+# goals. Anything else that is not a data question is a plain question, answered directly from /org with no specialists:
+# "what do we know about Kamal" must not become an Apollo investigation with a Jira write.
+_INVESTIGATION = re.compile(
+    r"\b(investigat\w*|root[- ]?causes?|over[- ]?budget|overrun\w*|variance|behind schedule|late|delay\w*|slip\w*|"
+    r"recovery|mitigat\w*|risk|briefing|blocker\w*|tracker)\b", re.I)
+
+
+def is_investigation(goal: str) -> bool:
+    return bool(_INVESTIGATION.search(goal))
+
+
+QUESTION_SYSTEM = """You answer a question from someone in the organization using only the evidence given, which comes
+from the organization's knowledge base (/org). Write a direct, complete answer: a short paragraph, or a few bullet
+points when the question asks for a list. Put the /org paths you used in `sources`. If the evidence does not answer
+the question, say so plainly instead of guessing. Never mention projects or documents the question is not about.
+"""
+
+
+def question_understood(goal: str) -> TaskUnderstood:
+    first = re.split(r"(?<=[.!?])\s", goal.strip(), maxsplit=1)[0]
+    return TaskUnderstood(intent=first[:240], entities=[], capabilities_needed=["knowledge.search", "knowledge.read"],
+                          plan_summary="A question, not a project investigation: the planner answers it from cited /org "
+                                       "evidence. No specialists and no actions are needed.")
+
+
 def data_understood(goal: str, steps: list[PlanStep]) -> TaskUnderstood:
     first = re.split(r"(?<=[.!?])\s", goal.strip(), maxsplit=1)[0]
     entities = list(dict.fromkeys([*re.findall(r"\bQ[1-4](?:\s+20\d\d)?\b", goal),
@@ -218,6 +244,8 @@ class PlannerAgent(MosaicAgent):
         await ctx.log("planner: starting", data={"goal": goal[:200]})
         if is_data_question(goal, list(ctx.manifest.capabilities.agents)):
             return await self._run_data(goal, ctx)
+        if not is_investigation(goal):
+            return await self._run_question(goal, ctx)
         project = project_of(goal, getattr(ctx, "inputs", None))
         await think(ctx, "search", f"Searching /org for evidence on Project {project}.")
 
@@ -448,6 +476,36 @@ class PlannerAgent(MosaicAgent):
             evidence=sorted(set(all_evidence)),
             artifacts=[artifact_ref],
         )
+
+    async def _run_question(self, goal: str, ctx: Any) -> AgentResult:
+        """A plain question: search /org, answer from the evidence with citations. No agents are created and nothing
+        is changed, so nothing needs a person."""
+        await narrate(ctx, question_understood(goal))
+        await think(ctx, "plan", "A question, not an investigation: answering it from /org directly, with no specialists.")
+        evidence = await gather_evidence(ctx, goal, scope=["/org"], top_k=8)
+        await think_flagged(ctx, evidence)
+        retrieved = {h.path for h in evidence.hits}
+        if ctx.cancelled():
+            return self.result(ctx, "cancelled", status=AgentResultStatus.CANCELLED)
+        out = None
+        if evidence.hits:
+            out = await ask_json(ctx, QUESTION_SYSTEM, f"Question: {goal}\n\nEvidence:\n{cite(evidence)}\n\n"
+                                 "Answer as JSON: answer (string), sources (list of /org paths from the evidence).",
+                                 AnswerOut, max_tokens=900)
+        answer = (out.answer.strip() if out else "") or (
+            "Nothing in /org answers this." if not evidence.hits else
+            "I could not write an answer; these documents look relevant: " + ", ".join(h.path for h in evidence.hits[:5]))
+        sources = await keep_retrieved(ctx, out.sources if out else [], retrieved, "answer")
+        if not sources and out and out.answer:
+            sources = [h.path for h in evidence.hits[:3]]
+        await think(ctx, "synthesize", f"Answered from {plural(len(sources), 'cited document')}.")
+        md = f"# Answer\n\n**Question:** {goal}\n\n{answer}\n"
+        if sources:
+            md += "\n## Sources\n\n" + "\n".join(f"- `{p}`" for p in sources) + "\n"
+        artifact = await ctx.put_artifact("answer.md", md.encode(), "text/markdown")
+        return AgentResult(pid=ctx.pid, agent=ctx.manifest.name, status=AgentResultStatus.COMPLETED, summary=answer,
+                           output={"answer": answer, "sources": sources, "artifact": artifact}, evidence=sources,
+                           artifacts=[artifact])
 
     async def _run_data(self, goal: str, ctx: Any) -> AgentResult:
         """A question the company database answers: data-engineer queries it, writer drafts and files the note. The

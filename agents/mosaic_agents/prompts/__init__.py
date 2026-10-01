@@ -116,6 +116,13 @@ class SqlOut(BaseModel):
     explanation: str = ""
 
 
+class AnswerOut(BaseModel):
+    """The planner's direct answer to a question that needs no specialists."""
+
+    answer: str = ""
+    sources: list[str] = Field(default_factory=list, description="/org paths the answer rests on")
+
+
 class NoteOut(BaseModel):
     """The writer's draft."""
 
@@ -123,4 +130,4 @@ class NoteOut(BaseModel):
     body: str = ""
 
 
-__all__ = ["SqlOut", "NoteOut", "Finding", "TemplateOut", "PlanStep", "PlanOut", "RootCause", "RootCausesOut", "SynthesisOut", "FinanceOut", "EngOut", "ResearchOut"]
+__all__ = ["AnswerOut", "SqlOut", "NoteOut", "Finding", "TemplateOut", "PlanStep", "PlanOut", "RootCause", "RootCausesOut", "SynthesisOut", "FinanceOut", "EngOut", "ResearchOut"]
