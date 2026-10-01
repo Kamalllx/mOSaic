@@ -4,6 +4,7 @@ import type { AuthConfig, Me, Session } from "@mosaic/contracts";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ArrowRight, Building2, LogOut, Smartphone, X } from "lucide-react";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useClient, useSessionState } from "@/app/providers";
 import { Mark, Wordmark } from "@/components/desktop/logo";
 import { Orb } from "@/components/desktop/orb";
@@ -31,7 +32,7 @@ export function PersonAvatar({ name, email, url, size = 28, className }: { name?
   const hues = ["#0d9488", "#2563eb", "#7c3aed", "#db2777", "#ea580c", "#16a34a", "#0891b2"];
   let h = 0;
   for (const c of email) h = (h * 31 + c.charCodeAt(0)) | 0;
-  const initials = (name || email).split(/[\s@.]+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("");
+  const initials = (name || email.split("@")[0]).split(/[\s._-]+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("");
   if (url) {
     // eslint-disable-next-line @next/next/no-img-element
     return <img src={url} alt="" width={size} height={size} className={cn("shrink-0 rounded-full object-cover", className)} referrerPolicy="no-referrer" />;
@@ -341,7 +342,8 @@ export function PairPhone({ onClose }: { onClose: () => void }) {
   }, []);
   const left = code.data ? Math.max(0, Math.round((new Date(code.data.expires_at).getTime() - now) / 1000)) : 0;
   const local = /localhost|127\.0\.0\.1/.test(client.baseUrl);
-  return (
+  // A portal: opened from the menu bar, whose backdrop blur would otherwise contain this fixed overlay.
+  return createPortal(
     <div className="fixed inset-0 z-[8000] flex items-center justify-center bg-[rgb(15_23_42/0.18)] p-4" onPointerDown={onClose}>
       <section role="dialog" aria-modal="true" aria-label="Sign in on your phone" onPointerDown={(e) => e.stopPropagation()} className="panel spotlight-in w-full max-w-[420px] rounded-[22px] p-6 shadow-window">
         <div className="flex items-center gap-3">
@@ -385,6 +387,7 @@ export function PairPhone({ onClose }: { onClose: () => void }) {
           New code
         </button>
       </section>
-    </div>
+    </div>,
+    document.body,
   );
 }
