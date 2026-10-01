@@ -551,6 +551,20 @@ ai approve APR-… ; ai-audit T-…         # decide; print the hash-chained jou
 wsl -d mosaic-os -- mosaic ask "Brief me on Zeus"     # mOSaic OS
 ```
 
+**Python package** ([`mosaic-os`](sdk/python), no dependencies, Python 3.9+): the client library and the `mosaic`
+command for any machine that can reach a gateway. Full documentation: [`sdk/python/README.md`](sdk/python/README.md).
+
+```bash
+pip install mosaic-os
+mosaic connect https://your-gateway.example && mosaic login --as priya@acme.example
+mosaic ask "Why is Project Apollo over budget?"
+```
+
+```python
+from mosaic_os import Mosaic
+task = Mosaic("http://localhost:8089").ask("Brief me on Zeus budget risk", on_entry=lambda e: print(e["summary"]))
+```
+
 ### 4.2 Testing and QA commands
 
 | What | Command |
